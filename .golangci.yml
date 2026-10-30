@@ -1,0 +1,215 @@
+# golangci-lint v2 configuration shared by all Go modules in services/.
+# golangci-lint looks for this file in parent directories, so it applies when
+# the linter runs inside any service directory.
+#
+# Format:  make fmt   (golangci-lint fmt)
+# Lint:    make lint  (golangci-lint run)
+version: "2"
+
+run:
+  timeout: 3m
+
+formatters:
+  enable:
+    - gofumpt # stricter gofmt: no empty lines at block edges, grouped declarations
+    - gci # import groups: standard library, third-party, this module
+    - golines # wraps lines longer than max-len
+  settings:
+    gofumpt:
+      extra-rules: true # merge adjacent parameters of the same type: (a, b string)
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule
+    golines:
+      max-len: 120
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    # Vertical whitespace: blank lines that separate logical steps.
+    - wsl_v5
+    # Errors.
+    - errorlint
+    - errname
+    - nilerr
+    # Bugs and resource leaks.
+    - bodyclose
+    - noctx
+    - gosec
+    - copyloopvar
+    # Style and idioms.
+    - revive
+    - gocritic
+    - misspell
+    - perfsprint
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - intrange
+    - modernize
+    - sloglint
+    - nolintlint
+    - mnd # magic numbers must be named constants
+    # Size and complexity: keep functions small enough to read in one screen.
+    - funlen
+    - gocognit
+    - cyclop
+    # Architecture: N-layered dependency rules.
+    - depguard
+
+  settings:
+    # Layer rules. Each service is its own module, so every rule lists the
+    # package prefixes of all services; one service cannot import another
+    # service's internal packages anyway.
+    depguard:
+      rules:
+        domain:
+          list-mode: strict
+          files:
+            - "**/internal/domain/**"
+          allow:
+            - $gostd
+          deny:
+            - pkg: net/http
+              desc: domain must not depend on HTTP
+            - pkg: encoding/json
+              desc: domain must not know serialization formats; map DTOs in adapters
+            - pkg: database/sql
+              desc: domain must not depend on the database
+        service:
+          list-mode: strict
+          files:
+            - "**/internal/service/**"
+          allow:
+            - $gostd
+            - github.com/google/uuid
+            - github.com/vleshchenko/land-plot-system/services/identity-service/internal/domain
+            - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain
+            - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging
+            - github.com/vleshchenko/land-plot-system/services/report-service/internal/domain
+          deny:
+            - pkg: net/http
+              desc: use cases must not depend on HTTP; declare a port instead
+            - pkg: encoding/json
+              desc: use cases must not know serialization formats
+            - pkg: database/sql
+              desc: use cases must not depend on the database; declare a port instead
+        handler:
+          list-mode: strict
+          files:
+            - "**/internal/handler/**"
+          allow:
+            - $gostd
+            - github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy
+            - github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging
+            - github.com/vleshchenko/land-plot-system/services/identity-service/internal/logging
+            - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging
+            - github.com/vleshchenko/land-plot-system/services/report-service/internal/logging
+            - github.com/vleshchenko/land-plot-system/services/identity-service/internal/domain
+            - github.com/vleshchenko/land-plot-system/services/identity-service/internal/service
+            - github.com/vleshchenko/land-plot-system/services/identity-service/internal/handler
+            - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain
+            - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/service
+            - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/handler
+            - github.com/vleshchenko/land-plot-system/services/report-service/internal/domain
+            - github.com/vleshchenko/land-plot-system/services/report-service/internal/service
+            - github.com/vleshchenko/land-plot-system/services/report-service/internal/handler
+        adapters:
+          list-mode: lax
+          files:
+            - "**/internal/repository/**"
+            - "**/internal/messaging/**"
+            - "**/internal/client/**"
+            - "**/internal/discovery/**"
+            - "**/internal/auth/**"
+            - "**/internal/password/**"
+            - "**/internal/balancer/**"
+            - "**/internal/proxy/**"
+          deny:
+            - pkg: github.com/vleshchenko/land-plot-system/services/api-gateway/internal/handler
+              desc: adapters must not depend on the HTTP layer
+            - pkg: github.com/vleshchenko/land-plot-system/services/identity-service/internal/handler
+              desc: adapters must not depend on the HTTP layer
+            - pkg: github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/handler
+              desc: adapters must not depend on the HTTP layer
+            - pkg: github.com/vleshchenko/land-plot-system/services/report-service/internal/handler
+              desc: adapters must not depend on the HTTP layer
+            - pkg: github.com/vleshchenko/land-plot-system/services/api-gateway/internal/config
+              desc: only bootstrap reads the configuration
+            - pkg: github.com/vleshchenko/land-plot-system/services/identity-service/internal/config
+              desc: only bootstrap reads the configuration
+            - pkg: github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/config
+              desc: only bootstrap reads the configuration
+            - pkg: github.com/vleshchenko/land-plot-system/services/report-service/internal/config
+              desc: only bootstrap reads the configuration
+
+    wsl_v5:
+      # Default checks: no cuddling of unrelated statements, error checks
+      # right after the assignment, no empty lines at block edges.
+      default: default
+      allow-first-in-block: true
+      branch-max-lines: 2 # return/break in a longer block needs a blank line before it
+      cuddle-max-statements: 1
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        # Small value structs are passed and ranged over by value on purpose.
+        - hugeParam
+        - rangeValCopy
+        - unnamedResult
+    revive:
+      # exported and package-comments are off: Go code carries no comments,
+      # names explain it (see tools/stripcomments).
+      rules:
+        - name: var-naming
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: early-return
+        - name: superfluous-else
+        - name: unused-parameter
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: blank-imports
+    sloglint:
+      kv-only: true # logger.Info("msg", "key", value)
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    funlen:
+      lines: 80
+      statements: 40
+    gocognit:
+      min-complexity: 20
+    cyclop:
+      max-complexity: 15
+
+  exclusions:
+    presets:
+      - std-error-handling # e.g. unchecked Close in defer
+    rules:
+      # Table-driven tests and test setup are naturally longer and use
+      # fixed test credentials.
+      - path: _test\.go
+        linters:
+          - funlen
+          - gocognit
+          - cyclop
+          - gosec
+          - noctx
+          - mnd
+          - bodyclose
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
