@@ -1,0 +1,162 @@
+name: land-plot-system
+
+x-go-service: &go-service
+  restart: unless-stopped
+  init: true
+  networks:
+    - land-network
+  environment: &go-environment
+    HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+    CONSUL_ADDRESS: http://consul:8500
+    CONSUL_TIMEOUT: ${CONSUL_TIMEOUT:-3s}
+    JWT_SECRET: ${JWT_SECRET:-local_development_jwt_secret_change_me}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-postgres_dev_password}
+      POSTGRES_DB: ${POSTGRES_ADMIN_DB:-postgres}
+      IDENTITY_DB_NAME: ${IDENTITY_DB_NAME:-identity_db}
+      IDENTITY_DB_USER: ${IDENTITY_DB_USER:-identity_user}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_password}
+      PLOT_DB_NAME: ${PLOT_DB_NAME:-plot_db}
+      PLOT_DB_USER: ${PLOT_DB_USER:-plot_user}
+      PLOT_DB_PASSWORD: ${PLOT_DB_PASSWORD:-plot_dev_password}
+      REPORT_DB_NAME: ${REPORT_DB_NAME:-report_db}
+      REPORT_DB_USER: ${REPORT_DB_USER:-report_user}
+      REPORT_DB_PASSWORD: ${REPORT_DB_PASSWORD:-report_dev_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - land-network
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-land_app}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_dev_password}
+    ports:
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - land-network
+
+  consul:
+    image: hashicorp/consul:1.20
+    restart: unless-stopped
+    command: agent -dev -client=0.0.0.0 -ui
+    ports:
+      - "${CONSUL_HTTP_PORT:-8500}:8500"
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - land-network
+
+  identity-service:
+    <<: *go-service
+    build:
+      context: ./services/identity-service
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8081
+      DATABASE_URL: postgres://${IDENTITY_DB_USER:-identity_user}:${IDENTITY_DB_PASSWORD:-identity_dev_password}@postgres:5432/${IDENTITY_DB_NAME:-identity_db}?sslmode=disable
+      DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
+      JWT_TTL: ${JWT_TTL:-1h}
+      BCRYPT_COST: ${BCRYPT_COST:-12}
+    expose:
+      - "8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  land-plot-service:
+    <<: *go-service
+    build:
+      context: ./services/land-plot-service
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8082
+      DATABASE_URL: postgres://${PLOT_DB_USER:-plot_user}:${PLOT_DB_PASSWORD:-plot_dev_password}@postgres:5432/${PLOT_DB_NAME:-plot_db}?sslmode=disable
+      DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-land_app}:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672/
+      RABBITMQ_TIMEOUT: ${RABBITMQ_TIMEOUT:-5s}
+    expose:
+      - "8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  report-service:
+    <<: *go-service
+    build:
+      context: ./services/report-service
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8083
+      DATABASE_URL: postgres://${REPORT_DB_USER:-report_user}:${REPORT_DB_PASSWORD:-report_dev_password}@postgres:5432/${REPORT_DB_NAME:-report_db}?sslmode=disable
+      DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
+      UPSTREAM_TIMEOUT: ${UPSTREAM_TIMEOUT:-5s}
+      LAND_PLOT_SERVICE_NAME: ${LAND_PLOT_SERVICE_NAME:-land-plot-service}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-land_app}:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672/
+      RABBITMQ_TIMEOUT: ${RABBITMQ_TIMEOUT:-5s}
+      MESSAGE_PROCESSING_TIMEOUT: ${MESSAGE_PROCESSING_TIMEOUT:-5s}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
+    expose:
+      - "8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  api-gateway:
+    <<: *go-service
+    build:
+      context: ./services/api-gateway
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8080
+      UPSTREAM_TIMEOUT: ${UPSTREAM_TIMEOUT:-5s}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      land-plot-service:
+        condition: service_healthy
+      report-service:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+networks:
+  land-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
