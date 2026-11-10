@@ -45,6 +45,10 @@ func (reportService *ReportService) Create(
 		return domain.Report{}, domain.ErrForbidden
 	}
 
+	if !plot.IsConfirmed() {
+		return domain.Report{}, domain.ErrPlotNotConfirmed
+	}
+
 	report := domain.NewReport(uuid.NewString(), plot, reportService.now())
 	if err := reportService.repository.Create(requestContext, report); err != nil {
 		return domain.Report{}, fmt.Errorf(wrapCreateReport, err)

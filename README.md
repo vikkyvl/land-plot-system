@@ -73,9 +73,10 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── docker-compose.yml          # full local environment
 ├── .env.example                # overridable settings
 ├── .golangci.yml               # formatter and linter configuration
-├── Makefile                    # fmt / lint / test / vet / compose checks, demo
+├── Makefile                    # fmt / lint / test / vet / compose checks, demos
 ├── deploy/postgres/            # creates per-service databases and roles
 ├── scripts/demo.sh             # end-to-end demo against the running stack
+├── scripts/demo_lr3.sh         # transactional outbox and saga demo
 ├── tools/stripcomments/        # comment check used by make lint
 └── services/
     ├── api-gateway/
@@ -93,10 +94,10 @@ Each service is an independent Go module with an N-layered structure:
     ├── handler/               # HTTP: router, endpoint handlers, DTOs, request errors
     │   ├── middleware/        # bearer token authentication
     │   └── respond/           # JSON responses, request decoding, error → HTTP mapping
-    ├── service/               # use cases and ports (interfaces) they depend on
+    ├── service/               # use cases, saga steps, outbox relay, and the ports they depend on
     ├── domain/                # entities, invariants, calculations, domain errors
-    ├── repository/postgres/   # PostgreSQL adapter (schema.sql is applied on startup)
-    ├── messaging/rabbitmq/    # event publisher (land-plot) or consumer (report)
+    ├── repository/postgres/   # PostgreSQL adapter: tables, transactions, outbox (schema.sql is applied on startup)
+    ├── messaging/rabbitmq/    # outbox publisher and reconnecting consumer
     ├── client/httpclient/     # land-plot-service client (report)
     ├── discovery/consul/      # Consul registration and instance resolution
     ├── auth/                  # JWT verification (and issuing in identity)
@@ -104,7 +105,7 @@ Each service is an independent Go module with an N-layered structure:
     └── bootstrap/             # composition root: wiring, start, graceful shutdown
 ```
 
-Dependencies point inward: `handler` → `service` → `domain`. `domain` imports nothing from the project, and `service` does not depend on PostgreSQL, RabbitMQ or HTTP. Adapters implement interfaces declared by their consumers, and only `bootstrap` knows the concrete types. Each layer has its own data model — DTOs in `handler`, rows in `repository`, messages in `messaging` — with mappers at the boundaries.
+Dependencies point inward: `handler` → `service` → `domain`. `domain` imports nothing from the project, and `service` does not depend on PostgreSQL, RabbitMQ or HTTP. A use case that must change several tables atomically asks the repository for a transaction (`InTransaction`) and works through the `PlotStore` port inside it. Adapters implement interfaces declared by their consumers, and only `bootstrap` knows the concrete types. Each layer has its own data model — DTOs in `handler`, rows in `repository`, messages in `messaging` — with mappers at the boundaries.
 
 Not every service has every package. The gateway has no domain or database; its layers are `handler` (middleware chain) → `proxy` (routes, reverse proxy) → `balancer`. Code that is the same in several services, such as the Consul registry or config helpers, is copied rather than shared, so each service can be built and deployed on its own.
 
@@ -201,7 +202,7 @@ curl -X PATCH http://localhost:8080/api/v1/plots/<plot_id> \
   -d '{"name":"North field (renamed)"}'
 ```
 
-A plot response includes `area_m2`, `perimeter_m`, `version`, and timestamps.
+A plot response includes `area_m2`, `perimeter_m`, `version`, `status`, and timestamps. A new or changed plot is `PENDING` until `report-service` confirms its projection, then `CONFIRMED`. `PATCH` on a `PENDING` plot returns `409 plot_not_confirmed`. A cancelled plot is hidden: the list skips it and `GET` returns `404 plot_not_found`.
 
 ### Reports
 
@@ -216,11 +217,11 @@ curl -X POST http://localhost:8080/api/v1/reports \
   -d '{"plot_id":"<plot_id>"}'
 ```
 
-A report contains `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, and the `plot_version` it was built from.
+A report contains `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, and the `plot_version` it was built from. Reports are built only for `CONFIRMED` plots; otherwise the request returns `409 plot_not_confirmed`.
 
 ### Plot events
 
-After committing a new or changed plot, `land-plot-service` publishes a persistent JSON event to the durable topic exchange `land.events`. The routing keys are `plot.created` and `plot.updated`. The versioned contract contains:
+`land-plot-service` publishes persistent JSON events to the durable topic exchange `land.events`. The routing keys are `plot.created`, `plot.updated`, and `plot.cancelled`. The versioned contract contains:
 
 ```json
 {
@@ -236,17 +237,34 @@ After committing a new or changed plot, `land-plot-service` publishes a persiste
 }
 ```
 
-`report-service` consumes the durable `report.plot-events` queue with manual acknowledgements. In one PostgreSQL transaction it records `event_id` in `processed_events` and inserts or updates `plot_summaries`. Duplicate IDs have no effect, and an event with an older or equal plot version cannot overwrite a newer summary. Invalid events and database failures are rejected without requeue and are retained in `report.plot-events.dead`.
+`report-service` consumes the durable `report.plot-events` queue with manual acknowledgements. In one PostgreSQL transaction it records `event_id` in `processed_events` (inbox), inserts or updates `plot_summaries`, and writes a `plot.summary.applied` reply to its own outbox. Duplicate IDs have no effect, and an event with an older or equal plot version cannot overwrite a newer summary. `plot.cancelled` marks the summary with `cancelled_at` and a higher version, so a late `plot.created` cannot bring the plot back. Invalid events and errors that wrap `domain.ErrRejectedEvent` (the simulated write failure) are rejected without requeue and are retained in `report.plot-events.dead`, which compensates the saga. Any other error, such as a `report_db` timeout, is treated as temporary: the event goes back to the queue after one second.
 
-The producer uses publish-after-commit. RabbitMQ publisher confirms detect an immediate publication failure, but a process crash between the PostgreSQL commit and publish can still lose an event. A transactional outbox would close that gap and is not implemented.
+### Transactional outbox
 
-If the broker does not confirm the event, `POST` and `PATCH` still succeed because the plot change is already saved. The service logs the failure at `ERROR` level with `plot_id`, `event_type`, and `error`, and the report projection stays behind until the plot changes again. Returning an error instead would invite a retry, and a retried `POST` would create a second plot.
+Neither service publishes to RabbitMQ inside a request. The plot or summary change and the event are written to the `outbox_events` table in the same PostgreSQL transaction, so both are saved or neither is. A relay in each service polls the table every `OUTBOX_POLL_INTERVAL`, locks unpublished rows with `FOR UPDATE SKIP LOCKED` (several instances never take the same row), and publishes them in order with publisher confirms and the `mandatory` flag. After the broker confirms a message the relay sets `published_at`. If publishing fails it stores `last_error` and retries on the next tick. Only a rejection of the message itself (no queue is bound for the routing key, or the broker returns nack) increases `attempts`; after `OUTBOX_MAX_ATTEMPTS` rejections the row gets `failed_at`, is skipped from then on, and is logged at `ERROR`. An unavailable broker never counts as an attempt, so events survive a RabbitMQ outage. Delivery is at least once, and the inbox removes duplicates. Every `OUTBOX_CLEANUP_INTERVAL` the relay deletes published rows older than `OUTBOX_RETENTION`.
 
-Inspect the asynchronous projection after creating or updating a plot:
+While RabbitMQ is down, `POST` and `PATCH` still return `201`/`200` and the events wait in the outbox. Publishers connect lazily, and consumers reconnect on their own, so no service restarts when the broker does.
+
+### Saga
+
+Creating or changing a plot is a choreographed saga between `land-plot-service` and `report-service`. In one transaction `land-plot-service` saves the plot as `PENDING`, a `plot_sagas` row (`STARTED`, the previous plot state for an update, and a deadline of now + `SAGA_TIMEOUT`), and the event in the outbox.
+
+- **Success.** `report-service` applies the event and replies with `plot.summary.applied`. `land-plot-service` marks the saga `COMPLETED` and the plot `CONFIRMED`.
+- **Failure in the consumer.** When `report-service` cannot write the summary, it rejects the message and RabbitMQ moves it to `land.events.dead`. `land-plot-service` receives a copy in `land-plot.saga-events` and compensates with reason `dlq`.
+- **Timeout.** Every 5 seconds `land-plot-service` compensates `STARTED` sagas whose deadline has passed, with reason `timeout`.
+
+Compensation of a create marks the plot `CANCELLED` and publishes `plot.cancelled`. Compensation of an update restores the previous name, points, and area with a new version and publishes `plot.updated`. Confirmation and compensation both start with `UPDATE plot_sagas … WHERE status = 'STARTED'`, so a repeated DLQ message, a late reply, or a race between timeout and success changes nothing.
+
+To demonstrate a consumer failure, `report-service` fails to write the summary of a created or updated plot whose name starts with `REPORT_FAIL_NAME_PREFIX` (`FAIL` in `docker-compose.yml`, disabled when empty).
+
+Inspect the asynchronous projection, the outbox, and the sagas after creating or updating a plot:
 
 ```sh
 docker compose exec postgres psql -U report_user -d report_db \
-  -c 'SELECT plot_id, name, area_m2, version FROM plot_summaries ORDER BY updated_at DESC;'
+  -c 'SELECT plot_id, name, area_m2, version, cancelled_at FROM plot_summaries ORDER BY updated_at DESC;'
+docker compose exec postgres psql -U plot_user -d plot_db \
+  -c 'SELECT routing_key, published_at, attempts FROM outbox_events ORDER BY position DESC LIMIT 5;' \
+  -c 'SELECT plot_id, kind, status, reason FROM plot_sagas ORDER BY created_at DESC LIMIT 5;'
 ```
 
 ### Request chain trace
@@ -279,6 +297,14 @@ make demo
 
 It requires `docker`, `curl`, and `jq`. The script creates isolated demonstration records and temporarily stops one Land Plot container, which it always starts again during cleanup.
 
+The outbox and saga demo shows a confirmed plot, compensation after a consumer write failure (`FAIL` name) and after a timeout (stopped `report-service`), a compensated update, an event that waits in the outbox while RabbitMQ is stopped, and a temporary `report_db` failure (a locked `plot_summaries` table) that is retried instead of cancelling the saga. It ends by checking that no outbox row was abandoned:
+
+```sh
+make demo-lr3
+```
+
+It stops `report-service` for about 30 seconds and RabbitMQ for about 10 seconds and starts them again during cleanup. It reads `SAGA_TIMEOUT` and `MESSAGE_PROCESSING_TIMEOUT` (whole seconds, such as `30s`) to size its waits and the table lock.
+
 ## Configuration
 
 All settings come from environment variables. `docker-compose.yml` sets development defaults, and `.env.example` lists everything you can override:
@@ -287,7 +313,8 @@ All settings come from environment variables. `docker-compose.yml` sets developm
 - timeouts (HTTP shutdown, Consul, database, upstream),
 - JWT secret and TTL,
 - bcrypt cost,
-- PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch.
+- PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch,
+- outbox poll interval, saga timeout, and the name prefix that makes `report-service` fail on purpose.
 
 Set a strong `JWT_SECRET` and real passwords for any environment other than local development.
 

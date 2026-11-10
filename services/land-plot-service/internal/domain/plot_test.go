@@ -22,7 +22,8 @@ func TestNewPlotCalculatesPolygonAndStartsAtVersionOne(t *testing.T) {
 		t.Fatalf("NewPlot() error = %v", err)
 	}
 
-	if plot.Name != "Plot" || plot.Version != 1 || !plot.CreatedAt.Equal(plot.UpdatedAt) {
+	if plot.Name != "Plot" || plot.Version != 1 || plot.Status != StatusPending ||
+		!plot.CreatedAt.Equal(plot.UpdatedAt) {
 		t.Fatalf("NewPlot() plot = %#v", plot)
 	}
 
@@ -90,12 +91,16 @@ func TestPlotUpdatedRecalculatesAndIncrementsVersion(t *testing.T) {
 	name := " Updated "
 	triangle := referencePolygon()[:3]
 
-	updated, err := plot.Updated(PlotChanges{Name: &name, Points: &triangle}, testCalculator, testNow.Add(time.Hour))
+	updated, err := plot.Confirmed().Updated(
+		PlotChanges{Name: &name, Points: &triangle},
+		testCalculator,
+		testNow.Add(time.Hour),
+	)
 	if err != nil {
 		t.Fatalf("Updated() error = %v", err)
 	}
 
-	if updated.Name != "Updated" || updated.Version != 2 {
+	if updated.Name != "Updated" || updated.Version != 2 || updated.Status != StatusPending {
 		t.Fatalf("Updated() plot = %#v", updated)
 	}
 
@@ -119,5 +124,24 @@ func TestPlotUpdatedRequiresChanges(t *testing.T) {
 	_, err = plot.Updated(PlotChanges{}, testCalculator, testNow)
 	if !errors.Is(err, ErrNoChanges) {
 		t.Fatalf("Updated() error = %v, want ErrNoChanges", err)
+	}
+}
+
+func TestPlotUpdatedRequiresConfirmedPlot(t *testing.T) {
+	plot, err := NewPlot(
+		"plot-1",
+		PlotDraft{OwnerID: "owner-1", Name: "Plot", Points: referencePolygon()},
+		testCalculator,
+		testNow,
+	)
+	if err != nil {
+		t.Fatalf("NewPlot() error = %v", err)
+	}
+
+	name := "Updated"
+
+	_, err = plot.Updated(PlotChanges{Name: &name}, testCalculator, testNow)
+	if !errors.Is(err, ErrPlotNotConfirmed) {
+		t.Fatalf("Updated() error = %v, want ErrPlotNotConfirmed", err)
 	}
 }

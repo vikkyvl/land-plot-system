@@ -3,35 +3,30 @@ package service
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
-	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
 )
 
 type PlotService struct {
-	repository PlotRepository
-	publisher  EventPublisher
-	calculator domain.AreaCalculator
-	logger     *slog.Logger
-	now        func() time.Time
+	repository  PlotRepository
+	calculator  domain.AreaCalculator
+	sagaTimeout time.Duration
+	now         func() time.Time
 }
 
 func NewPlotService(
 	repository PlotRepository,
-	publisher EventPublisher,
 	calculator domain.AreaCalculator,
-	logger *slog.Logger,
+	sagaTimeout time.Duration,
 ) *PlotService {
 	return &PlotService{
-		repository: repository,
-		publisher:  publisher,
-		calculator: calculator,
-		logger:     logger,
-		now:        time.Now,
+		repository:  repository,
+		calculator:  calculator,
+		sagaTimeout: sagaTimeout,
+		now:         time.Now,
 	}
 }
 
@@ -41,11 +36,19 @@ func (plotService *PlotService) Create(requestContext context.Context, draft dom
 		return domain.Plot{}, err
 	}
 
-	if err := plotService.repository.Create(requestContext, plot); err != nil {
+	event := domain.NewPlotEvent(uuid.NewString(), domain.PlotCreated, plot)
+	saga := domain.NewCreateSaga(event.ID, plot)
+
+	err = plotService.repository.InTransaction(requestContext, func(store PlotStore) error {
+		if err := store.CreatePlot(requestContext, plot); err != nil {
+			return err
+		}
+
+		return plotService.startSaga(requestContext, store, saga, event)
+	})
+	if err != nil {
 		return domain.Plot{}, fmt.Errorf(wrapCreatePlot, err)
 	}
-
-	plotService.publish(requestContext, domain.PlotCreated, plot)
 
 	return plot, nil
 }
@@ -67,6 +70,10 @@ func (plotService *PlotService) Get(requestContext context.Context, ownerID, plo
 	plot, err := plotService.repository.GetByID(requestContext, plotID)
 	if err != nil {
 		return domain.Plot{}, fmt.Errorf(wrapGetPlot, err)
+	}
+
+	if plot.Status == domain.StatusCancelled {
+		return domain.Plot{}, domain.ErrPlotNotFound
 	}
 
 	if plot.OwnerID != ownerID {
@@ -91,28 +98,32 @@ func (plotService *PlotService) Update(
 		return domain.Plot{}, err
 	}
 
-	if err := plotService.repository.Update(requestContext, updated, plot.Version); err != nil {
+	event := domain.NewPlotEvent(uuid.NewString(), domain.PlotUpdated, updated)
+	saga := domain.NewUpdateSaga(event.ID, plot, updated)
+
+	err = plotService.repository.InTransaction(requestContext, func(store PlotStore) error {
+		if err := store.UpdatePlot(requestContext, updated, plot.Version); err != nil {
+			return err
+		}
+
+		return plotService.startSaga(requestContext, store, saga, event)
+	})
+	if err != nil {
 		return domain.Plot{}, fmt.Errorf(wrapUpdatePlot, err)
 	}
-
-	plotService.publish(requestContext, domain.PlotUpdated, updated)
 
 	return updated, nil
 }
 
-func (plotService *PlotService) publish(
+func (plotService *PlotService) startSaga(
 	requestContext context.Context,
-	eventType domain.PlotEventType,
-	plot domain.Plot,
-) {
-	event := domain.NewPlotEvent(uuid.NewString(), eventType, plot)
-	if err := plotService.publisher.Publish(requestContext, event); err != nil {
-		plotService.logger.ErrorContext(
-			requestContext,
-			logPublishPlotEvent,
-			logging.KeyPlotID, plot.ID,
-			logging.KeyEventType, eventType,
-			logging.KeyError, err,
-		)
+	store PlotStore,
+	saga domain.Saga,
+	event domain.PlotEvent,
+) error {
+	if err := store.StartSaga(requestContext, saga, plotService.sagaTimeout); err != nil {
+		return err
 	}
+
+	return store.AppendEvent(requestContext, event)
 }

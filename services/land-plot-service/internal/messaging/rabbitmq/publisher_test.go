@@ -63,15 +63,42 @@ func newTestPublisher(session *sessionStub, dialer *dialerStub) *Publisher {
 	return &Publisher{session: session, dial: dialer.dial, timeout: time.Second}
 }
 
-func testEvent() domain.PlotEvent {
-	return domain.PlotEvent{ID: "event-1", Type: domain.PlotCreated, Plot: domain.Plot{ID: "plot-1"}}
+func testMessage() domain.OutboxMessage {
+	return domain.OutboxMessage{ID: "event-1", RoutingKey: string(domain.PlotCreated), Payload: []byte(`{}`)}
+}
+
+func TestPublisherConnectsOnFirstPublish(t *testing.T) {
+	session := &sessionStub{}
+	dialer := &dialerStub{sessions: []*sessionStub{session}}
+	publisher := &Publisher{dial: dialer.dial, timeout: time.Second}
+
+	if err := publisher.Publish(context.Background(), testMessage()); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	if dialer.calls != 1 || len(session.published) != 1 {
+		t.Fatalf("dial calls = %d, published = %v", dialer.calls, session.published)
+	}
+}
+
+func TestPublisherReportsUnavailableBrokerOnFirstPublish(t *testing.T) {
+	dialer := &dialerStub{err: errDialFailed}
+	publisher := &Publisher{dial: dialer.dial, timeout: time.Second}
+
+	if err := publisher.Publish(context.Background(), testMessage()); !errors.Is(err, errDialFailed) {
+		t.Fatalf("Publish() error = %v, want dial failure", err)
+	}
+
+	if err := publisher.Close(); err != nil {
+		t.Fatalf("Close() without session error = %v", err)
+	}
 }
 
 func TestPublisherPublishesOnOpenSessionWithoutDialing(t *testing.T) {
 	session := &sessionStub{}
 	dialer := &dialerStub{}
 
-	if err := newTestPublisher(session, dialer).Publish(context.Background(), testEvent()); err != nil {
+	if err := newTestPublisher(session, dialer).Publish(context.Background(), testMessage()); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 
@@ -86,7 +113,7 @@ func TestPublisherReconnectsAndRetriesOnceWhenSessionIsClosed(t *testing.T) {
 	dialer := &dialerStub{sessions: []*sessionStub{freshSession}}
 	publisher := newTestPublisher(brokenSession, dialer)
 
-	if err := publisher.Publish(context.Background(), testEvent()); err != nil {
+	if err := publisher.Publish(context.Background(), testMessage()); err != nil {
 		t.Fatalf("Publish() error = %v, want success after reconnect", err)
 	}
 
@@ -107,7 +134,7 @@ func TestPublisherDoesNotReconnectWhenSessionIsOpen(t *testing.T) {
 	session := &sessionStub{publishErr: errPublishFailed}
 	dialer := &dialerStub{}
 
-	err := newTestPublisher(session, dialer).Publish(context.Background(), testEvent())
+	err := newTestPublisher(session, dialer).Publish(context.Background(), testMessage())
 	if !errors.Is(err, errPublishFailed) || dialer.calls != 0 {
 		t.Fatalf("Publish() error = %v, dial calls = %d", err, dialer.calls)
 	}
@@ -118,7 +145,7 @@ func TestPublisherReturnsErrorWhenReconnectFails(t *testing.T) {
 	dialer := &dialerStub{err: errDialFailed}
 	publisher := newTestPublisher(brokenSession, dialer)
 
-	err := publisher.Publish(context.Background(), testEvent())
+	err := publisher.Publish(context.Background(), testMessage())
 	if !errors.Is(err, errDialFailed) || dialer.calls != 1 {
 		t.Fatalf("Publish() error = %v, dial calls = %d", err, dialer.calls)
 	}
@@ -133,7 +160,7 @@ func TestPublisherRetriesOnlyOnce(t *testing.T) {
 	alsoBrokenSession := &sessionStub{closed: true, publishErr: errSessionClosed}
 	dialer := &dialerStub{sessions: []*sessionStub{alsoBrokenSession}}
 
-	err := newTestPublisher(brokenSession, dialer).Publish(context.Background(), testEvent())
+	err := newTestPublisher(brokenSession, dialer).Publish(context.Background(), testMessage())
 	if !errors.Is(err, errSessionClosed) || dialer.calls != 1 {
 		t.Fatalf("Publish() error = %v, dial calls = %d", err, dialer.calls)
 	}

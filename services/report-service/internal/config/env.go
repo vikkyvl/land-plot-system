@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -12,6 +13,20 @@ func stringOrDefault(key, fallback string) string {
 	}
 
 	return fallback
+}
+
+func positiveIntOrDefault(key string, fallback int) (int, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 {
+		return 0, fmt.Errorf(formatMustBeAPositiveInteger, key)
+	}
+
+	return parsed, nil
 }
 
 func durationOrDefault(key string, fallback time.Duration) (time.Duration, error) {

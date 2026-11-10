@@ -105,6 +105,27 @@ collect_processed_events() {
 	wc -l <"$demo_tmp/competing.txt" | tr -d '[:space:]'
 }
 
+plot_status() {
+	curl -fsS \
+		--header "Authorization: Bearer $token" \
+		"$gateway_url/api/v1/plots/$plot_id" |
+		jq -r '.status'
+}
+
+wait_for_plot_status() {
+	expected=$1
+	attempt=0
+	while [ "$attempt" -lt 20 ]; do
+		if [ "$(plot_status)" = "$expected" ]; then
+			return
+		fi
+		attempt=$((attempt + 1))
+		sleep 1
+	done
+	echo "plot did not reach status $expected" >&2
+	exit 1
+}
+
 summary_version() {
 	docker compose exec -T postgres psql -U report_user -d report_db -Atc \
 		"SELECT version FROM plot_summaries WHERE plot_id = '$plot_id';" |
@@ -224,7 +245,9 @@ owner_id=$(printf '%s' "$plot_response" | jq -er '.owner_id')
 area_m2=$(printf '%s' "$plot_response" | jq -er '.area_m2')
 printf '%s' "$plot_response" | jq -e '.area_m2 > 0 and .perimeter_m > 0 and .version == 1' >/dev/null
 echo "5. Plot created with calculated area and perimeter"
-printf '%s' "$plot_response" | jq '{id,area_m2,perimeter_m,version}'
+printf '%s' "$plot_response" | jq '{id,area_m2,perimeter_m,version,status}'
+wait_for_plot_status CONFIRMED
+echo "   Plot confirmed by report-service"
 
 echo "6. Checking Round Robin across three land-plot instances"
 : >"$demo_tmp/served-by.txt"
@@ -268,6 +291,7 @@ curl -fsS \
 	"$gateway_url/api/v1/plots/$plot_id" |
 	jq -e '.version == 2'
 wait_for_summary_version 2
+wait_for_plot_status CONFIRMED
 docker compose exec -T postgres psql -U report_user -d report_db -c \
 	"SELECT plot_id, name, area_m2, version FROM plot_summaries WHERE plot_id = '$plot_id';"
 

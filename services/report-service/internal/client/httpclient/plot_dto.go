@@ -9,6 +9,7 @@ type plotResponse struct {
 	AreaM2     float64 `json:"area_m2"`
 	PerimeterM float64 `json:"perimeter_m"`
 	Version    int64   `json:"version"`
+	Status     string  `json:"status"`
 }
 
 type traceHopResponse struct {
@@ -23,7 +24,7 @@ type traceResponse struct {
 
 func (plot plotResponse) isValidFor(requestedID string) bool {
 	return plot.ID == requestedID && plot.OwnerID != "" && plot.Name != "" &&
-		plot.AreaM2 > 0 && plot.PerimeterM > 0 && plot.Version >= 1
+		plot.AreaM2 > 0 && plot.PerimeterM > 0 && plot.Version >= 1 && plot.Status != ""
 }
 
 func (plot plotResponse) toDomain() domain.PlotSnapshot {
@@ -34,6 +35,7 @@ func (plot plotResponse) toDomain() domain.PlotSnapshot {
 		AreaM2:     plot.AreaM2,
 		PerimeterM: plot.PerimeterM,
 		Version:    plot.Version,
+		Status:     plot.Status,
 	}
 }
 

@@ -35,4 +35,24 @@ CREATE TABLE IF NOT EXISTS processed_events (
     processed_at TIMESTAMPTZ NOT NULL
 );
 
+ALTER TABLE plot_summaries ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ NULL;
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id UUID PRIMARY KEY,
+    position BIGSERIAL NOT NULL,
+    routing_key TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at TIMESTAMPTZ NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    last_error TEXT NULL
+);
+
+ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ NULL;
+
+DROP INDEX IF EXISTS outbox_events_unpublished_idx;
+
+CREATE INDEX IF NOT EXISTS outbox_events_pending_idx
+    ON outbox_events (position) WHERE published_at IS NULL AND failed_at IS NULL;
+
 COMMIT;

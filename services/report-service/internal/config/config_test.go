@@ -59,3 +59,62 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadReadsOutboxAndFailureSettings(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("OUTBOX_POLL_INTERVAL", "500ms")
+	t.Setenv("REPORT_FAIL_NAME_PREFIX", "FAIL")
+
+	serviceConfig, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if serviceConfig.OutboxInterval != 500*time.Millisecond || serviceConfig.FailNamePrefix != "FAIL" {
+		t.Fatalf("Load() = %#v", serviceConfig)
+	}
+}
+
+func TestLoadReadsOutboxMaxAttempts(t *testing.T) {
+	setRequiredEnv(t)
+
+	serviceConfig, err := Load()
+	if err != nil || serviceConfig.OutboxAttempts != defaultOutboxAttempts {
+		t.Fatalf("Load() default attempts = %d, %v", serviceConfig.OutboxAttempts, err)
+	}
+
+	t.Setenv("OUTBOX_MAX_ATTEMPTS", "3")
+
+	if serviceConfig, err = Load(); err != nil || serviceConfig.OutboxAttempts != 3 {
+		t.Fatalf("Load() attempts = %d, %v", serviceConfig.OutboxAttempts, err)
+	}
+
+	t.Setenv("OUTBOX_MAX_ATTEMPTS", "0")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted zero OUTBOX_MAX_ATTEMPTS")
+	}
+}
+
+func TestLoadReadsOutboxCleanupSettings(t *testing.T) {
+	setRequiredEnv(t)
+
+	serviceConfig, err := Load()
+	if err != nil || serviceConfig.OutboxCleanupInterval != time.Minute || serviceConfig.OutboxRetention != time.Hour {
+		t.Fatalf(
+			"Load() defaults = %v, %v, %v",
+			serviceConfig.OutboxCleanupInterval,
+			serviceConfig.OutboxRetention,
+			err,
+		)
+	}
+
+	t.Setenv("OUTBOX_CLEANUP_INTERVAL", "30s")
+	t.Setenv("OUTBOX_RETENTION", "2h")
+
+	serviceConfig, err = Load()
+	if err != nil || serviceConfig.OutboxCleanupInterval != 30*time.Second ||
+		serviceConfig.OutboxRetention != 2*time.Hour {
+		t.Fatalf("Load() = %v, %v, %v", serviceConfig.OutboxCleanupInterval, serviceConfig.OutboxRetention, err)
+	}
+}

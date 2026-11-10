@@ -14,12 +14,13 @@ const (
 	queueName        = "report.plot-events"
 	deadQueueName    = "report.plot-events.dead"
 	allRoutingKeys   = "#"
+	contentTypeJSON  = "application/json"
 )
 
 func declareTopology(channel *amqp.Channel) error {
 	for _, exchange := range []string{exchangeName, deadExchangeName} {
-		if err := channel.ExchangeDeclare(exchange, amqp.ExchangeTopic, true, false, false, false, nil); err != nil {
-			return fmt.Errorf(wrapDeclareExchange, exchange, err)
+		if err := declareExchange(channel, exchange); err != nil {
+			return err
 		}
 	}
 
@@ -35,6 +36,7 @@ func declareTopology(channel *amqp.Channel) error {
 	bindings := []struct{ queue, routingKey, exchange string }{
 		{queueName, string(domain.PlotCreated), exchangeName},
 		{queueName, string(domain.PlotUpdated), exchangeName},
+		{queueName, string(domain.PlotCancelled), exchangeName},
 		{deadQueueName, allRoutingKeys, deadExchangeName},
 	}
 	for _, binding := range bindings {

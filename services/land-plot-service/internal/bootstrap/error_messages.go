@@ -1,7 +1,6 @@
 package bootstrap
 
 const (
-	wrapCreateEventPublisher    = "create event publisher: %w"
 	wrapDetermineServiceAddress = "determine service address: %w"
 	wrapListenHTTP              = "listen HTTP: %w"
 	wrapLoadConfig              = "load config: %w"

@@ -1,8 +1,6 @@
 package bootstrap
 
 const (
-	wrapConsumePlotEvents       = "consume plot events: %w"
-	wrapCreatePlotEventConsumer = "create plot event consumer: %w"
 	wrapDetermineServiceAddress = "determine service address: %w"
 	wrapListenHTTP              = "listen HTTP: %w"
 	wrapLoadConfig              = "load config: %w"

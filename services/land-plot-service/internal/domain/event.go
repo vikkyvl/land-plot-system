@@ -5,8 +5,9 @@ import "time"
 type PlotEventType string
 
 const (
-	PlotCreated PlotEventType = "plot.created"
-	PlotUpdated PlotEventType = "plot.updated"
+	PlotCreated   PlotEventType = "plot.created"
+	PlotUpdated   PlotEventType = "plot.updated"
+	PlotCancelled PlotEventType = "plot.cancelled"
 )
 
 type PlotEvent struct {
@@ -14,6 +15,12 @@ type PlotEvent struct {
 	Type       PlotEventType
 	OccurredAt time.Time
 	Plot       Plot
+}
+
+type OutboxMessage struct {
+	ID         string
+	RoutingKey string
+	Payload    []byte
 }
 
 func NewPlotEvent(id string, eventType PlotEventType, plot Plot) PlotEvent {

@@ -1,16 +1,14 @@
-package rabbitmq
+package postgres
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
 )
 
-const (
-	exchangeName        = "land.events"
-	plotMessageSchemaV1 = 1
-	contentTypeJSON     = "application/json"
-)
+const plotMessageSchemaV1 = 1
 
 type plotMessage struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -36,4 +34,13 @@ func newPlotMessage(event domain.PlotEvent) plotMessage {
 		AreaM2:        event.Plot.AreaM2,
 		Version:       event.Plot.Version,
 	}
+}
+
+func encodePlotEvent(event domain.PlotEvent) ([]byte, error) {
+	payload, err := json.Marshal(newPlotMessage(event))
+	if err != nil {
+		return nil, fmt.Errorf(wrapEncodePlotEvent, err)
+	}
+
+	return payload, nil
 }

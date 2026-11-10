@@ -1,5 +1,12 @@
 package domain
 
+import "errors"
+
+var (
+	ErrRejectedEvent   = errors.New("event rejected by the consumer")
+	ErrMessageRejected = errors.New("message rejected by the broker")
+)
+
 var (
 	ErrInvalidPlotID = NewError(KindInvalidRequest, "invalid_plot_id",
 		"plot ID must be a valid UUID")
@@ -15,4 +22,7 @@ var (
 
 	ErrForbidden = NewError(KindForbidden, "forbidden",
 		"resource belongs to another user")
+
+	ErrPlotNotConfirmed = NewError(KindConflict, "plot_not_confirmed",
+		"plot is waiting for confirmation; retry the request later")
 )

@@ -5,8 +5,9 @@ import "time"
 type PlotEventType string
 
 const (
-	PlotCreated PlotEventType = "plot.created"
-	PlotUpdated PlotEventType = "plot.updated"
+	PlotCreated   PlotEventType = "plot.created"
+	PlotUpdated   PlotEventType = "plot.updated"
+	PlotCancelled PlotEventType = "plot.cancelled"
 )
 
 type PlotEvent struct {
@@ -18,4 +19,8 @@ type PlotEvent struct {
 	Name       string
 	AreaM2     float64
 	Version    int64
+}
+
+func (event PlotEvent) ChangesPlot() bool {
+	return event.Type == PlotCreated || event.Type == PlotUpdated
 }

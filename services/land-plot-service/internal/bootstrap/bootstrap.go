@@ -39,17 +39,29 @@ func Run() error {
 		return err
 	}
 
-	publisher, err := rabbitmq.NewPublisher(serviceConfig.RabbitMQURL, serviceConfig.RabbitMQTimeout)
-	if err != nil {
-		return fmt.Errorf(wrapCreateEventPublisher, err)
-	}
+	publisher := rabbitmq.NewPublisher(serviceConfig.RabbitMQURL, serviceConfig.RabbitMQTimeout)
 	defer func() {
 		if err := publisher.Close(); err != nil {
 			logger.Error(logCloseEventPublisher, logging.KeyError, err)
 		}
 	}()
 
-	plots := service.NewPlotService(plotRepository, publisher, domain.LocalEllipsoidCalculator{}, logger)
+	plots := service.NewPlotService(plotRepository, domain.LocalEllipsoidCalculator{}, serviceConfig.SagaTimeout)
+	sagas := service.NewSagaService(plotRepository, logger)
+	relay := service.NewOutboxRelay(
+		postgres.NewOutboxRepository(pool),
+		publisher,
+		outboxRelayConfig(serviceConfig),
+		logger,
+	)
+	watcher := service.NewSagaTimeoutWatcher(sagas, logger)
+	consumer := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
+		URL:               serviceConfig.RabbitMQURL,
+		ConnectionTimeout: serviceConfig.RabbitMQTimeout,
+		ProcessingTimeout: serviceConfig.ProcessingTimeout,
+		InstanceID:        serviceConfig.InstanceID,
+	}, logger)
+
 	router := handler.NewRouter(
 		logger,
 		config.ServiceName,
@@ -73,5 +85,16 @@ func Run() error {
 	runContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	return serve(runContext, server, listener, serviceConfig.ShutdownTimeout, instance.deregister, logger)
+	waitWorkers := startWorkers(
+		runContext,
+		relay.Run,
+		watcher.Run,
+		func(workerContext context.Context) { consumer.Run(workerContext, sagas) },
+	)
+	serveErr := serve(runContext, server, listener, serviceConfig.ShutdownTimeout, instance.deregister, logger)
+
+	stop()
+	waitWorkers()
+
+	return serveErr
 }

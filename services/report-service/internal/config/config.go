@@ -21,6 +21,10 @@ const (
 	defaultUpstreamTimeout   = 5 * time.Second
 	defaultRabbitMQTimeout   = 5 * time.Second
 	defaultProcessingTimeout = 5 * time.Second
+	defaultOutboxInterval    = time.Second
+	defaultOutboxAttempts    = 10
+	defaultOutboxCleanup     = time.Minute
+	defaultOutboxRetention   = time.Hour
 	defaultEventPrefetch     = 10
 	defaultPlotServiceName   = "land-plot-service"
 	minimumJWTSecretLength   = 32
@@ -49,6 +53,12 @@ type Config struct {
 	RabbitMQTimeout   time.Duration
 	ProcessingTimeout time.Duration
 	EventPrefetch     int
+	OutboxInterval    time.Duration
+	FailNamePrefix    string
+	OutboxAttempts    int
+
+	OutboxCleanupInterval time.Duration
+	OutboxRetention       time.Duration
 }
 
 func Load() (Config, error) {
@@ -61,6 +71,7 @@ func Load() (Config, error) {
 		JWTSecret:       os.Getenv(envJWTSecret),
 		PlotServiceName: stringOrDefault(envLandPlotServiceName, defaultPlotServiceName),
 		RabbitMQURL:     os.Getenv(envRabbitMQURL),
+		FailNamePrefix:  os.Getenv(envReportFailNamePrefix),
 	}
 	if err := serviceConfig.loadDurations(); err != nil {
 		return Config{}, err
@@ -72,6 +83,13 @@ func Load() (Config, error) {
 
 	var err error
 	if serviceConfig.EventPrefetch, err = parsePrefetch(); err != nil {
+		return Config{}, err
+	}
+
+	if serviceConfig.OutboxAttempts, err = positiveIntOrDefault(
+		envOutboxMaxAttempts,
+		defaultOutboxAttempts,
+	); err != nil {
 		return Config{}, err
 	}
 
@@ -100,6 +118,9 @@ func (serviceConfig *Config) loadDurations() error {
 		{envUpstreamTimeout, &serviceConfig.UpstreamTimeout, defaultUpstreamTimeout},
 		{envRabbitMQTimeout, &serviceConfig.RabbitMQTimeout, defaultRabbitMQTimeout},
 		{envMessageProcessingTimeout, &serviceConfig.ProcessingTimeout, defaultProcessingTimeout},
+		{envOutboxPollInterval, &serviceConfig.OutboxInterval, defaultOutboxInterval},
+		{envOutboxCleanupInterval, &serviceConfig.OutboxCleanupInterval, defaultOutboxCleanup},
+		{envOutboxRetention, &serviceConfig.OutboxRetention, defaultOutboxRetention},
 	}
 	for _, duration := range durations {
 		value, err := durationOrDefault(duration.key, duration.fallback)

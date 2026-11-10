@@ -13,7 +13,7 @@ func TestCreatePlotReturnsCreatedPlot(t *testing.T) {
 	plots := &plotServiceStub{plot: domain.Plot{
 		ID: "plot-1", OwnerID: testOwnerID, Name: "Plot",
 		Points:  []domain.Coordinate{{Latitude: 50, Longitude: 30}},
-		Version: 1, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Version: 1, Status: domain.StatusPending, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}}
 
 	response := serve(newTestRouter(plots), authorizedRequest(http.MethodPost, "/api/v1/plots", testPlotBody))
@@ -23,7 +23,7 @@ func TestCreatePlotReturnsCreatedPlot(t *testing.T) {
 	}
 
 	body := decodeBody[plotResponse](t, response)
-	if body.ID != "plot-1" || len(body.Points) != 1 || body.Points[0].Latitude != 50 {
+	if body.ID != "plot-1" || body.Status != "PENDING" || len(body.Points) != 1 || body.Points[0].Latitude != 50 {
 		t.Fatalf("response = %#v", body)
 	}
 }
@@ -58,6 +58,18 @@ func TestListPlotsReturnsArray(t *testing.T) {
 	response := serve(newTestRouter(&plotServiceStub{}), authorizedRequest(http.MethodGet, "/api/v1/plots", ""))
 
 	if response.Code != http.StatusOK || len(decodeBody[[]plotResponse](t, response)) != 1 {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestUpdatePendingPlotReturnsConflict(t *testing.T) {
+	plots := &plotServiceStub{err: domain.ErrPlotNotConfirmed}
+	request := authorizedRequest(http.MethodPatch, "/api/v1/plots/plot-1", `{"name":"Renamed"}`)
+
+	response := serve(newTestRouter(plots), request)
+
+	if response.Code != http.StatusConflict ||
+		decodeBody[respond.ErrorResponse](t, response).Code != "plot_not_confirmed" {
 		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
 	}
 }

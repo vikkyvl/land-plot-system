@@ -13,9 +13,11 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 )
 
-const consumerTagPrefix = "report-service-"
-
-var errDeliveriesClosed = errors.New("plot event delivery channel closed")
+const (
+	consumerTagPrefix = "report-service-"
+	reconnectDelay    = 2 * time.Second
+	redeliveryDelay   = time.Second
+)
 
 type EventHandler interface {
 	Handle(processingContext context.Context, event domain.PlotEvent) error
@@ -30,53 +32,46 @@ type ConsumerConfig struct {
 }
 
 type Consumer struct {
-	connection        *amqp.Connection
-	channel           *amqp.Channel
-	consumerTag       string
-	processingTimeout time.Duration
-	logger            *slog.Logger
+	consumerConfig ConsumerConfig
+	logger         *slog.Logger
 }
 
-func NewConsumer(serviceConfig ConsumerConfig, logger *slog.Logger) (*Consumer, error) {
-	connection, err := amqp.DialConfig(
-		serviceConfig.URL,
-		amqp.Config{Dial: amqp.DefaultDial(serviceConfig.ConnectionTimeout)},
-	)
-	if err != nil {
-		return nil, fmt.Errorf(wrapConnectToRabbitMQ, err)
-	}
+func NewConsumer(consumerConfig ConsumerConfig, logger *slog.Logger) *Consumer {
+	return &Consumer{consumerConfig: consumerConfig, logger: logger}
+}
 
-	channel, err := connection.Channel()
-	if err != nil {
-		_ = connection.Close()
-		return nil, fmt.Errorf(wrapOpenRabbitMQChannel, err)
-	}
+func (consumer *Consumer) Run(runContext context.Context, handler EventHandler) {
+	for runContext.Err() == nil {
+		if err := consumer.consume(runContext, handler); err != nil {
+			consumer.logger.Warn(logPlotEventConsumerDisconnected, logging.KeyError, err)
+		}
 
-	consumer := &Consumer{
-		connection:        connection,
-		channel:           channel,
-		consumerTag:       consumerTagPrefix + serviceConfig.InstanceID,
-		processingTimeout: serviceConfig.ProcessingTimeout,
-		logger:            logger,
+		select {
+		case <-runContext.Done():
+		case <-time.After(reconnectDelay):
+		}
 	}
+}
+
+func (consumer *Consumer) consume(runContext context.Context, handler EventHandler) error {
+	connection, channel, err := openChannel(consumer.consumerConfig.URL, consumer.consumerConfig.ConnectionTimeout)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = closeChannel(connection, channel) }()
+
 	if err := declareTopology(channel); err != nil {
-		_ = consumer.Close()
-		return nil, err
+		return err
 	}
 
-	if err := channel.Qos(serviceConfig.Prefetch, 0, false); err != nil {
-		_ = consumer.Close()
-		return nil, fmt.Errorf(wrapConfigureConsumerPrefetch, err)
+	if err := channel.Qos(consumer.consumerConfig.Prefetch, 0, false); err != nil {
+		return fmt.Errorf(wrapConfigureConsumerPrefetch, err)
 	}
 
-	return consumer, nil
-}
-
-func (consumer *Consumer) Run(runContext context.Context, handler EventHandler) error {
-	deliveries, err := consumer.channel.ConsumeWithContext(
+	deliveries, err := channel.ConsumeWithContext(
 		runContext,
 		queueName,
-		consumer.consumerTag,
+		consumerTagPrefix+consumer.consumerConfig.InstanceID,
 		false,
 		false,
 		false,
@@ -95,7 +90,7 @@ func (consumer *Consumer) Run(runContext context.Context, handler EventHandler) 
 			return nil
 		case delivery, ok := <-deliveries:
 			if !ok {
-				return deliveriesClosed(runContext)
+				return errDeliveriesClosed
 			}
 
 			if err := consumer.handleDelivery(runContext, delivery, handler); err != nil {
@@ -121,18 +116,23 @@ func (consumer *Consumer) handleDelivery(
 		return consumer.reject(delivery)
 	}
 
-	processingContext, cancel := context.WithTimeout(runContext, consumer.processingTimeout)
+	processingContext, cancel := context.WithTimeout(runContext, consumer.consumerConfig.ProcessingTimeout)
 	defer cancel()
 
 	if err := handler.Handle(processingContext, event); err != nil {
-		consumer.logger.Error(
-			logProcessPlotEvent,
-			logging.KeyEventID, event.ID,
-			logging.KeyEventType, event.Type,
-			logging.KeyError, err,
-		)
+		if errors.Is(err, domain.ErrRejectedEvent) {
+			consumer.logger.Error(
+				logProcessPlotEvent,
+				logging.KeyEventID, event.ID,
+				logging.KeyEventType, event.Type,
+				logging.KeyPlotID, event.PlotID,
+				logging.KeyError, err,
+			)
 
-		return consumer.reject(delivery)
+			return consumer.reject(delivery)
+		}
+
+		return consumer.requeueLater(runContext, delivery, event, err)
 	}
 
 	if err := delivery.Ack(false); err != nil {
@@ -150,32 +150,36 @@ func (consumer *Consumer) handleDelivery(
 	return nil
 }
 
+func (consumer *Consumer) requeueLater(
+	runContext context.Context,
+	delivery amqp.Delivery,
+	event domain.PlotEvent,
+	cause error,
+) error {
+	consumer.logger.Warn(
+		logRequeuePlotEvent,
+		logging.KeyEventID, event.ID,
+		logging.KeyEventType, event.Type,
+		logging.KeyPlotID, event.PlotID,
+		logging.KeyError, cause,
+	)
+
+	select {
+	case <-runContext.Done():
+	case <-time.After(redeliveryDelay):
+	}
+
+	if err := delivery.Nack(false, true); err != nil {
+		return fmt.Errorf(wrapRequeuePlotEvent, err)
+	}
+
+	return nil
+}
+
 func (consumer *Consumer) reject(delivery amqp.Delivery) error {
 	if err := delivery.Reject(false); err != nil {
 		return fmt.Errorf(wrapRejectPlotEvent, err)
 	}
 
 	return nil
-}
-
-func (consumer *Consumer) Close() error {
-	if err := consumer.channel.Close(); err != nil && !errors.Is(err, amqp.ErrClosed) {
-		_ = consumer.connection.Close()
-		return fmt.Errorf(wrapCloseRabbitMQChannel, err)
-	}
-
-	if err := consumer.connection.Close(); err != nil && !errors.Is(err, amqp.ErrClosed) {
-		return fmt.Errorf(wrapCloseRabbitMQConnection, err)
-	}
-
-	return nil
-}
-
-func deliveriesClosed(runContext context.Context) error {
-	select {
-	case <-runContext.Done():
-		return nil
-	default:
-		return errDeliveriesClosed
-	}
 }

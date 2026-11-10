@@ -2,7 +2,6 @@ package rabbitmq
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -19,36 +18,29 @@ type Publisher struct {
 	mutex   sync.Mutex
 }
 
-func NewPublisher(brokerURL string, timeout time.Duration) (*Publisher, error) {
-	dial := amqpDialer(brokerURL, timeout)
-
-	session, err := dial()
-	if err != nil {
-		return nil, err
-	}
-
-	return &Publisher{session: session, dial: dial, timeout: timeout}, nil
+func NewPublisher(brokerURL string, timeout time.Duration) *Publisher {
+	return &Publisher{dial: amqpDialer(brokerURL, timeout), timeout: timeout}
 }
 
-func (publisher *Publisher) Publish(requestContext context.Context, event domain.PlotEvent) error {
-	body, err := json.Marshal(newPlotMessage(event))
-	if err != nil {
-		return fmt.Errorf(wrapEncodePlotEvent, err)
-	}
-
+func (publisher *Publisher) Publish(publishContext context.Context, outboxMessage domain.OutboxMessage) error {
 	message := amqp.Publishing{
 		ContentType:  contentTypeJSON,
 		DeliveryMode: amqp.Persistent,
-		MessageId:    event.ID,
-		Type:         string(event.Type),
-		Timestamp:    event.OccurredAt,
-		Body:         body,
+		MessageId:    outboxMessage.ID,
+		Type:         outboxMessage.RoutingKey,
+		Body:         outboxMessage.Payload,
 	}
 
 	publisher.mutex.Lock()
 	defer publisher.mutex.Unlock()
 
-	err = publisher.publishOnce(requestContext, string(event.Type), message)
+	if publisher.session == nil {
+		if err := publisher.reconnect(); err != nil {
+			return err
+		}
+	}
+
+	err := publisher.publishOnce(publishContext, outboxMessage.RoutingKey, message)
 	if err == nil || !publisher.session.isClosed() {
 		return err
 	}
@@ -57,7 +49,7 @@ func (publisher *Publisher) Publish(requestContext context.Context, event domain
 		return err
 	}
 
-	return publisher.publishOnce(requestContext, string(event.Type), message)
+	return publisher.publishOnce(publishContext, outboxMessage.RoutingKey, message)
 }
 
 func (publisher *Publisher) publishOnce(
@@ -77,7 +69,10 @@ func (publisher *Publisher) reconnect() error {
 		return fmt.Errorf(wrapReconnectToRabbitMQ, err)
 	}
 
-	_ = publisher.session.close()
+	if publisher.session != nil {
+		_ = publisher.session.close()
+	}
+
 	publisher.session = session
 
 	return nil
@@ -86,6 +81,10 @@ func (publisher *Publisher) reconnect() error {
 func (publisher *Publisher) Close() error {
 	publisher.mutex.Lock()
 	defer publisher.mutex.Unlock()
+
+	if publisher.session == nil {
+		return nil
+	}
 
 	return publisher.session.close()
 }

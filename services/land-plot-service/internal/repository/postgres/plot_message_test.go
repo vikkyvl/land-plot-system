@@ -1,4 +1,4 @@
-package rabbitmq
+package postgres
 
 import (
 	"encoding/json"

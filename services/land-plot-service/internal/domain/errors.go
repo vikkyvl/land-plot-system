@@ -1,6 +1,11 @@
 package domain
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrMessageRejected = errors.New("message rejected by the broker")
 
 var (
 	ErrInvalidName = NewError(KindValidation, "invalid_name",
@@ -38,4 +43,7 @@ var (
 
 	ErrVersionConflict = NewError(KindConflict, "version_conflict",
 		"plot was modified concurrently; retry the request")
+
+	ErrPlotNotConfirmed = NewError(KindConflict, "plot_not_confirmed",
+		"plot is waiting for confirmation; retry the request later")
 )

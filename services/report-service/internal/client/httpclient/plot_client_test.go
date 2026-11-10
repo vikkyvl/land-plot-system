@@ -15,7 +15,7 @@ import (
 
 const (
 	testServiceName = "land-plot-service"
-	testPlotBody    = `{"id":"plot-id","owner_id":"owner-1","name":"Plot","area_m2":10000,"perimeter_m":400,"version":2}`
+	testPlotBody    = `{"id":"plot-id","owner_id":"owner-1","name":"Plot","area_m2":10000,"perimeter_m":400,"version":2,"status":"CONFIRMED"}`
 )
 
 var testCaller = service.Caller{UserID: "owner-1", AccessToken: "access-token", RequestID: "request-1"}

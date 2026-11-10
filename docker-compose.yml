@@ -28,6 +28,8 @@ services:
       REPORT_DB_NAME: ${REPORT_DB_NAME:-report_db}
       REPORT_DB_USER: ${REPORT_DB_USER:-report_user}
       REPORT_DB_PASSWORD: ${REPORT_DB_PASSWORD:-report_dev_password}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
@@ -52,6 +54,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
+      start_interval: 2s
     networks:
       - land-network
 
@@ -99,6 +103,12 @@ services:
       DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-land_app}:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672/
       RABBITMQ_TIMEOUT: ${RABBITMQ_TIMEOUT:-5s}
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL:-1s}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
+      OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-1m}
+      OUTBOX_RETENTION: ${OUTBOX_RETENTION:-1h}
+      SAGA_TIMEOUT: ${SAGA_TIMEOUT:-30s}
+      MESSAGE_PROCESSING_TIMEOUT: ${MESSAGE_PROCESSING_TIMEOUT:-5s}
     expose:
       - "8082"
     depends_on:
@@ -124,6 +134,11 @@ services:
       RABBITMQ_TIMEOUT: ${RABBITMQ_TIMEOUT:-5s}
       MESSAGE_PROCESSING_TIMEOUT: ${MESSAGE_PROCESSING_TIMEOUT:-5s}
       RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL:-1s}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
+      OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-1m}
+      OUTBOX_RETENTION: ${OUTBOX_RETENTION:-1h}
+      REPORT_FAIL_NAME_PREFIX: ${REPORT_FAIL_NAME_PREFIX-FAIL}
     expose:
       - "8083"
     depends_on:

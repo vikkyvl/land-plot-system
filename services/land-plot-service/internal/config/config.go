@@ -19,6 +19,12 @@ const (
 	defaultConsulTimeout   = 3 * time.Second
 	defaultDatabaseTimeout = 5 * time.Second
 	defaultRabbitMQTimeout = 5 * time.Second
+	defaultOutboxInterval  = time.Second
+	defaultSagaTimeout     = 30 * time.Second
+	defaultOutboxAttempts  = 10
+	defaultOutboxCleanup   = time.Minute
+	defaultOutboxRetention = time.Hour
+	defaultProcessingTime  = 5 * time.Second
 	minimumJWTSecretLength = 32
 	maximumPort            = 65535
 )
@@ -38,6 +44,13 @@ type Config struct {
 	JWTSecret       string
 	RabbitMQURL     string
 	RabbitMQTimeout time.Duration
+	OutboxInterval  time.Duration
+	SagaTimeout     time.Duration
+	OutboxAttempts  int
+
+	OutboxCleanupInterval time.Duration
+	OutboxRetention       time.Duration
+	ProcessingTimeout     time.Duration
 }
 
 func Load() (Config, error) {
@@ -59,6 +72,13 @@ func Load() (Config, error) {
 	}
 
 	var err error
+	if serviceConfig.OutboxAttempts, err = positiveIntOrDefault(
+		envOutboxMaxAttempts,
+		defaultOutboxAttempts,
+	); err != nil {
+		return Config{}, err
+	}
+
 	if serviceConfig.HTTPPort, err = parsePort(serviceConfig.HTTPAddress); err != nil {
 		return Config{}, err
 	}
@@ -82,6 +102,11 @@ func (serviceConfig *Config) loadDurations() error {
 		{envConsulTimeout, &serviceConfig.ConsulTimeout, defaultConsulTimeout},
 		{envDatabaseTimeout, &serviceConfig.DatabaseTimeout, defaultDatabaseTimeout},
 		{envRabbitMQTimeout, &serviceConfig.RabbitMQTimeout, defaultRabbitMQTimeout},
+		{envOutboxPollInterval, &serviceConfig.OutboxInterval, defaultOutboxInterval},
+		{envSagaTimeout, &serviceConfig.SagaTimeout, defaultSagaTimeout},
+		{envOutboxCleanupInterval, &serviceConfig.OutboxCleanupInterval, defaultOutboxCleanup},
+		{envOutboxRetention, &serviceConfig.OutboxRetention, defaultOutboxRetention},
+		{envMessageProcessingTimeout, &serviceConfig.ProcessingTimeout, defaultProcessingTime},
 	}
 	for _, duration := range durations {
 		value, err := durationOrDefault(duration.key, duration.fallback)

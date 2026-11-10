@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -36,19 +35,18 @@ func Run() error {
 	}
 	defer pool.Close()
 
-	consumer, err := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
+	consumer := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
 		URL:               serviceConfig.RabbitMQURL,
 		ConnectionTimeout: serviceConfig.RabbitMQTimeout,
 		ProcessingTimeout: serviceConfig.ProcessingTimeout,
 		Prefetch:          serviceConfig.EventPrefetch,
 		InstanceID:        serviceConfig.InstanceID,
 	}, logger)
-	if err != nil {
-		return fmt.Errorf(wrapCreatePlotEventConsumer, err)
-	}
+
+	publisher := rabbitmq.NewPublisher(serviceConfig.RabbitMQURL, serviceConfig.RabbitMQTimeout)
 	defer func() {
-		if err := consumer.Close(); err != nil {
-			logger.Error(logClosePlotEventConsumer, logging.KeyError, err)
+		if err := publisher.Close(); err != nil {
+			logger.Error(logCloseEventPublisher, logging.KeyError, err)
 		}
 	}()
 
@@ -59,7 +57,18 @@ func Run() error {
 		serviceConfig.PlotServiceName,
 	)
 	reports := service.NewReportService(postgres.NewReportRepository(pool), plotClient, serviceConfig.InstanceID)
-	projection := service.NewPlotProjection(postgres.NewPlotSummaryRepository(pool))
+	projection := service.NewPlotProjection(postgres.NewPlotSummaryRepository(pool, serviceConfig.FailNamePrefix))
+	relay := service.NewOutboxRelay(
+		postgres.NewOutboxRepository(pool),
+		publisher,
+		service.OutboxRelayConfig{
+			PollInterval:    serviceConfig.OutboxInterval,
+			MaxAttempts:     serviceConfig.OutboxAttempts,
+			CleanupInterval: serviceConfig.OutboxCleanupInterval,
+			Retention:       serviceConfig.OutboxRetention,
+		},
+		logger,
+	)
 	router := handler.NewRouter(logger, config.ServiceName, reports, auth.NewJWTVerifier(serviceConfig.JWTSecret))
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 
@@ -77,10 +86,15 @@ func Run() error {
 	runContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	waitConsumer := startConsumer(runContext, consumer, projection, stop)
+	waitWorkers := startWorkers(
+		runContext,
+		relay.Run,
+		func(workerContext context.Context) { consumer.Run(workerContext, projection) },
+	)
 	serveErr := serve(runContext, server, listener, serviceConfig.ShutdownTimeout, instance.deregister, logger)
 
 	stop()
+	waitWorkers()
 
-	return errors.Join(serveErr, waitConsumer())
+	return serveErr
 }

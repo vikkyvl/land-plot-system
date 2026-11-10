@@ -8,6 +8,8 @@ version: "2"
 
 run:
   timeout: 3m
+  build-tags:
+    - integration # lint the PostgreSQL repository tests as well
 
 formatters:
   enable:
@@ -89,6 +91,7 @@ linters:
             - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain
             - github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging
             - github.com/vleshchenko/land-plot-system/services/report-service/internal/domain
+            - github.com/vleshchenko/land-plot-system/services/report-service/internal/logging
           deny:
             - pkg: net/http
               desc: use cases must not depend on HTTP; declare a port instead

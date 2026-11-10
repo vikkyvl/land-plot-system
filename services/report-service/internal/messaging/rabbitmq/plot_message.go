@@ -64,7 +64,7 @@ func (message plotMessage) validate() error {
 	switch {
 	case message.SchemaVersion != plotMessageSchemaV1:
 		return errUnsupportedSchemaVersion
-	case message.EventType != string(domain.PlotCreated) && message.EventType != string(domain.PlotUpdated):
+	case !isSupportedEventType(message.EventType):
 		return errUnsupportedEventType
 	case !isUUID(message.EventID):
 		return errInvalidEventID
@@ -95,6 +95,15 @@ func (message plotMessage) toDomain() domain.PlotEvent {
 		Name:       message.Name,
 		AreaM2:     message.AreaM2,
 		Version:    message.Version,
+	}
+}
+
+func isSupportedEventType(eventType string) bool {
+	switch domain.PlotEventType(eventType) {
+	case domain.PlotCreated, domain.PlotUpdated, domain.PlotCancelled:
+		return true
+	default:
+		return false
 	}
 }
 

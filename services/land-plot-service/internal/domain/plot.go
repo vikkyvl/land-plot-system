@@ -7,6 +7,14 @@ import (
 
 const MaximumNameLength = 120
 
+type PlotStatus string
+
+const (
+	StatusPending   PlotStatus = "PENDING"
+	StatusConfirmed PlotStatus = "CONFIRMED"
+	StatusCancelled PlotStatus = "CANCELLED"
+)
+
 type Plot struct {
 	ID         string
 	OwnerID    string
@@ -15,6 +23,7 @@ type Plot struct {
 	AreaM2     float64
 	PerimeterM float64
 	Version    int64
+	Status     PlotStatus
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
@@ -28,6 +37,14 @@ type PlotDraft struct {
 type PlotChanges struct {
 	Name   *string
 	Points *[]Coordinate
+}
+
+type PlotState struct {
+	Name       string
+	Points     []Coordinate
+	AreaM2     float64
+	PerimeterM float64
+	Version    int64
 }
 
 func NewPlot(id string, draft PlotDraft, calculator AreaCalculator, now time.Time) (Plot, error) {
@@ -51,6 +68,7 @@ func NewPlot(id string, draft PlotDraft, calculator AreaCalculator, now time.Tim
 		AreaM2:     result.AreaM2,
 		PerimeterM: result.PerimeterM,
 		Version:    1,
+		Status:     StatusPending,
 		CreatedAt:  createdAt,
 		UpdatedAt:  createdAt,
 	}, nil
@@ -59,6 +77,10 @@ func NewPlot(id string, draft PlotDraft, calculator AreaCalculator, now time.Tim
 func (plot Plot) Updated(changes PlotChanges, calculator AreaCalculator, now time.Time) (Plot, error) {
 	if changes.Name == nil && changes.Points == nil {
 		return Plot{}, ErrNoChanges
+	}
+
+	if plot.Status != StatusConfirmed {
+		return Plot{}, ErrPlotNotConfirmed
 	}
 
 	updated := plot
@@ -84,9 +106,46 @@ func (plot Plot) Updated(changes PlotChanges, calculator AreaCalculator, now tim
 	}
 
 	updated.Version++
+	updated.Status = StatusPending
 	updated.UpdatedAt = now.UTC()
 
 	return updated, nil
+}
+
+func (plot Plot) State() PlotState {
+	return PlotState{
+		Name:       plot.Name,
+		Points:     clonePoints(plot.Points),
+		AreaM2:     plot.AreaM2,
+		PerimeterM: plot.PerimeterM,
+		Version:    plot.Version,
+	}
+}
+
+func (plot Plot) Confirmed() Plot {
+	plot.Status = StatusConfirmed
+
+	return plot
+}
+
+func (plot Plot) Cancelled(now time.Time) Plot {
+	plot.Status = StatusCancelled
+	plot.Version++
+	plot.UpdatedAt = now.UTC()
+
+	return plot
+}
+
+func (plot Plot) Restored(previous PlotState, now time.Time) Plot {
+	plot.Name = previous.Name
+	plot.Points = clonePoints(previous.Points)
+	plot.AreaM2 = previous.AreaM2
+	plot.PerimeterM = previous.PerimeterM
+	plot.Status = StatusConfirmed
+	plot.Version++
+	plot.UpdatedAt = now.UTC()
+
+	return plot
 }
 
 func normalizeName(name string) (string, error) {

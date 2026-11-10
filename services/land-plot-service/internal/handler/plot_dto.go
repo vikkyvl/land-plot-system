@@ -29,6 +29,7 @@ type plotResponse struct {
 	AreaM2     float64         `json:"area_m2"`
 	PerimeterM float64         `json:"perimeter_m"`
 	Version    int64           `json:"version"`
+	Status     string          `json:"status"`
 	CreatedAt  time.Time       `json:"created_at"`
 	UpdatedAt  time.Time       `json:"updated_at"`
 }
@@ -66,6 +67,7 @@ func newPlotResponse(plot domain.Plot) plotResponse {
 		AreaM2:     plot.AreaM2,
 		PerimeterM: plot.PerimeterM,
 		Version:    plot.Version,
+		Status:     string(plot.Status),
 		CreatedAt:  plot.CreatedAt,
 		UpdatedAt:  plot.UpdatedAt,
 	}

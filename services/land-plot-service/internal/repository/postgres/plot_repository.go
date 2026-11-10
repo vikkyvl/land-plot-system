@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/service"
 )
 
 //go:embed schema.sql
@@ -31,23 +32,45 @@ func (repository *PlotRepository) Migrate(requestContext context.Context) error 
 	return nil
 }
 
-func (repository *PlotRepository) Create(requestContext context.Context, plot domain.Plot) error {
-	points, err := encodePoints(plot.Points)
+func (repository *PlotRepository) InTransaction(
+	requestContext context.Context,
+	work func(store service.PlotStore) error,
+) error {
+	transaction, err := repository.pool.Begin(requestContext)
 	if err != nil {
+		return fmt.Errorf(wrapBeginPlotTransaction, err)
+	}
+	defer func() { _ = transaction.Rollback(requestContext) }()
+
+	if err := work(&plotStore{transaction: transaction}); err != nil {
 		return err
 	}
 
-	_, err = repository.pool.Exec(requestContext, `
-		INSERT INTO plots (`+plotColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		plot.ID, plot.OwnerID, plot.Name, points, plot.AreaM2, plot.PerimeterM,
-		plot.Version, plot.CreatedAt, plot.UpdatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf(wrapInsertPlot, err)
+	if err := transaction.Commit(requestContext); err != nil {
+		return fmt.Errorf(wrapCommitPlotTransaction, err)
 	}
 
 	return nil
+}
+
+func (repository *PlotRepository) ExpiredSagaIDs(requestContext context.Context, limit int) ([]string, error) {
+	rows, err := repository.pool.Query(requestContext, `
+		SELECT id FROM plot_sagas
+		WHERE status = $1 AND deadline_at < now()
+		ORDER BY deadline_at
+		LIMIT $2`,
+		domain.SagaStarted, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(wrapQueryExpiredSagas, err)
+	}
+
+	sagaIDs, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf(wrapQueryExpiredSagas, err)
+	}
+
+	return sagaIDs, nil
 }
 
 func (repository *PlotRepository) GetByID(requestContext context.Context, id string) (domain.Plot, error) {
@@ -66,8 +89,12 @@ func (repository *PlotRepository) GetByID(requestContext context.Context, id str
 }
 
 func (repository *PlotRepository) ListByOwner(requestContext context.Context, ownerID string) ([]domain.Plot, error) {
-	rows, err := repository.pool.Query(requestContext,
-		`SELECT `+plotColumns+` FROM plots WHERE owner_id = $1 ORDER BY created_at, id`, ownerID)
+	rows, err := repository.pool.Query(requestContext, `
+		SELECT `+plotColumns+` FROM plots
+		WHERE owner_id = $1 AND status <> $2
+		ORDER BY created_at, id`,
+		ownerID, domain.StatusCancelled,
+	)
 	if err != nil {
 		return nil, fmt.Errorf(wrapQueryPlotsByOwner, err)
 	}
@@ -89,32 +116,4 @@ func (repository *PlotRepository) ListByOwner(requestContext context.Context, ow
 	}
 
 	return plots, nil
-}
-
-func (repository *PlotRepository) Update(
-	requestContext context.Context,
-	plot domain.Plot,
-	expectedVersion int64,
-) error {
-	points, err := encodePoints(plot.Points)
-	if err != nil {
-		return err
-	}
-
-	command, err := repository.pool.Exec(requestContext, `
-		UPDATE plots
-		SET name = $1, points = $2, area_m2 = $3, perimeter_m = $4, version = $5, updated_at = $6
-		WHERE id = $7 AND owner_id = $8 AND version = $9`,
-		plot.Name, points, plot.AreaM2, plot.PerimeterM, plot.Version, plot.UpdatedAt,
-		plot.ID, plot.OwnerID, expectedVersion,
-	)
-	if err != nil {
-		return fmt.Errorf(wrapUpdatePlotRow, err)
-	}
-
-	if command.RowsAffected() == 0 {
-		return domain.ErrVersionConflict
-	}
-
-	return nil
 }

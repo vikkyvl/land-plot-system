@@ -7,7 +7,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
 )
 
-const plotColumns = "id, owner_id, name, points, area_m2, perimeter_m, version, created_at, updated_at"
+const plotColumns = "id, owner_id, name, points, area_m2, perimeter_m, version, status, created_at, updated_at"
 
 type pointRecord struct {
 	Latitude  float64 `json:"lat"`
@@ -26,7 +26,7 @@ func scanPlot(row rowScanner) (domain.Plot, error) {
 
 	err := row.Scan(
 		&plot.ID, &plot.OwnerID, &plot.Name, &points, &plot.AreaM2,
-		&plot.PerimeterM, &plot.Version, &plot.CreatedAt, &plot.UpdatedAt,
+		&plot.PerimeterM, &plot.Version, &plot.Status, &plot.CreatedAt, &plot.UpdatedAt,
 	)
 	if err != nil {
 		return domain.Plot{}, err
@@ -40,12 +40,7 @@ func scanPlot(row rowScanner) (domain.Plot, error) {
 }
 
 func encodePoints(points []domain.Coordinate) ([]byte, error) {
-	records := make([]pointRecord, len(points))
-	for i, point := range points {
-		records[i] = pointRecord{Latitude: point.Latitude, Longitude: point.Longitude}
-	}
-
-	encoded, err := json.Marshal(records)
+	encoded, err := json.Marshal(toPointRecords(points))
 	if err != nil {
 		return nil, fmt.Errorf(wrapEncodePlotPoints, err)
 	}
@@ -59,10 +54,23 @@ func decodePoints(encoded []byte) ([]domain.Coordinate, error) {
 		return nil, fmt.Errorf(wrapDecodePlotPoints, err)
 	}
 
+	return toCoordinates(records), nil
+}
+
+func toPointRecords(points []domain.Coordinate) []pointRecord {
+	records := make([]pointRecord, len(points))
+	for i, point := range points {
+		records[i] = pointRecord{Latitude: point.Latitude, Longitude: point.Longitude}
+	}
+
+	return records
+}
+
+func toCoordinates(records []pointRecord) []domain.Coordinate {
 	points := make([]domain.Coordinate, len(records))
 	for i, record := range records {
 		points[i] = domain.Coordinate{Latitude: record.Latitude, Longitude: record.Longitude}
 	}
 
-	return points, nil
+	return points
 }

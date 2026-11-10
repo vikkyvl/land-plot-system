@@ -1,8 +1,20 @@
 package rabbitmq
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
+)
 
 var ErrInvalidMessage = errors.New("invalid plot event")
+
+var errDeliveriesClosed = errors.New("plot event delivery channel closed")
+
+var (
+	errBrokerRejectedMessage = fmt.Errorf(wrapBrokerRejectedMessage, domain.ErrMessageRejected)
+	errMessageUnroutable     = fmt.Errorf(wrapMessageUnroutable, domain.ErrMessageRejected)
+)
 
 var (
 	errInvalidAggregateVersion  = errors.New("invalid aggregate version")

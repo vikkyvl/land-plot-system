@@ -53,6 +53,7 @@ func TestReportServiceCreatesSnapshotFromPlotService(t *testing.T) {
 	repository := &reportRepositoryStub{}
 	plots := &plotClientStub{plot: domain.PlotSnapshot{
 		ID: plotID, OwnerID: testCaller.UserID, Name: "Plot", AreaM2: 10_000, PerimeterM: 400, Version: 2,
+		Status: domain.PlotStatusConfirmed,
 	}}
 	reports := NewReportService(repository, plots, testInstanceID)
 	fixedNow := time.Date(2026, time.October, 26, 12, 0, 0, 0, time.UTC)
@@ -135,5 +136,19 @@ func TestReportServiceBuildsDiagnosticPath(t *testing.T) {
 	if len(trace.Path) != 3 || trace.Path[0].Instance != "gateway-1" || trace.Path[1].Instance != testInstanceID ||
 		trace.Path[2].Instance != "plot-1" {
 		t.Fatalf("Trace() = %#v", trace)
+	}
+}
+
+func TestReportServiceRejectsPlotWaitingForConfirmation(t *testing.T) {
+	plotID := uuid.NewString()
+	repository := &reportRepositoryStub{}
+	plots := &plotClientStub{plot: domain.PlotSnapshot{
+		ID: plotID, OwnerID: testCaller.UserID, Name: "Plot", AreaM2: 100, PerimeterM: 40, Version: 1,
+		Status: "PENDING",
+	}}
+
+	_, err := NewReportService(repository, plots, testInstanceID).Create(context.Background(), testCaller, plotID)
+	if !errors.Is(err, domain.ErrPlotNotConfirmed) || repository.created.ID != "" {
+		t.Fatalf("Create() error = %v, created = %#v", err, repository.created)
 	}
 }
