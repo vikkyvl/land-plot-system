@@ -1,0 +1,27 @@
+package rabbitmq
+
+const (
+	wrapAcknowledgePlotEvent            = "acknowledge plot event: %w"
+	wrapBindTo                          = "bind %s to %s: %w"
+	wrapBrokerRejectedMessage           = "%w: broker returned nack"
+	wrapBodyMustContainOneJSONObject    = "%w: body must contain one JSON object"
+	wrapCloseRabbitMQChannel            = "close RabbitMQ channel: %w"
+	wrapCloseRabbitMQConnection         = "close RabbitMQ connection: %w"
+	wrapConfigureConsumerPrefetch       = "configure consumer prefetch: %w"
+	wrapConnectToRabbitMQ               = "connect to RabbitMQ: %w"
+	wrapDeclareExchange                 = "declare exchange %s: %w"
+	wrapDeclareQueue                    = "declare queue %s: %w"
+	wrapDecodeJSON                      = "%w: decode JSON: %w"
+	wrapEnablePublisherConfirms         = "enable publisher confirms: %w"
+	wrapEventTypeDoesNotMatchRoutingKey = "%w: event type does not match routing key"
+	wrapInvalidBodySize                 = "%w: invalid body size"
+	wrapMessageNotRouted                = "%w: routing key %s"
+	wrapMessageUnroutable               = "%w: no queue is bound for the routing key"
+	wrapOpenRabbitMQChannel             = "open RabbitMQ channel: %w"
+	wrapPublishMessage                  = "publish message: %w"
+	wrapReconnectToRabbitMQ             = "reconnect to RabbitMQ: %w"
+	wrapRejectPlotEvent                 = "reject plot event: %w"
+	wrapRequeuePlotEvent                = "requeue plot event: %w"
+	wrapStartPlotEventConsumer          = "start plot event consumer: %w"
+	wrapWaitForPublisherConfirmation    = "wait for publisher confirmation: %w"
+)

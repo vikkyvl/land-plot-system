@@ -3,3 +3,4 @@
 bin/
 coverage.out
 tools/stripcomments/stripcomments
+.DS_Store
