@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/vleshchenko/land-plot-system/ai/internal/agent"
 	"github.com/vleshchenko/land-plot-system/ai/internal/llm"
 )
@@ -14,56 +16,70 @@ const previewRunes = 200
 
 type console struct {
 	output     io.Writer
+	colors     palette
 	modelCalls int
 }
 
 func newConsole(output io.Writer) *console {
-	return &console{output: output}
+	return &console{output: output, colors: newPalette(output)}
 }
 
 func (printer *console) header(mode agent.Mode, model, query string) {
-	printer.printf(formatHeader, mode, model, query)
+	printer.write(fmt.Sprintf(formatHeader, mode, model, query))
 }
 
 func (printer *console) step(step agent.Step) {
 	switch step.Kind {
 	case agent.StepModel:
 		printer.modelCalls++
-		printer.printf(formatModelStep, printer.modelCalls, step.Usage.InputTokens, step.Usage.OutputTokens,
-			step.Usage.ThinkingTokens, step.Usage.TotalTokens)
+		printer.styled(printer.colors.muted, formatModelStep, printer.modelCalls, step.Usage.InputTokens,
+			step.Usage.OutputTokens, step.Usage.ThinkingTokens, step.Usage.TotalTokens)
 	case agent.StepTool:
-		printer.printf(formatToolCall, step.ToolName, compact(string(step.Arguments)))
+		printer.styled(printer.colors.tool, formatToolCall, step.ToolName, compact(string(step.Arguments)))
 
 		if step.IsError {
-			printer.printf(formatToolError, preview(step.Output))
+			printer.styled(printer.colors.failure, formatToolError, preview(step.Output))
 			return
 		}
 
-		printer.printf(formatToolResult, preview(step.Output))
+		printer.styled(printer.colors.muted, formatToolResult, preview(step.Output))
 	}
 }
 
 func (printer *console) result(result agent.Result) {
-	printer.printf(formatAnswer, result.Answer)
+	printer.answer(result.Answer)
 
 	if result.StopReason != nil {
-		printer.printf(formatStopReason, result.StopReason)
+		printer.styled(printer.colors.failure, formatStopReason, result.StopReason)
 	}
 
 	printer.summary(result)
 }
 
 func (printer *console) failure(result agent.Result, err error) {
-	printer.printf(formatFailure, err)
+	printer.styled(printer.colors.failure, formatFailure, err)
 	printer.summary(result)
 }
 
 func (printer *console) summary(result agent.Result) {
-	printer.printf(formatSummary, result.Steps, printer.modelCalls, totals(result.Usage))
+	printer.styled(printer.colors.bold, formatSummary, result.Steps, printer.modelCalls, totals(result.Usage))
 }
 
-func (printer *console) printf(format string, arguments ...any) {
-	_, _ = fmt.Fprintf(printer.output, format, arguments...)
+func (printer *console) answer(answer string) {
+	if !printer.colors.enabled {
+		printer.write(fmt.Sprintf(formatAnswer, answer))
+		return
+	}
+
+	printer.write(lineBreak + printer.colors.answerBox(answer) + lineBreak)
+}
+
+func (printer *console) styled(style lipgloss.Style, format string, arguments ...any) {
+	printer.write(printer.colors.paint(style, fmt.Sprintf(format, arguments...)))
+}
+
+func (printer *console) write(text string) {
+	_, _ = io.WriteString(printer.output, text)
 }
 
 func totals(usage llm.Usage) string {

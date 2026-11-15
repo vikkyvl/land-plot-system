@@ -44,7 +44,8 @@ func RunA2ACall(runContext context.Context, arguments []string, stdout, stderr i
 		return ExitError
 	}
 
-	printCard(stdout, card, options.text)
+	printer := newTaskPrinter(stdout)
+	printer.card(card, options.text)
 
 	client, err := a2aclient.NewFromEndpoints(
 		callContext,
@@ -66,7 +67,7 @@ func RunA2ACall(runContext context.Context, arguments []string, stdout, stderr i
 			return ExitError
 		}
 
-		if state := printEvent(stdout, event); state != a2a.TaskStateUnspecified {
+		if state := printer.event(event); state != a2a.TaskStateUnspecified {
 			finalState = state
 		}
 	}
@@ -106,35 +107,46 @@ func parseA2ACallOptions(arguments []string, stderr io.Writer) (a2aCallOptions, 
 	return a2aCallOptions{agentURL: agentURL, text: text, timeout: *timeout}, nil
 }
 
-func printCard(output io.Writer, card *a2a.AgentCard, text string) {
+type taskPrinter struct {
+	output io.Writer
+	colors palette
+}
+
+func newTaskPrinter(output io.Writer) taskPrinter {
+	return taskPrinter{output: output, colors: newPalette(output)}
+}
+
+func (printer taskPrinter) card(card *a2a.AgentCard, text string) {
 	skills := make([]string, 0, len(card.Skills))
 	for _, skill := range card.Skills {
 		skills = append(skills, skill.ID)
 	}
 
-	_, _ = fmt.Fprintf(output, formatAgentCard, card.Name, card.Version, strings.Join(skills, ", "), text)
+	printer.write(fmt.Sprintf(formatAgentCard, card.Name, card.Version, strings.Join(skills, ", "), text))
 }
 
-func printEvent(output io.Writer, event a2a.Event) a2a.TaskState {
+func (printer taskPrinter) event(event a2a.Event) a2a.TaskState {
 	switch typed := event.(type) {
 	case *a2a.Task:
-		_, _ = fmt.Fprintf(output, formatTaskEvent, typed.Status.State, typed.ID)
-		printArtifacts(output, typed.Artifacts)
+		printer.state(typed.Status.State, fmt.Sprintf(formatTaskEvent, typed.Status.State, typed.ID))
+		printer.artifacts(typed.Artifacts)
 
 		return typed.Status.State
 	case *a2a.TaskStatusUpdateEvent:
-		_, _ = fmt.Fprintf(output, formatStatusEvent, typed.Status.State, a2aagent.TaskText(typed.Status.Message))
+		text := fmt.Sprintf(formatStatusEvent, typed.Status.State, a2aagent.TaskText(typed.Status.Message))
+		printer.state(typed.Status.State, text)
+
 		return typed.Status.State
 	case *a2a.TaskArtifactUpdateEvent:
-		printArtifacts(output, []*a2a.Artifact{typed.Artifact})
+		printer.artifacts([]*a2a.Artifact{typed.Artifact})
 	case *a2a.Message:
-		_, _ = fmt.Fprintf(output, formatMessageEvent, a2aagent.TaskText(typed))
+		printer.write(fmt.Sprintf(formatMessageEvent, a2aagent.TaskText(typed)))
 	}
 
 	return a2a.TaskStateUnspecified
 }
 
-func printArtifacts(output io.Writer, artifacts []*a2a.Artifact) {
+func (printer taskPrinter) artifacts(artifacts []*a2a.Artifact) {
 	for _, artifact := range artifacts {
 		if artifact == nil {
 			continue
@@ -142,7 +154,15 @@ func printArtifacts(output io.Writer, artifacts []*a2a.Artifact) {
 
 		for _, part := range artifact.Parts {
 			encoded, _ := json.Marshal(part.Data())
-			_, _ = fmt.Fprintf(output, formatArtifactEvent, artifact.Name, encoded)
+			printer.write(fmt.Sprintf(formatArtifactEvent, artifact.Name, encoded))
 		}
 	}
+}
+
+func (printer taskPrinter) state(state a2a.TaskState, text string) {
+	printer.write(printer.colors.paint(printer.colors.taskState(state), text))
+}
+
+func (printer taskPrinter) write(text string) {
+	_, _ = io.WriteString(printer.output, text)
 }
