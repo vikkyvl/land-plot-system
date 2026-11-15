@@ -33,6 +33,15 @@ The system is written in Go and runs locally with Docker Compose.
 
 Each service owns its own database and does not read another service's data directly.
 
+The `ai/` module adds AI access to the same API (see [`ai/README.md`](ai/README.md)). It is a separate Go module and works only through the gateway, like any other client:
+
+| Component        | Responsibility                                                                                        |
+|------------------|-------------------------------------------------------------------------------------------------------|
+| `fc-client`      | Console LLM client: Gemini function calling over the REST API with token and prompt injection guardrails. |
+| `mcp-server`     | MCP server with the plot and report tools, resources and prompts over stdio and Streamable HTTP.       |
+| `producer-agent` | A2A agent over `land-plot-service`: creates and updates plots and waits for the saga.                  |
+| `consumer-agent` | A2A agent over `report-service`: builds reports and delegates plot creation to the producer over A2A.  |
+
 ### Service discovery and routing
 
 Every Go service registers a unique instance with an HTTP health check in Consul when it starts. The gateway and `report-service` look up passing instances in Consul for each call, so new instances join and failed ones leave without configuration changes. The gateway spreads requests across instances in round-robin order and adds an `X-Served-By` response header that names the instance that handled the request.
@@ -77,7 +86,9 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── deploy/postgres/            # creates per-service databases and roles
 ├── scripts/demo.sh             # end-to-end demo against the running stack
 ├── scripts/demo_lr3.sh         # transactional outbox and saga demo
+├── scripts/demo_lr4.sh         # function calling, MCP and A2A demo
 ├── tools/stripcomments/        # comment check used by make lint
+├── ai/                         # AI agents module: fc-client, MCP server, A2A agents
 └── services/
     ├── api-gateway/
     ├── identity-service/
@@ -128,6 +139,18 @@ The stack publishes these ports on the host:
 | `http://localhost:15672`  | RabbitMQ management UI                     |
 
 The business services and PostgreSQL are reachable only inside the Compose network.
+
+The AI services run only with the `ai` profile, so the other demos need no LLM key:
+
+```sh
+docker compose --profile ai up -d --build
+```
+
+| URL                            | What                         |
+|--------------------------------|------------------------------|
+| `http://127.0.0.1:8090/mcp`    | MCP server (bearer token)    |
+| `http://127.0.0.1:8091`        | A2A producer agent           |
+| `http://127.0.0.1:8092`        | A2A consumer agent           |
 
 ### RabbitMQ web UI
 
@@ -305,6 +328,12 @@ make demo-lr3
 
 It stops `report-service` for about 30 seconds and RabbitMQ for about 10 seconds and starts them again during cleanup. It reads `SAGA_TIMEOUT` and `MESSAGE_PROCESSING_TIMEOUT` (whole seconds, such as `30s`) to size its waits and the table lock.
 
+The AI demo checks the MCP server and both A2A agents without the LLM, then runs every LLM scenario once when `LLM_API_KEY` is set in `.env`. It also needs `MCP_ACCESS_TOKEN` and Go:
+
+```sh
+make demo-lr4
+```
+
 ## Configuration
 
 All settings come from environment variables. `docker-compose.yml` sets development defaults, and `.env.example` lists everything you can override:
@@ -314,7 +343,8 @@ All settings come from environment variables. `docker-compose.yml` sets developm
 - JWT secret and TTL,
 - bcrypt cost,
 - PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch,
-- outbox poll interval, saga timeout, and the name prefix that makes `report-service` fail on purpose.
+- outbox poll interval, saga timeout, and the name prefix that makes `report-service` fail on purpose,
+- the LLM key and model, agent token and step limits, the AI user, and the MCP access token (see [`ai/README.md`](ai/README.md)).
 
 Set a strong `JWT_SECRET` and real passwords for any environment other than local development.
 
@@ -328,7 +358,8 @@ make lint      # formatting, whitespace, code quality and no-comments checks
 make lint-fix  # remove comments, apply formatters and automatic lint fixes
 make strip-comments  # only remove comments (tool directives are kept)
 make test      # tests only
-make check     # lint, go test, go vet for every service, and a docker compose config check
+make check     # lint, go test, go vet for every module, including ai/, and docker compose config checks
+make ai-mcp-inspector  # MCP Inspector with the MCP server over stdio
 ```
 
 The linter configuration lives in `.golangci.yml` and is shared by all modules. Besides the standard checks, it enforces:

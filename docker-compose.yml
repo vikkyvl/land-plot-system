@@ -11,6 +11,35 @@ x-go-service: &go-service
     CONSUL_TIMEOUT: ${CONSUL_TIMEOUT:-3s}
     JWT_SECRET: ${JWT_SECRET:-local_development_jwt_secret_change_me}
 
+x-ai-service: &ai-service
+  profiles: ["ai"]
+  build:
+    context: ./ai
+  image: land-plot-system-ai:local
+  restart: on-failure:3
+  init: true
+  networks:
+    - land-network
+  depends_on:
+    api-gateway:
+      condition: service_healthy
+  environment: &ai-environment
+    GATEWAY_URL: http://api-gateway:8080
+    GATEWAY_TIMEOUT: ${GATEWAY_TIMEOUT:-10s}
+    AI_USER_EMAIL: ${AI_USER_EMAIL:-ai-agent@example.com}
+    AI_USER_PASSWORD: ${AI_USER_PASSWORD:-AiAgentPassword123}
+    TOOL_RESULT_MAX_BYTES: ${TOOL_RESULT_MAX_BYTES:-4000}
+
+x-llm-environment: &llm-environment
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-gemini-3.5-flash-lite}
+  LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-1024}
+  LLM_MIN_INTERVAL: ${LLM_MIN_INTERVAL:-6s}
+  LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-1m}
+  AGENT_TOKEN_BUDGET: ${AGENT_TOKEN_BUDGET:-30000}
+  AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-8}
+  USER_INPUT_MAX_CHARS: ${USER_INPUT_MAX_CHARS:-2000}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -168,6 +197,59 @@ services:
         condition: service_healthy
       consul:
         condition: service_healthy
+
+  mcp-server:
+    <<: *ai-service
+    command: ["/app/mcp-server", "-transport", "http"]
+    environment:
+      <<: *ai-environment
+      MCP_HTTP_ADDR: :8090
+      MCP_ACCESS_TOKEN: ${MCP_ACCESS_TOKEN:-}
+      MCP_RATE_LIMIT_PER_MINUTE: ${MCP_RATE_LIMIT_PER_MINUTE:-30}
+    ports:
+      - "127.0.0.1:${MCP_HTTP_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  producer-agent:
+    <<: *ai-service
+    command: ["/app/producer-agent"]
+    environment:
+      <<: [*ai-environment, *llm-environment]
+      AGENT_HTTP_ADDR: :8091
+      AGENT_PUBLIC_URL: http://producer-agent:8091
+    ports:
+      - "127.0.0.1:${PRODUCER_AGENT_PORT:-8091}:8091"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8091/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  consumer-agent:
+    <<: *ai-service
+    command: ["/app/consumer-agent"]
+    environment:
+      <<: [*ai-environment, *llm-environment]
+      AGENT_HTTP_ADDR: :8092
+      AGENT_PUBLIC_URL: http://consumer-agent:8092
+      PRODUCER_AGENT_URL: http://producer-agent:8091
+      A2A_CALL_TIMEOUT: ${A2A_CALL_TIMEOUT:-90s}
+    ports:
+      - "127.0.0.1:${CONSUMER_AGENT_PORT:-8092}:8092"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      producer-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8092/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 networks:
   land-network:

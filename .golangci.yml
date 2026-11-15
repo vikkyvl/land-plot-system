@@ -1,4 +1,4 @@
-# golangci-lint v2 configuration shared by all Go modules in services/.
+# golangci-lint v2 configuration shared by all Go modules in services/ and ai/.
 # golangci-lint looks for this file in parent directories, so it applies when
 # the linter runs inside any service directory.
 #
@@ -147,6 +147,15 @@ linters:
               desc: only bootstrap reads the configuration
             - pkg: github.com/vleshchenko/land-plot-system/services/report-service/internal/config
               desc: only bootstrap reads the configuration
+        ai-config:
+          list-mode: lax
+          files:
+            - "**/ai/internal/**"
+            - "!**/ai/internal/config/**"
+            - "!**/ai/internal/bootstrap/**"
+          deny:
+            - pkg: github.com/vleshchenko/land-plot-system/ai/internal/config
+              desc: only bootstrap reads the configuration
 
     wsl_v5:
       # Default checks: no cuddling of unrelated statements, error checks
@@ -212,6 +221,11 @@ linters:
           - noctx
           - mnd
           - bodyclose
+      # Names of environment variables such as LLM_API_KEY are not credentials.
+      - path: internal/config/env_keys\.go
+        linters:
+          - gosec
+        text: G101
 
 issues:
   max-issues-per-linter: 0
