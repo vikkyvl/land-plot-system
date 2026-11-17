@@ -41,18 +41,18 @@ type Report struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-type Credentials struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
 type createReportRequest struct {
 	PlotID string `json:"plot_id"`
 }
 
-type loginResponse struct {
-	AccessToken string    `json:"access_token"`
-	ExpiresAt   time.Time `json:"expires_at"`
+type tokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int64  `json:"expires_in"`
+}
+
+type tokenErrorResponse struct {
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
 }
 
 type errorResponse struct {

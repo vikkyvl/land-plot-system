@@ -3,22 +3,18 @@ package postgres
 import (
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/domain"
 )
 
-const (
-	uniqueViolation   = "23505"
-	userColumns       = "id, email, password_hash, created_at"
-	selectUserByEmail = "SELECT " + userColumns + " FROM users WHERE email = $1"
-	selectUserByID    = "SELECT " + userColumns + " FROM users WHERE id = $1"
-)
+const upsertUser = `
+	INSERT INTO users (id, email, name, created_at, updated_at)
+	VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $4)
+	ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, updated_at = EXCLUDED.updated_at
+	RETURNING id, COALESCE(email, ''), COALESCE(name, ''), created_at, updated_at`
 
 //go:embed schema.sql
 var schema string
@@ -39,44 +35,14 @@ func (repository *UserRepository) Migrate(requestContext context.Context) error 
 	return nil
 }
 
-func (repository *UserRepository) Create(requestContext context.Context, user domain.User) error {
-	_, err := repository.pool.Exec(requestContext,
-		`INSERT INTO users (`+userColumns+`) VALUES ($1, $2, $3, $4)`,
-		user.ID, user.Email, user.PasswordHash, user.CreatedAt,
-	)
+func (repository *UserRepository) Upsert(requestContext context.Context, user domain.User) (domain.User, error) {
+	var saved domain.User
 
-	var postgresError *pgconn.PgError
-	if errors.As(err, &postgresError) && postgresError.Code == uniqueViolation {
-		return domain.ErrUserExists
-	}
-
+	err := repository.pool.QueryRow(requestContext, upsertUser, user.ID, user.Email, user.Name, user.UpdatedAt).
+		Scan(&saved.ID, &saved.Email, &saved.Name, &saved.CreatedAt, &saved.UpdatedAt)
 	if err != nil {
-		return fmt.Errorf(wrapInsertUser, err)
+		return domain.User{}, fmt.Errorf(wrapUpsertUser, err)
 	}
 
-	return nil
-}
-
-func (repository *UserRepository) FindByEmail(requestContext context.Context, email string) (domain.User, error) {
-	return repository.findOne(requestContext, selectUserByEmail, email)
-}
-
-func (repository *UserRepository) FindByID(requestContext context.Context, id string) (domain.User, error) {
-	return repository.findOne(requestContext, selectUserByID, id)
-}
-
-func (repository *UserRepository) findOne(requestContext context.Context, query, argument string) (domain.User, error) {
-	var user domain.User
-
-	err := repository.pool.QueryRow(requestContext, query, argument).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.CreatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.User{}, domain.ErrUserNotFound
-	}
-
-	if err != nil {
-		return domain.User{}, fmt.Errorf(wrapQueryUser, err)
-	}
-
-	return user, nil
+	return saved, nil
 }

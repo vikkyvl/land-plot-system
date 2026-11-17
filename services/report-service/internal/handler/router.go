@@ -4,9 +4,16 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler/middleware"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler/respond"
 )
+
+type protectedRoute struct {
+	pattern string
+	scopes  []string
+	handle  http.HandlerFunc
+}
 
 func NewRouter(
 	logger *slog.Logger,
@@ -17,15 +24,26 @@ func NewRouter(
 	responses := respond.NewWriter(logger)
 	reportHandler := &reportHandler{reports: reports, responses: responses}
 	traceHandler := &traceHandler{reports: reports, responses: responses}
-	protected := func(next http.HandlerFunc) http.Handler {
-		return middleware.Authenticate(verifier, responses, next)
-	}
 
 	router := http.NewServeMux()
 	router.HandleFunc("GET /health", healthHandler(serviceName, responses))
-	router.Handle("POST /api/v1/reports", protected(reportHandler.create))
-	router.Handle("GET /api/v1/reports/{id}", protected(reportHandler.get))
-	router.HandleFunc("GET /api/v1/demo/chain", traceHandler.trace)
+
+	for _, route := range protectedRoutes(reportHandler, traceHandler) {
+		router.Handle(route.pattern, middleware.Authenticate(verifier, responses,
+			middleware.RequireScopes(route.scopes, responses, route.handle)))
+	}
 
 	return router
+}
+
+func protectedRoutes(reports *reportHandler, trace *traceHandler) []protectedRoute {
+	return []protectedRoute{
+		{
+			pattern: "POST /api/v1/reports",
+			scopes:  []string{domain.ScopeReportsWrite, domain.ScopePlotsRead},
+			handle:  reports.create,
+		},
+		{pattern: "GET /api/v1/reports/{id}", scopes: []string{domain.ScopeReportsRead}, handle: reports.get},
+		{pattern: "GET /api/v1/demo/chain", handle: trace.trace},
+	}
 }

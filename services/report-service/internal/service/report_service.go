@@ -79,9 +79,10 @@ func (reportService *ReportService) Get(
 
 func (reportService *ReportService) Trace(
 	requestContext context.Context,
-	gatewayInstance, requestID, message string,
+	caller Caller,
+	gatewayInstance, message string,
 ) (domain.Trace, error) {
-	landPath, err := reportService.plots.Trace(requestContext, requestID, message)
+	landPath, err := reportService.plots.Trace(requestContext, caller, message)
 	if err != nil {
 		return domain.Trace{}, fmt.Errorf(wrapTraceLandPlotService, err)
 	}

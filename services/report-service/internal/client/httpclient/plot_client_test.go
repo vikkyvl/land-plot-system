@@ -104,7 +104,22 @@ func TestPlotClientMapsErrors(t *testing.T) {
 		want     error
 	}{
 		{"no healthy instances", resolverStub{}, &http.Client{}, service.ErrPlotServiceUnavailable},
-		{"forbidden", singleInstance(), respondWith(http.StatusForbidden, ""), domain.ErrForbidden},
+		{"forbidden", singleInstance(), respondWith(http.StatusForbidden, `{"code":"forbidden"}`), domain.ErrForbidden},
+		{
+			"insufficient scope",
+			singleInstance(),
+			respondWith(
+				http.StatusForbidden,
+				`{"code":"insufficient_scope","message":"access token lacks the required scope"}`,
+			),
+			domain.ErrInsufficientScope,
+		},
+		{
+			"rejected token",
+			singleInstance(),
+			respondWith(http.StatusUnauthorized, ""),
+			domain.ErrPlotServiceRejectedToken,
+		},
 		{"not found", singleInstance(), respondWith(http.StatusNotFound, ""), domain.ErrPlotNotFound},
 		{"server error", singleInstance(), respondWith(http.StatusBadGateway, ""), service.ErrPlotServiceUnavailable},
 		{"malformed body", singleInstance(), respondWith(http.StatusOK, "{"), service.ErrInvalidPlotResponse},
@@ -130,12 +145,18 @@ func TestPlotClientMapsErrors(t *testing.T) {
 }
 
 func TestPlotClientTrace(t *testing.T) {
-	client := respondWith(
-		http.StatusOK,
-		`{"message":"hi","path":[{"service":"land-plot-service","instance":"plot-1","protocol":"HTTP"}]}`,
-	)
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Header.Get("Authorization") != "Bearer access-token" ||
+			request.Header.Get(requestIDHeader) != "request-1" {
+			t.Fatalf("headers = %#v", request.Header)
+		}
 
-	hops, err := NewPlotClient(singleInstance(), client, testServiceName).Trace(context.Background(), "request-1", "hi")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(
+			`{"message":"hi","path":[{"service":"land-plot-service","instance":"plot-1","protocol":"HTTP"}]}`,
+		))}, nil
+	})}
+
+	hops, err := NewPlotClient(singleInstance(), client, testServiceName).Trace(context.Background(), testCaller, "hi")
 	if err != nil {
 		t.Fatalf("Trace() error = %v", err)
 	}

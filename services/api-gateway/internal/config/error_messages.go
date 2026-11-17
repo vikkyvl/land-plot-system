@@ -1,9 +1,9 @@
 package config
 
 const (
-	formatMustBeAPositiveDuration      = "%s must be a positive duration"
-	formatMustContainAtLeastCharacters = "%s must contain at least %d characters"
-	formatMustNotBeEmpty               = "%s must not be empty"
-	wrapGetHostname                    = "get hostname: %w"
-	wrapParse                          = "parse %s: %w"
+	formatMustListOrigins         = "%s must list origins like https://cad.kpi.ua separated by commas, got %q"
+	formatMustBeAPositiveDuration = "%s must be a positive duration"
+	formatMustNotBeEmpty          = "%s must not be empty"
+	wrapGetHostname               = "get hostname: %w"
+	wrapParse                     = "parse %s: %w"
 )

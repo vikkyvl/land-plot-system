@@ -1,6 +1,6 @@
 # Land Plot System
 
-A microservice backend for storing land plots as geographic polygons and calculating their area and perimeter. Users register, describe a plot by its corner coordinates, and get area figures and saved reports in square metres, ares, and hectares.
+A microservice backend for storing land plots as geographic polygons and calculating their area and perimeter. Users sign in through Keycloak (also with a Google account), describe a plot by its corner coordinates, and get area figures and saved reports in square metres, ares, and hectares.
 
 The system is written in Go and runs locally with Docker Compose.
 
@@ -20,14 +20,15 @@ The system is written in Go and runs locally with Docker Compose.
                         │                   ▲
                         └── RabbitMQ events ┘
 
+ Keycloak (:8180): OAuth 2.0 / OpenID Connect server that issues all access tokens
  Consul: service registry + health checks
  RabbitMQ: durable plot events and report-side projections
 ```
 
 | Component           | Responsibility                                                                                     |
 |---------------------|----------------------------------------------------------------------------------------------------|
-| `api-gateway`       | Single entry point. Routes requests by path prefix, validates JWTs, balances across healthy instances. |
-| `identity-service`  | User registration, login, and profile. Hashes passwords with bcrypt and issues HS256 JWTs.          |
+| `api-gateway`       | Single entry point. Applies CORS, verifies Keycloak tokens and scopes, routes by path prefix, balances across healthy instances. |
+| `identity-service`  | Profile of the signed-in user, created from the access token on the first request.                 |
 | `land-plot-service` | Plot CRUD for the owner, polygon validation, calculations, and plot event publication.             |
 | `report-service`    | Builds immutable reports over REST and maintains plot summaries from RabbitMQ events.              |
 
@@ -48,17 +49,19 @@ Every Go service registers a unique instance with an HTTP health check in Consul
 
 | Path prefix              | Target service      | Auth required |
 |--------------------------|---------------------|---------------|
-| `/api/v1/auth/*`         | `identity-service`  | no            |
 | `/api/v1/users/profile`  | `identity-service`  | yes           |
 | `/api/v1/plots/*`        | `land-plot-service` | yes           |
 | `/api/v1/reports/*`      | `report-service`    | yes           |
-| `/api/v1/demo/chain`     | `report-service`    | no            |
+| `/api/v1/demo/chain`     | `report-service`    | yes           |
 
 ### Security
 
-- The gateway checks the bearer token on protected routes, removes any client-supplied `X-User-*` headers, and forwards trusted identity headers to the target service.
-- Each service also verifies the JWT itself, so no service relies only on the gateway.
+- Keycloak issues all tokens; the gateway and every service verify them through the Keycloak JWKS (RS256) and check the scope of each route, so no service relies only on the gateway (Zero Trust).
+- The gateway removes any client-supplied `X-User-*` headers and forwards trusted identity headers to the target service.
+- The gateway applies a CORS policy that allows `https://cad.kpi.ua` and the local frontends.
 - Users can read and change only their own plots and reports.
+
+See [Authentication and authorization](#authentication-and-authorization) for the details.
 
 ### Area calculation
 
@@ -84,9 +87,13 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── .golangci.yml               # formatter and linter configuration
 ├── Makefile                    # fmt / lint / test / vet / compose checks, demos
 ├── deploy/postgres/            # creates per-service databases and roles
+├── infra/keycloak/            # Keycloak realm land-plot, imported on the first start
+├── postman/                   # Postman collection with OAuth 2.0 Authorization Code + PKCE
 ├── scripts/demo.sh             # end-to-end demo against the running stack
 ├── scripts/demo_lr3.sh         # transactional outbox and saga demo
 ├── scripts/demo_lr4.sh         # function calling, MCP and A2A demo
+├── scripts/demo_lr5.sh         # CORS, Keycloak tokens, scopes and Zero Trust demo
+├── scripts/keycloak_idp.sh     # adds the Google login to Keycloak
 ├── tools/stripcomments/        # comment check used by make lint
 ├── ai/                         # AI agents module: fc-client, MCP server, A2A agents
 └── services/
@@ -103,7 +110,7 @@ Each service is an independent Go module with an N-layered structure:
 ├── main.go
 └── internal/
     ├── handler/               # HTTP: router, endpoint handlers, DTOs, request errors
-    │   ├── middleware/        # bearer token authentication
+    │   ├── middleware/        # bearer token authentication and route scopes
     │   └── respond/           # JSON responses, request decoding, error → HTTP mapping
     ├── service/               # use cases, saga steps, outbox relay, and the ports they depend on
     ├── domain/                # entities, invariants, calculations, domain errors
@@ -111,7 +118,7 @@ Each service is an independent Go module with an N-layered structure:
     ├── messaging/rabbitmq/    # outbox publisher and reconnecting consumer
     ├── client/httpclient/     # land-plot-service client (report)
     ├── discovery/consul/      # Consul registration and instance resolution
-    ├── auth/                  # JWT verification (and issuing in identity)
+    ├── auth/                  # Keycloak access token verification through JWKS
     ├── config/                # typed configuration from environment variables
     └── bootstrap/             # composition root: wiring, start, graceful shutdown
 ```
@@ -127,18 +134,22 @@ Requirements: Docker with the Compose plugin. Go 1.26+ is needed only to run the
 ```sh
 cp .env.example .env   # optional: override the defaults
 docker compose up -d --build
+./scripts/keycloak_idp.sh   # optional: Google login, see "Google login"
 curl http://localhost:8080/health
 ```
+
+Moving from an earlier lab to Lab 5 needs empty volumes, because tokens and users now come from Keycloak: run `docker compose --profile ai down -v` first.
 
 The stack publishes these ports on the host:
 
 | URL                       | What                                       |
 |---------------------------|--------------------------------------------|
 | `http://localhost:8080`   | API gateway                                |
+| `http://localhost:8180`   | Keycloak (login pages, tokens, admin console) |
 | `http://localhost:8500`   | Consul UI                                  |
 | `http://localhost:15672`  | RabbitMQ management UI                     |
 
-The business services and PostgreSQL are reachable only inside the Compose network.
+The business services are reachable only inside the Compose network. PostgreSQL listens on `127.0.0.1:55432` for the integration tests.
 
 The AI services run only with the `ai` profile, so the other demos need no LLM key:
 
@@ -184,23 +195,15 @@ ErrPlotNotFound = NewError(KindNotFound, "plot_not_found",
 
 The kind does not depend on the transport. The HTTP handler maps it to a status code in one place (`statusByKind` in `handler/error_mapper.go`), so adding an error means adding one catalog entry. Any error that is not in a catalog becomes `500 internal_error` without internal details. The gateway has no domain layer, so its catalog in `proxy/errors.go` holds HTTP statuses directly.
 
-### Auth
+### Profile
 
-| Method | Path                     | Description                          |
-|--------|--------------------------|--------------------------------------|
-| POST   | `/api/v1/auth/register`  | Create a user (`email`, `password`)  |
-| POST   | `/api/v1/auth/login`     | Get an `access_token`                |
-| GET    | `/api/v1/users/profile`  | Current user                         |
+| Method | Path                     | Description                                                   |
+|--------|--------------------------|---------------------------------------------------------------|
+| GET    | `/api/v1/users/profile`  | Current user: `sub`, `email`, `name` and the token `scopes`   |
+
+Tokens come from Keycloak; see [Getting a token in Postman](#getting-a-token-in-postman) for the browser flow and a `curl` example.
 
 ```sh
-curl -X POST http://localhost:8080/api/v1/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"user@example.com","password":"password123"}'
-
-TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"user@example.com","password":"password123"}' | jq -r .access_token)
-
 curl http://localhost:8080/api/v1/users/profile -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -292,7 +295,143 @@ docker compose exec postgres psql -U plot_user -d plot_db \
 
 ### Request chain trace
 
-`GET /api/v1/demo/chain?message=hello` goes through gateway → report-service → land-plot-service and returns the list of instances that handled the request. It is useful for checking discovery and inter-service calls.
+`GET /api/v1/demo/chain?message=hello` (any valid token) goes through gateway → report-service → land-plot-service and returns the list of instances that handled the request. It is useful for checking discovery and inter-service calls.
+
+## Authentication and authorization
+
+Users and programs get tokens from **Keycloak**, an OAuth 2.0 and OpenID Connect authorization server. The system issues no tokens of its own: `identity-service` has no passwords, no registration and no login.
+
+### Keycloak
+
+Keycloak runs in Docker Compose on `http://localhost:8180` and keeps its data in the `keycloak_db` database of the shared PostgreSQL. The realm `land-plot` is configuration as code: it is imported on the first start from `infra/keycloak/realm-land-plot.json`, which holds no secrets. Passwords and the client secret come from the environment (`${OLENA_KOVAL_PASSWORD}`, `${TARAS_MELNYK_PASSWORD}`, `${AI_CLIENT_SECRET}`).
+
+The admin console is at `http://localhost:8180/admin` (`KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD`, `admin` / `keycloak_admin_dev_password` by default).
+
+Keycloak imports the realm only when it does not exist yet. After changing the realm file or a secret it uses, recreate the volumes:
+
+```sh
+docker compose --profile ai down -v
+docker compose --profile ai up -d --build
+./scripts/keycloak_idp.sh   # adds the Google login again
+```
+
+**Moving to Lab 5.** Earlier versions issued HS256 tokens from `identity-service`, and their users and plots do not exist in Keycloak. Start Lab 5 from empty volumes with `docker compose --profile ai down -v`; old data is not migrated.
+
+### Clients
+
+| Client ID           | Type         | Flow                                       | Used by                                                     |
+|---------------------|--------------|--------------------------------------------|-------------------------------------------------------------|
+| `land-plot-web`     | public       | Authorization Code with PKCE (S256 required) | Postman and the future web frontend                       |
+| `land-plot-ai`      | confidential | Client Credentials (service account)       | `fc-client`, `mcp-server`, `producer-agent`, `consumer-agent` |
+| `land-plot-dev-cli` | public       | Direct Access Grants (password)            | the `demo*.sh` scripts only                                 |
+
+`land-plot-web` accepts the redirect URIs `https://oauth.pstmn.io/v1/callback`, `http://localhost:5173/auth/callback` and `http://localhost:4173/auth/callback`, and the web origins `https://cad.kpi.ua`, `http://localhost:5173` and `http://localhost:4173`. Direct Access Grants are disabled on it.
+
+`land-plot-dev-cli` exists only so that the demo scripts can get a token without a browser. **In production this client is disabled**, because the password grant hands user passwords to the client.
+
+The realm has two test users: `olena.koval@example.com` and `taras.melnyk@example.com` (passwords from `.env`). `olena.koval` must set up a one-time password on the first login, which shows multi-factor authentication; the password grant cannot sign her in until that is done, so the scripts use `taras.melnyk`.
+
+### Scopes
+
+All access tokens carry the audience `aud = land-plot-api` (the default client scope `land-plot-audience`). The API scopes are optional client scopes, so a client gets only the scopes it asks for:
+
+| Scope           | Allows                                |
+|-----------------|---------------------------------------|
+| `plots:read`    | read your plots                       |
+| `plots:write`   | create and change your plots          |
+| `reports:read`  | read your reports                     |
+| `reports:write` | create reports                        |
+
+| Method and path                                          | Required scope                     |
+|----------------------------------------------------------|------------------------------------|
+| `GET /api/v1/plots`, `GET /api/v1/plots/{id}`            | `plots:read`                       |
+| `POST /api/v1/plots`, `PATCH /api/v1/plots/{id}`         | `plots:write`                      |
+| `GET /api/v1/reports/{id}`                               | `reports:read`                     |
+| `POST /api/v1/reports`                                   | `reports:write` and `plots:read`   |
+| `GET /api/v1/users/profile`                              | `openid`                           |
+| `GET /api/v1/demo/chain`                                 | any valid token                    |
+
+`POST /api/v1/reports` also needs `plots:read` because `report-service` forwards the user's token to `land-plot-service` (`GET /internal/plots/{id}`, which requires `plots:read`) to read the plot. If `land-plot-service` refuses, the user gets `403`, not `502`.
+
+The AI programs follow the principle of least privilege; Docker Compose gives each of them only what it needs through `AI_SCOPES`:
+
+| Program                     | Scopes                                    |
+|-----------------------------|-------------------------------------------|
+| `producer-agent`            | `plots:read plots:write`                  |
+| `consumer-agent`            | `plots:read reports:read reports:write`   |
+| `fc-client`, `mcp-server`   | all four                                  |
+
+### Token verification (Zero Trust)
+
+The gateway **and** every service verify each token themselves; no service trusts the gateway alone, and a request sent directly to a service is checked the same way. Each module has its own `internal/auth.OIDCVerifier`:
+
+- signing keys come from the JWKS of Keycloak (`OIDC_JWKS_URL`), are cached, refreshed every hour and, for an unknown `kid`, at most once every 30 seconds;
+- only `RS256` and keys with `use=sig` are accepted, so `alg: none` and HS256 tokens are rejected;
+- the signature, `iss` (`OIDC_ISSUER`), `aud` containing `land-plot-api`, a required `exp` and `nbf` are checked with 30 seconds of clock leeway;
+- `sub` is required; `email` may be empty, as for a service account.
+
+Browsers and Postman reach Keycloak at `http://localhost:8180`, containers at `http://keycloak:8080`. Keycloak runs with `KC_HOSTNAME=http://localhost:8180` and `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, so a token has the same `iss = http://localhost:8180/realms/land-plot` wherever it was requested, while containers load the JWKS and request tokens over the internal address.
+
+Every service keeps its route-to-scope rules in one table (`protectedRoutes` in `handler/router.go`, `scopeRules` in the gateway `proxy/scopes.go`). Responses follow RFC 6750:
+
+| Situation                       | Response                                                                                  |
+|---------------------------------|-------------------------------------------------------------------------------------------|
+| no token or an invalid token    | `401 unauthorized`, `WWW-Authenticate: Bearer error="invalid_token"`                       |
+| a missing scope                 | `403 insufficient_scope`, `WWW-Authenticate: Bearer error="insufficient_scope", scope="plots:write"` |
+| a method the gateway does not route | `404 route_not_found`                                                                  |
+
+`identity-service` creates the user in `identity_db` from the token on the first `GET /api/v1/users/profile` (the user ID is the token `sub`) and updates the email and name on later requests.
+
+### CORS
+
+The gateway lets the department site `https://cad.kpi.ua` and the local frontends call the API from a browser. Its CORS middleware runs before authentication, so a preflight `OPTIONS` request without a token is answered with `204` instead of `401`.
+
+- Allowed origins come from `CORS_ALLOWED_ORIGINS` (by default `https://cad.kpi.ua,http://localhost:5173,http://localhost:4173`) and are compared exactly; `*` is never used, and `https://cad.kpi.ua.evil.com` is not allowed.
+- An allowed origin gets `Access-Control-Allow-Origin: <origin>`, `Vary: Origin` and `Access-Control-Expose-Headers: X-Request-ID`. A preflight also gets `Allow-Methods: GET, POST, PATCH, OPTIONS`, `Allow-Headers: Authorization, Content-Type, X-Request-ID`, `Max-Age: 600` and, when the browser asks for it, `Access-Control-Allow-Private-Network: true`, because a public page calls `localhost`.
+- `Access-Control-Allow-Credentials` is not sent: the token travels in the `Authorization` header, not in a cookie.
+- A foreign origin gets no `Access-Control-*` headers, and its preflight gets `403 origin_not_allowed`.
+- The gateway removes `Access-Control-*` headers that a service might return (`ReverseProxy.ModifyResponse`), so each response carries exactly one set.
+
+### Google login
+
+The Keycloak login page has a **Google** button, and a frontend can skip the Keycloak page by adding `kc_idp_hint=google` to the authorization request.
+
+1. In the Google Cloud Console open **APIs & Services → OAuth consent screen**, choose **External**, keep the app in **Testing** and add your Google account to **Test users**.
+2. Open **Credentials → Create credentials → OAuth client ID**, choose **Web application** and add the authorized redirect URI `http://localhost:8180/realms/land-plot/broker/google/endpoint`.
+3. Put the client ID and secret into `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+4. With Keycloak running, run `./scripts/keycloak_idp.sh`.
+
+The script adds or updates the identity provider `google` through `kcadm.sh` inside the Keycloak container and is safe to run again; without the two variables it prints a warning and exits with `0`. The first Google login creates the user in Keycloak, the email from Google counts as verified, and the email and name are refreshed on each login. Open `http://localhost:8180/realms/land-plot/account` and press **Google** to check it.
+
+### Getting a token in Postman
+
+The collection `postman/lr5_collection.json` uses OAuth 2.0 on the collection level:
+
+| Setting            | Value                                                                              |
+|--------------------|------------------------------------------------------------------------------------|
+| Grant type         | Authorization Code (With PKCE), code challenge method `SHA-256`                   |
+| Auth URL           | `http://localhost:8180/realms/land-plot/protocol/openid-connect/auth`             |
+| Access token URL   | `http://localhost:8180/realms/land-plot/protocol/openid-connect/token`            |
+| Client ID          | `land-plot-web` (no secret, public client)                                         |
+| Callback URL       | `https://oauth.pstmn.io/v1/callback` (authorize using the browser)                 |
+| Scope              | `openid profile email plots:read plots:write reports:read reports:write`           |
+
+Import the collection, open its **Authorization** tab, press **Get New Access Token**, sign in with Google or a test user and press **Use Token**. The requests then show the profile, list and create plots and build a report. The request **Create plot with plots:read only (403)** has its own OAuth settings with the scope `openid plots:read` and gets `403 insufficient_scope`.
+
+Without a browser a token for a test user comes from the development client:
+
+```sh
+TOKEN=$(curl -s http://localhost:8180/realms/land-plot/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=land-plot-dev-cli \
+  -d username=taras.melnyk@example.com -d password=TarasDevPassword123 \
+  --data-urlencode 'scope=openid plots:read plots:write reports:read reports:write' | jq -r .access_token)
+
+cut -d. -f2 <<<"$TOKEN" | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{iss, aud, sub, scope, exp}'
+```
+
+### Production
+
+The Compose setup is for local development. In production Keycloak runs with `start` instead of `start-dev`, behind TLS on its own hostname, `land-plot-dev-cli` and every password grant are disabled, the bootstrap admin is replaced by a real administrator account, and all secrets come from a secret store.
 
 ## Scaling
 
@@ -334,19 +473,28 @@ The AI demo checks the MCP server and both A2A agents without the LLM, then runs
 make demo-lr4
 ```
 
+The security demo runs without a browser. It shows a decoded Keycloak token, a CORS preflight from `https://cad.kpi.ua` and from a foreign origin, exactly one `Access-Control-Allow-Origin` on a response, `401` with `WWW-Authenticate` without a token, `401` for a forged and an HS256 token, `403 insufficient_scope` for a token with `plots:read` only, a plot, saga and report with all scopes, `401` from `land-plot-service` called directly without a token, the profile created in `identity_db`, and `403` for the producer agent credentials on `POST /api/v1/reports`:
+
+```sh
+make demo-lr5
+```
+
+All demo scripts get tokens from Keycloak: the user `taras.melnyk@example.com` through `land-plot-dev-cli`, and the AI service account through client credentials.
+
 ## Configuration
 
 All settings come from environment variables. `docker-compose.yml` sets development defaults, and `.env.example` lists everything you can override:
 
 - public ports,
 - timeouts (HTTP shutdown, Consul, database, upstream),
-- JWT secret and TTL,
-- bcrypt cost,
+- Keycloak: port, database, bootstrap admin, test user passwords and the `land-plot-ai` client secret,
+- token verification (`OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_TIMEOUT`) and the CORS origins (`CORS_ALLOWED_ORIGINS`),
+- the Google client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, only in `.env`),
 - PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch,
 - outbox poll interval, saga timeout, and the name prefix that makes `report-service` fail on purpose,
-- the LLM key and model, agent token and step limits, the AI user, and the MCP access token (see [`ai/README.md`](ai/README.md)).
+- the LLM key and model, agent token and step limits, the AI client credentials and scopes, and the MCP access token (see [`ai/README.md`](ai/README.md)).
 
-Set a strong `JWT_SECRET` and real passwords for any environment other than local development.
+Set real passwords and secrets for any environment other than local development, and never commit `.env`.
 
 ## Development
 

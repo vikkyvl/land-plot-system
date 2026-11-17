@@ -2,16 +2,28 @@ package landapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
 const (
-	pathLogin     = "/api/v1/auth/login"
-	pathRegister  = "/api/v1/auth/register"
-	refreshMargin = 30 * time.Second
+	refreshMargin          = 30 * time.Second
+	grantClientCredentials = "client_credentials"
+	contentTypeForm        = "application/x-www-form-urlencoded"
+	scopeSeparator         = " "
 )
+
+type ClientCredentials struct {
+	TokenURL     string
+	ClientID     string
+	ClientSecret string
+	Scopes       []string
+}
 
 func (client *Client) Authenticate(requestContext context.Context) error {
 	_, err := client.accessToken(requestContext)
@@ -26,20 +38,13 @@ func (client *Client) accessToken(requestContext context.Context) (string, error
 		return client.token, nil
 	}
 
-	login, err := client.login(requestContext)
-	if hasCode(err, CodeLoginRejected) {
-		if err := client.register(requestContext); err != nil {
-			return "", err
-		}
-
-		login, err = client.login(requestContext)
-	}
-
+	issued, err := client.requestToken(requestContext)
 	if err != nil {
-		return "", fmt.Errorf(wrapLogin, err)
+		return "", fmt.Errorf(wrapRequestToken, err)
 	}
 
-	client.token, client.expiresAt = login.AccessToken, login.ExpiresAt
+	client.token = issued.AccessToken
+	client.expiresAt = client.now().Add(time.Duration(issued.ExpiresIn) * time.Second)
 
 	return client.token, nil
 }
@@ -53,36 +58,61 @@ func (client *Client) forgetToken(token string) {
 	}
 }
 
-func (client *Client) login(requestContext context.Context) (loginResponse, error) {
-	var login loginResponse
+func (client *Client) requestToken(requestContext context.Context) (tokenResponse, error) {
+	form := url.Values{
+		"grant_type":    {grantClientCredentials},
+		"client_id":     {client.credentials.ClientID},
+		"client_secret": {client.credentials.ClientSecret},
+	}
+	if len(client.credentials.Scopes) > 0 {
+		form.Set("scope", strings.Join(client.credentials.Scopes, scopeSeparator))
+	}
 
-	err := client.send(
+	httpRequest, err := http.NewRequestWithContext(
 		requestContext,
-		request{method: http.MethodPost, path: pathLogin, body: client.credentials},
-		"",
-		&login,
+		http.MethodPost,
+		client.credentials.TokenURL,
+		strings.NewReader(form.Encode()),
 	)
 	if err != nil {
-		return loginResponse{}, err
+		return tokenResponse{}, fmt.Errorf(wrapBuildGrantRequest, err)
 	}
 
-	if login.AccessToken == "" {
-		return loginResponse{}, errMissingAccessToken
+	httpRequest.Header.Set("Content-Type", contentTypeForm)
+	httpRequest.Header.Set("Accept", contentTypeJSON)
+
+	response, err := client.httpClient.Do(httpRequest)
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf(wrapSendGrantRequest, err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, maximumResponseBytes))
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf(wrapReadGrantResponse, err)
 	}
 
-	return login, nil
+	if response.StatusCode != http.StatusOK {
+		return tokenResponse{}, newTokenError(response.StatusCode, body)
+	}
+
+	var issued tokenResponse
+	if err := json.Unmarshal(body, &issued); err != nil {
+		return tokenResponse{}, fmt.Errorf(wrapDecodeGrantResponse, err)
+	}
+
+	if issued.AccessToken == "" {
+		return tokenResponse{}, errMissingAccessToken
+	}
+
+	return issued, nil
 }
 
-func (client *Client) register(requestContext context.Context) error {
-	err := client.send(
-		requestContext,
-		request{method: http.MethodPost, path: pathRegister, body: client.credentials},
-		"",
-		nil,
-	)
-	if err != nil && !hasCode(err, CodeUserExists) {
-		return fmt.Errorf(wrapRegister, err)
+func newTokenError(status int, body []byte) *APIError {
+	var decoded tokenErrorResponse
+	if err := json.Unmarshal(body, &decoded); err != nil || decoded.Error == "" {
+		return &APIError{Status: status, Message: unexpectedStatusText}
 	}
 
-	return nil
+	return &APIError{Status: status, Code: decoded.Error, Message: decoded.ErrorDescription}
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -22,17 +23,21 @@ const (
 	defaultShutdownTimeout    = 10 * time.Second
 	defaultProducerAgentURL   = "http://localhost:8091"
 	defaultA2ACallTimeout     = 90 * time.Second
-	minimumAIUserPassword     = 8
+	defaultGrantEndpoint      = "http://localhost:8180/realms/land-plot/protocol/openid-connect/token"
+	defaultAIClientID         = "land-plot-ai"
+	defaultAIScopes           = "plots:read plots:write reports:read reports:write"
 	minimumMCPAccessToken     = 32
 )
 
 var reasoningThinkingLevels = []string{"low", "medium", "high"}
 
 type Gateway struct {
-	URL      string
-	Timeout  time.Duration
-	Email    string
-	Password string
+	URL          string
+	Timeout      time.Duration
+	TokenURL     string
+	ClientID     string
+	ClientSecret string
+	Scopes       []string
 }
 
 type LLM struct {
@@ -80,16 +85,22 @@ func LoadGateway() (Gateway, error) {
 		return Gateway{}, err
 	}
 
-	if gateway.Email, err = requiredString(envAIUserEmail); err != nil {
+	if gateway.TokenURL, err = httpURLOrDefault(envOIDCTokenURL, defaultGrantEndpoint); err != nil {
 		return Gateway{}, err
 	}
 
-	if gateway.Password, err = requiredString(envAIUserPassword); err != nil {
+	if gateway.ClientSecret, err = requiredString(envAIClientSecret); err != nil {
 		return Gateway{}, err
 	}
 
-	if len(gateway.Password) < minimumAIUserPassword {
-		return Gateway{}, fmt.Errorf(formatMustContainAtLeastCharacters, envAIUserPassword, minimumAIUserPassword)
+	gateway.ClientID = stringOrDefault(envAIClientID, defaultAIClientID)
+	if gateway.ClientID == "" {
+		return Gateway{}, fmt.Errorf(formatMustNotBeEmpty, envAIClientID)
+	}
+
+	gateway.Scopes = strings.Fields(stringOrDefault(envAIScopes, defaultAIScopes))
+	if len(gateway.Scopes) == 0 {
+		return Gateway{}, fmt.Errorf(formatMustNotBeEmpty, envAIScopes)
 	}
 
 	return gateway, nil

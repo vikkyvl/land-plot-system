@@ -47,3 +47,7 @@ func (trace traceResponse) toDomain() []domain.TraceHop {
 
 	return hops
 }
+
+type errorResponse struct {
+	Code string `json:"code"`
+}

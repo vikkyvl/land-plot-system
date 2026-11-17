@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/handler/respond"
 )
 
@@ -14,33 +15,39 @@ const (
 )
 
 type TokenVerifier interface {
-	Verify(token string) (userID string, err error)
+	Verify(token string) (domain.Principal, error)
 }
 
-type userIDContextKey struct{}
+type principalContextKey struct{}
 
 func Authenticate(verifier TokenVerifier, writer respond.Writer, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		userID, err := verifyBearerToken(verifier, request.Header.Get("Authorization"))
+		principal, err := verifyBearerToken(verifier, request.Header.Get("Authorization"))
 		if err != nil {
+			response.Header().Set(headerWWWAuthenticate, rejectedRequestChallenge)
 			writer.Error(response, request, errUnauthorized)
+
 			return
 		}
 
-		authenticatedContext := context.WithValue(request.Context(), userIDContextKey{}, userID)
+		authenticatedContext := context.WithValue(request.Context(), principalContextKey{}, principal)
 		next.ServeHTTP(response, request.WithContext(authenticatedContext))
 	})
 }
 
-func UserID(requestContext context.Context) string {
-	userID, _ := requestContext.Value(userIDContextKey{}).(string)
-	return userID
+func PrincipalFrom(requestContext context.Context) domain.Principal {
+	principal, _ := requestContext.Value(principalContextKey{}).(domain.Principal)
+	return principal
 }
 
-func verifyBearerToken(verifier TokenVerifier, header string) (string, error) {
+func UserID(requestContext context.Context) string {
+	return PrincipalFrom(requestContext).Subject
+}
+
+func verifyBearerToken(verifier TokenVerifier, header string) (domain.Principal, error) {
 	parts := strings.Fields(header)
 	if len(parts) != authorizationHeaderParts || !strings.EqualFold(parts[0], bearerScheme) {
-		return "", errUnauthorized
+		return domain.Principal{}, errUnauthorized
 	}
 
 	return verifier.Verify(parts[1])

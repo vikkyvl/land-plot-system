@@ -2,11 +2,19 @@
 
 set -eu
 
+if [ -f .env ]; then
+	set -a
+	. ./.env
+	set +a
+fi
+
 gateway_url=${GATEWAY_URL:-http://localhost:8080}
 consul_url=${CONSUL_URL:-http://localhost:${CONSUL_HTTP_PORT:-8500}}
 saga_timeout=${SAGA_TIMEOUT:-30s}
 processing_timeout=${MESSAGE_PROCESSING_TIMEOUT:-5s}
-demo_password=${DEMO_PASSWORD:-DemoPassword123}
+token_url=${OIDC_TOKEN_URL:-http://localhost:${KEYCLOAK_PORT:-8180}/realms/land-plot/protocol/openid-connect/token}
+demo_user=${DEMO_USER:-taras.melnyk@example.com}
+demo_user_password=${TARAS_MELNYK_PASSWORD:-TarasDevPassword123}
 polygon='[{"lat":50.45,"lon":30.50},{"lat":50.45,"lon":30.51},{"lat":50.46,"lon":30.51},{"lat":50.46,"lon":30.50}]'
 dead_queue=report.plot-events.dead
 stopped_service=
@@ -23,6 +31,16 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+user_token() {
+	curl -fsS \
+		--data-urlencode grant_type=password \
+		--data-urlencode client_id=land-plot-dev-cli \
+		--data-urlencode "username=$demo_user" \
+		--data-urlencode "password=$demo_user_password" \
+		--data-urlencode "scope=openid plots:read plots:write reports:read reports:write" \
+		"$token_url" | jq -er '.access_token'
+}
 
 require_command() {
 	if ! command -v "$1" >/dev/null 2>&1; then
@@ -150,13 +168,8 @@ for service_name in identity-service land-plot-service report-service api-gatewa
 	wait_for_healthy "$service_name"
 done
 
-echo "1. Registering a user and receiving a JWT"
-demo_email="lr3-demo-$(date +%s)-$$@example.com"
-credentials="{\"email\":\"$demo_email\",\"password\":\"$demo_password\"}"
-curl -fsS --request POST --header 'Content-Type: application/json' --data "$credentials" \
-	"$gateway_url/api/v1/auth/register" >/dev/null
-token=$(curl -fsS --request POST --header 'Content-Type: application/json' --data "$credentials" \
-	"$gateway_url/api/v1/auth/login" | jq -er '.access_token')
+echo "1. Receiving a token for $demo_user from Keycloak"
+token=$(user_token)
 
 echo "2. Successful saga: the plot is PENDING and becomes CONFIRMED"
 plot_response=$(create_plot "Поле 1")

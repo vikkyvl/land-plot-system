@@ -4,31 +4,28 @@ import (
 	"time"
 
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/domain"
-	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/handler/middleware"
-	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/service"
 )
 
-type credentialsRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type userResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
+type profileResponse struct {
+	Subject   string    `json:"sub"`
+	Email     string    `json:"email,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	Scopes    []string  `json:"scopes"`
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type loginResponse struct {
-	AccessToken string    `json:"access_token"`
-	TokenType   string    `json:"token_type"`
-	ExpiresAt   time.Time `json:"expires_at"`
-}
+func newProfileResponse(user domain.User, scopes []string) profileResponse {
+	if scopes == nil {
+		scopes = []string{}
+	}
 
-func newUserResponse(user domain.User) userResponse {
-	return userResponse{ID: user.ID, Email: user.Email, CreatedAt: user.CreatedAt}
-}
-
-func newLoginResponse(token service.Token) loginResponse {
-	return loginResponse{AccessToken: token.Value, TokenType: middleware.BearerScheme, ExpiresAt: token.ExpiresAt}
+	return profileResponse{
+		Subject:   user.ID,
+		Email:     user.Email,
+		Name:      user.Name,
+		Scopes:    scopes,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
 }

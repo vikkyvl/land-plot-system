@@ -3,10 +3,12 @@ module github.com/vleshchenko/land-plot-system/services/identity-service
 go 1.26.0
 
 require (
+	github.com/MicahParks/jwkset v0.11.4
+	github.com/MicahParks/keyfunc/v3 v3.9.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
-	golang.org/x/crypto v0.58.0
+	golang.org/x/time v0.15.0
 )
 
 require (

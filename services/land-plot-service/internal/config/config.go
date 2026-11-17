@@ -25,7 +25,8 @@ const (
 	defaultOutboxCleanup   = time.Minute
 	defaultOutboxRetention = time.Hour
 	defaultProcessingTime  = 5 * time.Second
-	minimumJWTSecretLength = 32
+	defaultOIDCAudience    = "land-plot-api"
+	defaultOIDCTimeout     = 5 * time.Second
 	maximumPort            = 65535
 )
 
@@ -41,7 +42,6 @@ type Config struct {
 	InstanceID      string
 	DatabaseURL     string
 	DatabaseTimeout time.Duration
-	JWTSecret       string
 	RabbitMQURL     string
 	RabbitMQTimeout time.Duration
 	OutboxInterval  time.Duration
@@ -51,6 +51,11 @@ type Config struct {
 	OutboxCleanupInterval time.Duration
 	OutboxRetention       time.Duration
 	ProcessingTimeout     time.Duration
+
+	OIDCIssuer   string
+	OIDCJWKSURL  string
+	OIDCAudience string
+	OIDCTimeout  time.Duration
 }
 
 func Load() (Config, error) {
@@ -60,7 +65,9 @@ func Load() (Config, error) {
 		ServiceAddress: os.Getenv(envServiceAddress),
 		InstanceID:     os.Getenv(envServiceInstanceID),
 		DatabaseURL:    os.Getenv(envDatabaseURL),
-		JWTSecret:      os.Getenv(envJWTSecret),
+		OIDCIssuer:     os.Getenv(envOIDCIssuer),
+		OIDCJWKSURL:    os.Getenv(envOIDCJWKSURL),
+		OIDCAudience:   stringOrDefault(envOIDCAudience, defaultOIDCAudience),
 		RabbitMQURL:    os.Getenv(envRabbitMQURL),
 	}
 	if err := serviceConfig.loadDurations(); err != nil {
@@ -107,6 +114,7 @@ func (serviceConfig *Config) loadDurations() error {
 		{envOutboxCleanupInterval, &serviceConfig.OutboxCleanupInterval, defaultOutboxCleanup},
 		{envOutboxRetention, &serviceConfig.OutboxRetention, defaultOutboxRetention},
 		{envMessageProcessingTimeout, &serviceConfig.ProcessingTimeout, defaultProcessingTime},
+		{envOIDCTimeout, &serviceConfig.OIDCTimeout, defaultOIDCTimeout},
 	}
 	for _, duration := range durations {
 		value, err := durationOrDefault(duration.key, duration.fallback)
@@ -129,15 +137,14 @@ func (serviceConfig *Config) validate() error {
 		{envConsulAddress, serviceConfig.ConsulAddress},
 		{envDatabaseURL, serviceConfig.DatabaseURL},
 		{envRabbitMQURL, serviceConfig.RabbitMQURL},
+		{envOIDCIssuer, serviceConfig.OIDCIssuer},
+		{envOIDCJWKSURL, serviceConfig.OIDCJWKSURL},
+		{envOIDCAudience, serviceConfig.OIDCAudience},
 	}
 	for _, setting := range required {
 		if strings.TrimSpace(setting.value) == "" {
 			return fmt.Errorf(formatMustNotBeEmpty, setting.key)
 		}
-	}
-
-	if len(strings.TrimSpace(serviceConfig.JWTSecret)) < minimumJWTSecretLength {
-		return fmt.Errorf(formatMustContainAtLeastCharacters, envJWTSecret, minimumJWTSecretLength)
 	}
 
 	return nil

@@ -23,6 +23,12 @@ var (
 	ErrForbidden = NewError(KindForbidden, "forbidden",
 		"resource belongs to another user")
 
+	ErrInsufficientScope = NewError(KindForbidden, "insufficient_scope",
+		"access token lacks the scope plots:read required to read the plot")
+
+	ErrPlotServiceRejectedToken = NewError(KindUnauthorized, "unauthorized",
+		"land-plot-service rejected the access token")
+
 	ErrPlotNotConfirmed = NewError(KindConflict, "plot_not_confirmed",
 		"plot is waiting for confirmation; retry the request later")
 )

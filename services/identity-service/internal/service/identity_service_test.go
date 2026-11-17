@@ -9,114 +9,78 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/domain"
 )
 
-const testPassword = "password123"
+const testSubject = "164d085d-f431-498a-819a-e5a1ec00e1c1"
+
+var errDatabase = errors.New("database is down")
 
 type userRepositoryStub struct {
-	created domain.User
-	user    domain.User
-	err     error
+	saved []domain.User
+	err   error
 }
 
-func (stub *userRepositoryStub) Create(_ context.Context, user domain.User) error {
-	stub.created = user
-	return stub.err
+func (stub *userRepositoryStub) Upsert(_ context.Context, user domain.User) (domain.User, error) {
+	stub.saved = append(stub.saved, user)
+	return user, stub.err
 }
 
-func (stub *userRepositoryStub) FindByEmail(context.Context, string) (domain.User, error) {
-	return stub.user, stub.err
+func newTestService(repository UserRepository, now time.Time) *IdentityService {
+	identity := NewIdentityService(repository)
+	identity.now = func() time.Time { return now }
+
+	return identity
 }
 
-func (stub *userRepositoryStub) FindByID(context.Context, string) (domain.User, error) {
-	return stub.user, stub.err
-}
-
-type passwordHasherStub struct {
-	compareError error
-}
-
-func (passwordHasherStub) Hash(string) (string, error)       { return "password-hash", nil }
-func (stub passwordHasherStub) Compare(string, string) error { return stub.compareError }
-
-type tokenIssuerStub struct{}
-
-func (tokenIssuerStub) Issue(string, string) (Token, error) {
-	return Token{Value: "access-token"}, nil
-}
-
-func TestRegisterNormalizesAndHashesCredentials(t *testing.T) {
+func TestProfileSavesTheUserFromTheToken(t *testing.T) {
 	repository := &userRepositoryStub{}
-	identity := NewIdentityService(repository, passwordHasherStub{}, tokenIssuerStub{})
-	fixedNow := time.Date(2026, time.October, 26, 12, 0, 0, 0, time.UTC)
-	identity.now = func() time.Time { return fixedNow }
+	now := time.Date(2026, time.November, 17, 12, 0, 0, 0, time.UTC)
 
-	user, err := identity.Register(context.Background(), " Student@Example.COM ", testPassword)
+	user, err := newTestService(repository, now).Profile(context.Background(), domain.Principal{
+		Subject: testSubject,
+		Email:   " Taras.Melnyk@Example.COM ",
+		Name:    " Тарас Мельник ",
+		Scopes:  []string{"openid"},
+	})
 	if err != nil {
-		t.Fatalf("Register() error = %v", err)
+		t.Fatalf("Profile() error = %v", err)
 	}
 
-	if user.Email != "student@example.com" || user.PasswordHash != "password-hash" || user.ID == "" {
-		t.Fatalf("Register() user = %#v", user)
+	want := domain.User{
+		ID:        testSubject,
+		Email:     "taras.melnyk@example.com",
+		Name:      "Тарас Мельник",
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
-
-	if !repository.created.CreatedAt.Equal(fixedNow) {
-		t.Fatalf("Register() created at = %v", repository.created.CreatedAt)
+	if user != want || len(repository.saved) != 1 || repository.saved[0] != want {
+		t.Fatalf("Profile() = %#v, saved = %#v", user, repository.saved)
 	}
 }
 
-func TestRegisterRejectsWeakPassword(t *testing.T) {
+func TestProfileAcceptsAServiceAccountWithoutEmail(t *testing.T) {
 	repository := &userRepositoryStub{}
 
-	_, err := NewIdentityService(
+	user, err := newTestService(
 		repository,
-		passwordHasherStub{},
-		tokenIssuerStub{},
-	).Register(context.Background(), "a@example.com", "short")
-
-	if !errors.Is(err, domain.ErrWeakPassword) || repository.created.ID != "" {
-		t.Fatalf("Register() error = %v, created = %#v", err, repository.created)
+		time.Now(),
+	).Profile(context.Background(), domain.Principal{Subject: testSubject})
+	if err != nil || user.Email != "" || user.Name != "" {
+		t.Fatalf("Profile() = %#v, %v", user, err)
 	}
 }
 
-func TestLoginHidesCredentialDetails(t *testing.T) {
-	tests := map[string]struct {
-		repository *userRepositoryStub
-		hasher     passwordHasherStub
-	}{
-		"unknown email": {&userRepositoryStub{err: domain.ErrUserNotFound}, passwordHasherStub{}},
-		"wrong password": {
-			&userRepositoryStub{user: domain.User{ID: "user-1"}},
-			passwordHasherStub{compareError: errors.New("mismatch")},
-		},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			_, err := NewIdentityService(
-				test.repository,
-				test.hasher,
-				tokenIssuerStub{},
-			).Login(context.Background(), "student@example.com", testPassword)
-			if !errors.Is(err, domain.ErrInvalidCredentials) {
-				t.Fatalf("Login() error = %v, want ErrInvalidCredentials", err)
-			}
-		})
+func TestProfileRejectsASubjectThatIsNotAUUID(t *testing.T) {
+	repository := &userRepositoryStub{}
+
+	_, err := newTestService(repository, time.Now()).Profile(context.Background(), domain.Principal{Subject: "admin"})
+	if !errors.Is(err, domain.ErrInvalidSubject) || len(repository.saved) != 0 {
+		t.Fatalf("Profile() error = %v, saved = %d", err, len(repository.saved))
 	}
 }
 
-func TestLoginReturnsToken(t *testing.T) {
-	repository := &userRepositoryStub{
-		user: domain.User{ID: "user-1", Email: "student@example.com", PasswordHash: "hash"},
-	}
-
-	token, err := NewIdentityService(
-		repository,
-		passwordHasherStub{},
-		tokenIssuerStub{},
-	).Login(context.Background(), "student@example.com", testPassword)
-	if err != nil {
-		t.Fatalf("Login() error = %v", err)
-	}
-
-	if token.Value != "access-token" {
-		t.Fatalf("Login() token = %#v", token)
+func TestProfileWrapsRepositoryErrors(t *testing.T) {
+	_, err := newTestService(&userRepositoryStub{err: errDatabase}, time.Now()).
+		Profile(context.Background(), domain.Principal{Subject: testSubject})
+	if !errors.Is(err, errDatabase) {
+		t.Fatalf("Profile() error = %v", err)
 	}
 }

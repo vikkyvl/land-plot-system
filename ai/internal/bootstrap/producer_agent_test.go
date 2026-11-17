@@ -8,8 +8,7 @@ import (
 )
 
 func TestLoadAgentSettingsUsesCommandDefaults(t *testing.T) {
-	t.Setenv("AI_USER_EMAIL", "agent@example.com")
-	t.Setenv("AI_USER_PASSWORD", "AgentPassword123")
+	t.Setenv("AI_CLIENT_SECRET", "ai-client-secret")
 	t.Setenv("LLM_API_KEY", "")
 
 	settings, err := loadAgentSettings(producerAddress, producerPublicURL)
@@ -24,12 +23,12 @@ func TestLoadAgentSettingsUsesCommandDefaults(t *testing.T) {
 }
 
 func TestRunProducerAgentStopsOnInvalidConfiguration(t *testing.T) {
-	t.Setenv("AI_USER_EMAIL", "")
+	t.Setenv("AI_CLIENT_SECRET", "")
 
 	var stderr bytes.Buffer
 
 	if code := RunProducerAgent(context.Background(), &stderr); code != ExitError ||
-		!strings.Contains(stderr.String(), "AI_USER_EMAIL must not be empty") {
+		!strings.Contains(stderr.String(), "AI_CLIENT_SECRET must not be empty") {
 		t.Fatalf("RunProducerAgent() = %d, stderr = %q", code, stderr.String())
 	}
 }

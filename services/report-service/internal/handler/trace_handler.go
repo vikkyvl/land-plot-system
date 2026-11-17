@@ -42,8 +42,8 @@ func (handler *traceHandler) trace(response http.ResponseWriter, request *http.R
 
 	trace, err := handler.reports.Trace(
 		request.Context(),
+		callerFrom(request),
 		request.Header.Get(gatewayInstanceHeader),
-		request.Header.Get(respond.RequestIDHeader),
 		message,
 	)
 	if err != nil {

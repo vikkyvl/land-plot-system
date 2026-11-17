@@ -15,7 +15,7 @@ PLOT_TEST_DATABASE_URL ?= postgres://plot_user:plot_dev_password@localhost:$(POS
 REPORT_TEST_DATABASE_URL ?= postgres://report_user:report_dev_password@localhost:$(POSTGRES_PORT)/report_db?sslmode=disable
 INTEGRATION_TEST := go test -count=1 -tags=integration ./internal/repository/postgres/...
 
-.PHONY: fmt lint lint-fix strip-comments test test-integration vet check compose-config demo demo-lr3 demo-lr4 ai-mcp-inspector
+.PHONY: fmt lint lint-fix strip-comments test test-integration vet check compose-config demo demo-lr3 demo-lr4 demo-lr5 ai-mcp-inspector
 
 # Formats code: gofumpt, import groups (gci) and long lines (golines).
 fmt:
@@ -64,12 +64,18 @@ demo-lr3:
 demo-lr4:
 	./scripts/demo_lr4.sh
 
+# Checks CORS, Keycloak tokens, scopes and Zero Trust through the gateway and the services.
+demo-lr5:
+	./scripts/demo_lr5.sh
+
 # Opens MCP Inspector with the MCP server over stdio; the stack must be running (docker compose up -d).
 ai-mcp-inspector:
 	go -C ai build -o $(abspath ai/bin)/ ./cmd/mcp-server
 	@set -a; [ -f .env ] && . ./.env; set +a; \
 	npx -y @modelcontextprotocol/inspector \
 		-e GATEWAY_URL=http://localhost:$${GATEWAY_PORT:-8080} \
-		-e AI_USER_EMAIL="$${AI_USER_EMAIL:-ai-agent@example.com}" \
-		-e AI_USER_PASSWORD="$${AI_USER_PASSWORD:-AiAgentPassword123}" \
+		-e OIDC_TOKEN_URL="$${OIDC_TOKEN_URL:-http://localhost:8180/realms/land-plot/protocol/openid-connect/token}" \
+		-e AI_CLIENT_ID="$${AI_CLIENT_ID:-land-plot-ai}" \
+		-e AI_CLIENT_SECRET="$${AI_CLIENT_SECRET:-local_development_ai_client_secret}" \
+		-e AI_SCOPES="$${AI_SCOPES:-plots:read plots:write reports:read reports:write}" \
 		$(abspath ai/bin)/mcp-server -transport stdio

@@ -58,8 +58,7 @@ func TestRunFCClientPrintsUsageForInvalidArguments(t *testing.T) {
 }
 
 func TestRunFCClientRequiresAnAPIKey(t *testing.T) {
-	t.Setenv("AI_USER_EMAIL", "agent@example.com")
-	t.Setenv("AI_USER_PASSWORD", "AgentPassword123")
+	t.Setenv("AI_CLIENT_SECRET", "ai-client-secret")
 	t.Setenv("LLM_API_KEY", "")
 
 	var stderr bytes.Buffer

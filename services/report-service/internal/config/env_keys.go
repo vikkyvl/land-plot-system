@@ -7,7 +7,6 @@ const (
 	envDatabaseURL              = "DATABASE_URL"
 	envHTTPAddress              = "HTTP_ADDRESS"
 	envHTTPShutdownTimeout      = "HTTP_SHUTDOWN_TIMEOUT"
-	envJWTSecret                = "JWT_SECRET"
 	envLandPlotServiceName      = "LAND_PLOT_SERVICE_NAME"
 	envMessageProcessingTimeout = "MESSAGE_PROCESSING_TIMEOUT"
 	envOutboxCleanupInterval    = "OUTBOX_CLEANUP_INTERVAL"
@@ -21,4 +20,8 @@ const (
 	envServiceAddress           = "SERVICE_ADDRESS"
 	envServiceInstanceID        = "SERVICE_INSTANCE_ID"
 	envUpstreamTimeout          = "UPSTREAM_TIMEOUT"
+	envOIDCAudience             = "OIDC_AUDIENCE"
+	envOIDCIssuer               = "OIDC_ISSUER"
+	envOIDCJWKSURL              = "OIDC_JWKS_URL"
+	envOIDCTimeout              = "OIDC_TIMEOUT"
 )

@@ -10,11 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/auth"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/config"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/logging"
-	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/password"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/repository/postgres"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/service"
 )
@@ -38,12 +36,15 @@ func Run() error {
 		return err
 	}
 
-	identity := service.NewIdentityService(
-		userRepository,
-		password.NewBcryptHasher(serviceConfig.BcryptCost),
-		auth.NewJWTIssuer(serviceConfig.JWTSecret, serviceConfig.TokenTTL),
-	)
-	router := handler.NewRouter(logger, config.ServiceName, identity, auth.NewJWTVerifier(serviceConfig.JWTSecret))
+	identity := service.NewIdentityService(userRepository)
+
+	verifier, stopVerifier, err := newTokenVerifier(serviceConfig, logger)
+	if err != nil {
+		return err
+	}
+	defer stopVerifier()
+
+	router := handler.NewRouter(logger, config.ServiceName, identity, verifier)
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)

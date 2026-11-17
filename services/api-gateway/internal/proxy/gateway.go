@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/discovery"
@@ -51,7 +52,11 @@ func NewGateway(
 		upstreamTimeout: upstreamTimeout,
 		instanceID:      instanceID,
 	}
-	gateway.proxy = &httputil.ReverseProxy{Director: direct, ErrorHandler: gateway.handleProxyError}
+	gateway.proxy = &httputil.ReverseProxy{
+		Director:       direct,
+		ModifyResponse: removeUpstreamCORSHeaders,
+		ErrorHandler:   gateway.handleProxyError,
+	}
 
 	return gateway
 }
@@ -119,4 +124,14 @@ func (gateway *Gateway) handleProxyError(response http.ResponseWriter, request *
 		logging.KeyRequestID, request.Header.Get(HeaderRequestID),
 	)
 	WriteError(response, request, ErrBadGateway)
+}
+
+func removeUpstreamCORSHeaders(response *http.Response) error {
+	for name := range response.Header {
+		if strings.HasPrefix(name, corsHeaderPrefix) {
+			response.Header.Del(name)
+		}
+	}
+
+	return nil
 }

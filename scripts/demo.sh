@@ -2,6 +2,12 @@
 
 set -eu
 
+if [ -f .env ]; then
+	set -a
+	. ./.env
+	set +a
+fi
+
 gateway_url=${GATEWAY_URL:-http://localhost:8080}
 consul_port=${CONSUL_HTTP_PORT:-8500}
 consul_url=${CONSUL_URL:-http://localhost:${consul_port}}
@@ -9,7 +15,9 @@ rabbitmq_port=${RABBITMQ_MANAGEMENT_PORT:-15672}
 rabbitmq_url=${RABBITMQ_MANAGEMENT_URL:-http://localhost:${rabbitmq_port}}
 rabbitmq_user=${RABBITMQ_USER:-land_app}
 rabbitmq_password=${RABBITMQ_PASSWORD:-rabbitmq_dev_password}
-demo_password=${DEMO_PASSWORD:-DemoPassword123}
+token_url=${OIDC_TOKEN_URL:-http://localhost:${KEYCLOAK_PORT:-8180}/realms/land-plot/protocol/openid-connect/token}
+demo_user=${DEMO_USER:-taras.melnyk@example.com}
+demo_user_password=${TARAS_MELNYK_PASSWORD:-TarasDevPassword123}
 demo_tmp=$(mktemp -d)
 stopped_container=
 
@@ -22,6 +30,16 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+user_token() {
+	curl -fsS \
+		--data-urlencode grant_type=password \
+		--data-urlencode client_id=land-plot-dev-cli \
+		--data-urlencode "username=$demo_user" \
+		--data-urlencode "password=$demo_user_password" \
+		--data-urlencode "scope=openid plots:read plots:write reports:read reports:write" \
+		"$token_url" | jq -er '.access_token'
+}
 
 require_command() {
 	if ! command -v "$1" >/dev/null 2>&1; then
@@ -195,20 +213,8 @@ echo "3. Checking Consul registrations"
 curl -fsS "$consul_url/v1/health/state/passing" |
 	jq -r '.[] | select(.ServiceName != "" and .ServiceName != "consul") | [.ServiceName,.ServiceID,.Status] | @tsv'
 
-demo_email="lr2-demo-$(date +%s)-$$@example.com"
-curl -fsS \
-	--request POST \
-	--header 'Content-Type: application/json' \
-	--data "{\"email\":\"$demo_email\",\"password\":\"$demo_password\"}" \
-	"$gateway_url/api/v1/auth/register" |
-	jq .
-
-login_response=$(curl -fsS \
-	--request POST \
-	--header 'Content-Type: application/json' \
-	--data "{\"email\":\"$demo_email\",\"password\":\"$demo_password\"}" \
-	"$gateway_url/api/v1/auth/login")
-token=$(printf '%s' "$login_response" | jq -er '.access_token')
+token=$(user_token)
+echo "   Signed in as $demo_user through Keycloak (land-plot-dev-cli)"
 
 unauthorized_status=$(curl -sS \
 	--output "$demo_tmp/unauthorized.json" \
@@ -270,7 +276,7 @@ if [ "$served_count" -ne 3 ]; then
 fi
 
 echo "7. Checking synchronous gateway -> report -> land flow"
-curl -fsS "$gateway_url/api/v1/demo/chain?message=lr2-demo" |
+curl -fsS --header "Authorization: Bearer $token" "$gateway_url/api/v1/demo/chain?message=lr2-demo" |
 	jq -e '.path | length == 3 and .[0].service == "api-gateway" and .[1].service == "report-service" and .[2].service == "land-plot-service"'
 report_response=$(curl -fsS \
 	--request POST \

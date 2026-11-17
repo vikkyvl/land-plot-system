@@ -13,11 +13,13 @@ type profileHandler struct {
 }
 
 func (handler *profileHandler) get(response http.ResponseWriter, request *http.Request) {
-	user, err := handler.identity.Profile(request.Context(), middleware.UserID(request.Context()))
+	principal := middleware.PrincipalFrom(request.Context())
+
+	user, err := handler.identity.Profile(request.Context(), principal)
 	if err != nil {
 		handler.responses.Error(response, request, err)
 		return
 	}
 
-	handler.responses.JSON(response, http.StatusOK, newUserResponse(user))
+	handler.responses.JSON(response, http.StatusOK, newProfileResponse(user, principal.Scopes))
 }

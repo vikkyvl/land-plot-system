@@ -16,11 +16,10 @@ type route struct {
 }
 
 var routes = []route{
-	{path: "/api/v1/auth", service: identityService},
 	{path: "/api/v1/users/profile", service: identityService, exact: true, protected: true},
 	{path: "/api/v1/plots", service: landPlotService, protected: true},
 	{path: "/api/v1/reports", service: reportService, protected: true},
-	{path: "/api/v1/demo/chain", service: reportService, exact: true},
+	{path: "/api/v1/demo/chain", service: reportService, exact: true, protected: true},
 }
 
 func (candidateRoute route) matches(path string) bool {

@@ -14,6 +14,8 @@ const ServiceName = "report-service"
 
 const (
 	defaultHTTPAddress       = ":8083"
+	defaultOIDCAudience      = "land-plot-api"
+	defaultOIDCTimeout       = 5 * time.Second
 	defaultConsulAddress     = "http://localhost:8500"
 	defaultShutdownTimeout   = 10 * time.Second
 	defaultConsulTimeout     = 3 * time.Second
@@ -27,7 +29,6 @@ const (
 	defaultOutboxRetention   = time.Hour
 	defaultEventPrefetch     = 10
 	defaultPlotServiceName   = "land-plot-service"
-	minimumJWTSecretLength   = 32
 	maximumPort              = 65535
 )
 
@@ -46,7 +47,10 @@ type Config struct {
 	InstanceID        string
 	DatabaseURL       string
 	DatabaseTimeout   time.Duration
-	JWTSecret         string
+	OIDCIssuer        string
+	OIDCJWKSURL       string
+	OIDCAudience      string
+	OIDCTimeout       time.Duration
 	UpstreamTimeout   time.Duration
 	PlotServiceName   string
 	RabbitMQURL       string
@@ -68,7 +72,9 @@ func Load() (Config, error) {
 		ServiceAddress:  os.Getenv(envServiceAddress),
 		InstanceID:      os.Getenv(envServiceInstanceID),
 		DatabaseURL:     os.Getenv(envDatabaseURL),
-		JWTSecret:       os.Getenv(envJWTSecret),
+		OIDCIssuer:      os.Getenv(envOIDCIssuer),
+		OIDCJWKSURL:     os.Getenv(envOIDCJWKSURL),
+		OIDCAudience:    stringOrDefault(envOIDCAudience, defaultOIDCAudience),
 		PlotServiceName: stringOrDefault(envLandPlotServiceName, defaultPlotServiceName),
 		RabbitMQURL:     os.Getenv(envRabbitMQURL),
 		FailNamePrefix:  os.Getenv(envReportFailNamePrefix),
@@ -113,6 +119,7 @@ func (serviceConfig *Config) loadDurations() error {
 		fallback time.Duration
 	}{
 		{envHTTPShutdownTimeout, &serviceConfig.ShutdownTimeout, defaultShutdownTimeout},
+		{envOIDCTimeout, &serviceConfig.OIDCTimeout, defaultOIDCTimeout},
 		{envConsulTimeout, &serviceConfig.ConsulTimeout, defaultConsulTimeout},
 		{envDatabaseTimeout, &serviceConfig.DatabaseTimeout, defaultDatabaseTimeout},
 		{envUpstreamTimeout, &serviceConfig.UpstreamTimeout, defaultUpstreamTimeout},
@@ -141,6 +148,9 @@ func (serviceConfig *Config) validate() error {
 	}{
 		{envHTTPAddress, serviceConfig.HTTPAddress},
 		{envConsulAddress, serviceConfig.ConsulAddress},
+		{envOIDCIssuer, serviceConfig.OIDCIssuer},
+		{envOIDCJWKSURL, serviceConfig.OIDCJWKSURL},
+		{envOIDCAudience, serviceConfig.OIDCAudience},
 		{envDatabaseURL, serviceConfig.DatabaseURL},
 		{envLandPlotServiceName, serviceConfig.PlotServiceName},
 		{envRabbitMQURL, serviceConfig.RabbitMQURL},
@@ -149,10 +159,6 @@ func (serviceConfig *Config) validate() error {
 		if strings.TrimSpace(setting.value) == "" {
 			return fmt.Errorf(formatMustNotBeEmpty, setting.key)
 		}
-	}
-
-	if len(strings.TrimSpace(serviceConfig.JWTSecret)) < minimumJWTSecretLength {
-		return fmt.Errorf(formatMustContainAtLeastCharacters, envJWTSecret, minimumJWTSecretLength)
 	}
 
 	return nil

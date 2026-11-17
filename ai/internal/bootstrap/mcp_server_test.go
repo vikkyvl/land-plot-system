@@ -39,8 +39,7 @@ func TestRunMCPServerPrintsUsageForUnknownTransport(t *testing.T) {
 }
 
 func TestRunMCPServerOverHTTPRequiresAnAccessToken(t *testing.T) {
-	t.Setenv("AI_USER_EMAIL", "agent@example.com")
-	t.Setenv("AI_USER_PASSWORD", "AgentPassword123")
+	t.Setenv("AI_CLIENT_SECRET", "ai-client-secret")
 	t.Setenv("GATEWAY_URL", "http://127.0.0.1:1")
 	t.Setenv("MCP_ACCESS_TOKEN", "")
 

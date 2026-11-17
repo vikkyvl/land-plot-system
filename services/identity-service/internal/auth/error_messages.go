@@ -1,5 +1,7 @@
 package auth
 
 const (
-	wrapSignJWT = "sign JWT: %w"
+	formatWrapTokenError = "%w: %w"
+	wrapCreateKeyStorage = "create signing key storage: %w"
+	wrapCreateKeyfunc    = "create signing key lookup: %w"
 )

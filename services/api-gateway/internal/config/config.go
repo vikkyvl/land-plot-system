@@ -13,13 +13,15 @@ import (
 const ServiceName = "api-gateway"
 
 const (
-	defaultHTTPAddress     = ":8080"
-	defaultConsulAddress   = "http://localhost:8500"
-	defaultShutdownTimeout = 10 * time.Second
-	defaultConsulTimeout   = 3 * time.Second
-	defaultUpstreamTimeout = 5 * time.Second
-	minimumJWTSecretLength = 32
-	maximumPort            = 65535
+	defaultHTTPAddress        = ":8080"
+	defaultCORSAllowedOrigins = "https://cad.kpi.ua,http://localhost:5173,http://localhost:4173"
+	defaultOIDCAudience       = "land-plot-api"
+	defaultOIDCTimeout        = 5 * time.Second
+	defaultConsulAddress      = "http://localhost:8500"
+	defaultShutdownTimeout    = 10 * time.Second
+	defaultConsulTimeout      = 3 * time.Second
+	defaultUpstreamTimeout    = 5 * time.Second
+	maximumPort               = 65535
 )
 
 var errInvalidPort = errors.New(envHTTPAddress + " must contain a valid port")
@@ -33,7 +35,11 @@ type Config struct {
 	UpstreamTimeout time.Duration
 	ServiceAddress  string
 	InstanceID      string
-	JWTSecret       string
+	OIDCIssuer      string
+	OIDCJWKSURL     string
+	OIDCAudience    string
+	OIDCTimeout     time.Duration
+	AllowedOrigins  []string
 }
 
 func Load() (Config, error) {
@@ -42,7 +48,9 @@ func Load() (Config, error) {
 		ConsulAddress:  stringOrDefault(envConsulAddress, defaultConsulAddress),
 		ServiceAddress: os.Getenv(envServiceAddress),
 		InstanceID:     os.Getenv(envServiceInstanceID),
-		JWTSecret:      os.Getenv(envJWTSecret),
+		OIDCIssuer:     os.Getenv(envOIDCIssuer),
+		OIDCJWKSURL:    os.Getenv(envOIDCJWKSURL),
+		OIDCAudience:   stringOrDefault(envOIDCAudience, defaultOIDCAudience),
 	}
 	if err := serviceConfig.loadDurations(); err != nil {
 		return Config{}, err
@@ -53,6 +61,13 @@ func Load() (Config, error) {
 	}
 
 	var err error
+	if serviceConfig.AllowedOrigins, err = originsOrDefault(
+		envCORSAllowedOrigins,
+		defaultCORSAllowedOrigins,
+	); err != nil {
+		return Config{}, err
+	}
+
 	if serviceConfig.HTTPPort, err = parsePort(serviceConfig.HTTPAddress); err != nil {
 		return Config{}, err
 	}
@@ -73,6 +88,7 @@ func (serviceConfig *Config) loadDurations() error {
 		fallback time.Duration
 	}{
 		{envHTTPShutdownTimeout, &serviceConfig.ShutdownTimeout, defaultShutdownTimeout},
+		{envOIDCTimeout, &serviceConfig.OIDCTimeout, defaultOIDCTimeout},
 		{envConsulTimeout, &serviceConfig.ConsulTimeout, defaultConsulTimeout},
 		{envUpstreamTimeout, &serviceConfig.UpstreamTimeout, defaultUpstreamTimeout},
 	}
@@ -95,15 +111,14 @@ func (serviceConfig *Config) validate() error {
 	}{
 		{envHTTPAddress, serviceConfig.HTTPAddress},
 		{envConsulAddress, serviceConfig.ConsulAddress},
+		{envOIDCIssuer, serviceConfig.OIDCIssuer},
+		{envOIDCJWKSURL, serviceConfig.OIDCJWKSURL},
+		{envOIDCAudience, serviceConfig.OIDCAudience},
 	}
 	for _, setting := range required {
 		if strings.TrimSpace(setting.value) == "" {
 			return fmt.Errorf(formatMustNotBeEmpty, setting.key)
 		}
-	}
-
-	if len(strings.TrimSpace(serviceConfig.JWTSecret)) < minimumJWTSecretLength {
-		return fmt.Errorf(formatMustContainAtLeastCharacters, envJWTSecret, minimumJWTSecretLength)
 	}
 
 	return nil

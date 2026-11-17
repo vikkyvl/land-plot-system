@@ -42,9 +42,9 @@ func TestEveryErrorKindHasStatus(t *testing.T) {
 }
 
 func TestDomainErrorUsesItsKindCodeAndMessage(t *testing.T) {
-	status, body, _ := writeError(t, fmt.Errorf("create user: %w", domain.ErrUserExists))
+	status, body, _ := writeError(t, fmt.Errorf("profile: %w", domain.ErrInvalidSubject))
 
-	if status != http.StatusConflict || body.Code != "user_exists" || body.RequestID != "request-1" {
+	if status != http.StatusUnauthorized || body.Code != "invalid_subject" || body.RequestID != "request-1" {
 		t.Fatalf("status = %d body = %#v", status, body)
 	}
 }

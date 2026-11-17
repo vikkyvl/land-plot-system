@@ -9,13 +9,13 @@ func TestFindRoute(t *testing.T) {
 		found     bool
 		protected bool
 	}{
-		{path: "/api/v1/auth/login", service: identityService, found: true},
+		{path: "/api/v1/auth/login", found: false},
 		{path: "/api/v1/users/profile", service: identityService, found: true, protected: true},
 		{path: "/api/v1/users/profile/extra", found: false},
 		{path: "/api/v1/plots", service: landPlotService, found: true, protected: true},
 		{path: "/api/v1/plots/42", service: landPlotService, found: true, protected: true},
 		{path: "/api/v1/reports/42", service: reportService, found: true, protected: true},
-		{path: "/api/v1/demo/chain", service: reportService, found: true},
+		{path: "/api/v1/demo/chain", service: reportService, found: true, protected: true},
 		{path: "/api/v1/demo/chain/extra", found: false},
 		{path: "/api/v1/plot", found: false},
 		{path: "/internal/plots/42", found: false},

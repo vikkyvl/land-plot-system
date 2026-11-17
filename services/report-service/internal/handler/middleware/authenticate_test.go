@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler/respond"
 )
 
@@ -15,7 +16,9 @@ type verifierStub struct {
 	err    error
 }
 
-func (stub verifierStub) Verify(string) (string, error) { return stub.userID, stub.err }
+func (stub verifierStub) Verify(string) (domain.Principal, error) {
+	return domain.Principal{Subject: stub.userID}, stub.err
+}
 
 func authenticate(t *testing.T, verifier TokenVerifier, authorization string) (int, string) {
 	t.Helper()

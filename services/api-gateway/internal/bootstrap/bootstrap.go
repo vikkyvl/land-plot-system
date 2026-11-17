@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/auth"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/balancer"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/config"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/discovery/consul"
@@ -35,7 +34,14 @@ func Run() error {
 		serviceConfig.UpstreamTimeout,
 		serviceConfig.InstanceID,
 	)
-	router := handler.NewRouter(logger, config.ServiceName, gateway, auth.NewJWTVerifier(serviceConfig.JWTSecret))
+
+	verifier, stopVerifier, err := newTokenVerifier(serviceConfig, logger)
+	if err != nil {
+		return err
+	}
+	defer stopVerifier()
+
+	router := handler.NewRouter(logger, config.ServiceName, gateway, verifier, serviceConfig.AllowedOrigins)
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)

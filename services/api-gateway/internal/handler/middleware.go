@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -16,6 +17,9 @@ const (
 	bearerScheme             = "Bearer"
 	requestIDBytes           = 16
 	authorizationHeaderParts = 2
+	rejectedRequestChallenge = `Bearer error="invalid_token"`
+	formatInsufficientScope  = `Bearer error="insufficient_scope", scope="%s"`
+	scopeSeparator           = " "
 )
 
 func withRequestID(next http.Handler) http.Handler {
@@ -50,22 +54,38 @@ func authenticate(verifier TokenVerifier, next http.Handler) http.Handler {
 			return
 		}
 
-		userID, email, err := verifyBearerToken(verifier, request.Header.Get("Authorization"))
+		principal, err := verifyBearerToken(verifier, request.Header.Get("Authorization"))
 		if err != nil {
+			response.Header().Set(proxy.HeaderWWWAuthenticate, rejectedRequestChallenge)
 			proxy.WriteError(response, request, proxy.ErrUnauthorized)
+
 			return
 		}
 
-		request.Header.Set(HeaderUserID, userID)
-		request.Header.Set(HeaderUserEmail, email)
+		scopes, known := proxy.RequiredScopes(request.Method, request.URL.Path)
+		if !known {
+			proxy.WriteError(response, request, proxy.ErrRouteNotFound)
+			return
+		}
+
+		if !principal.HasScopes(scopes) {
+			response.Header().Set(proxy.HeaderWWWAuthenticate,
+				fmt.Sprintf(formatInsufficientScope, strings.Join(scopes, scopeSeparator)))
+			proxy.WriteError(response, request, proxy.ErrInsufficientScope)
+
+			return
+		}
+
+		request.Header.Set(HeaderUserID, principal.Subject)
+		request.Header.Set(HeaderUserEmail, principal.Email)
 		next.ServeHTTP(response, request)
 	})
 }
 
-func verifyBearerToken(verifier TokenVerifier, header string) (userID, email string, err error) {
+func verifyBearerToken(verifier TokenVerifier, header string) (proxy.Principal, error) {
 	parts := strings.Fields(header)
 	if len(parts) != authorizationHeaderParts || !strings.EqualFold(parts[0], bearerScheme) {
-		return "", "", proxy.ErrUnauthorized
+		return proxy.Principal{}, proxy.ErrUnauthorized
 	}
 
 	return verifier.Verify(parts[1])

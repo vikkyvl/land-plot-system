@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vleshchenko/land-plot-system/services/report-service/internal/auth"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/client/httpclient"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/config"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/discovery/consul"
@@ -61,15 +60,17 @@ func Run() error {
 	relay := service.NewOutboxRelay(
 		postgres.NewOutboxRepository(pool),
 		publisher,
-		service.OutboxRelayConfig{
-			PollInterval:    serviceConfig.OutboxInterval,
-			MaxAttempts:     serviceConfig.OutboxAttempts,
-			CleanupInterval: serviceConfig.OutboxCleanupInterval,
-			Retention:       serviceConfig.OutboxRetention,
-		},
+		outboxRelayConfig(serviceConfig),
 		logger,
 	)
-	router := handler.NewRouter(logger, config.ServiceName, reports, auth.NewJWTVerifier(serviceConfig.JWTSecret))
+
+	verifier, stopVerifier, err := newTokenVerifier(serviceConfig, logger)
+	if err != nil {
+		return err
+	}
+	defer stopVerifier()
+
+	router := handler.NewRouter(logger, config.ServiceName, reports, verifier)
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)

@@ -1,12 +1,14 @@
 package config
 
 const (
+	envAIClientID            = "AI_CLIENT_ID"
+	envAIClientSecret        = "AI_CLIENT_SECRET"
+	envAIScopes              = "AI_SCOPES"
+	envOIDCTokenURL          = "OIDC_TOKEN_URL"
 	envAgentHTTPAddress      = "AGENT_HTTP_ADDR"
 	envAgentMaxSteps         = "AGENT_MAX_STEPS"
 	envAgentPublicURL        = "AGENT_PUBLIC_URL"
 	envAgentTokenBudget      = "AGENT_TOKEN_BUDGET"
-	envAIUserEmail           = "AI_USER_EMAIL"
-	envAIUserPassword        = "AI_USER_PASSWORD"
 	envA2ACallTimeout        = "A2A_CALL_TIMEOUT"
 	envGatewayTimeout        = "GATEWAY_TIMEOUT"
 	envGatewayURL            = "GATEWAY_URL"

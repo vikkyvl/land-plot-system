@@ -5,7 +5,6 @@ import (
 
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler/middleware"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler/respond"
-	"github.com/vleshchenko/land-plot-system/services/report-service/internal/service"
 )
 
 type reportHandler struct {
@@ -20,14 +19,7 @@ func (handler *reportHandler) create(response http.ResponseWriter, request *http
 		return
 	}
 
-	user := middleware.PrincipalFrom(request.Context())
-	caller := service.Caller{
-		UserID:      user.UserID,
-		AccessToken: user.AccessToken,
-		RequestID:   request.Header.Get(respond.RequestIDHeader),
-	}
-
-	report, err := handler.reports.Create(request.Context(), caller, body.PlotID)
+	report, err := handler.reports.Create(request.Context(), callerFrom(request), body.PlotID)
 	if err != nil {
 		handler.responses.Error(response, request, err)
 		return

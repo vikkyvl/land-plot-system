@@ -18,6 +18,16 @@ var (
 		Message: "valid bearer token is required",
 	}
 
+	ErrInsufficientScope = &Error{
+		Status: http.StatusForbidden, Code: "insufficient_scope",
+		Message: "access token lacks the required scope",
+	}
+
+	ErrOriginNotAllowed = &Error{
+		Status: http.StatusForbidden, Code: "origin_not_allowed",
+		Message: "origin is not allowed to call this API",
+	}
+
 	ErrRouteNotFound = &Error{
 		Status: http.StatusNotFound, Code: "route_not_found",
 		Message: "route not found",

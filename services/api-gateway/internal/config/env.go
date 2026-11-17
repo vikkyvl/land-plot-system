@@ -2,9 +2,13 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
+
+const originSeparator = ","
 
 func stringOrDefault(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
@@ -26,4 +30,25 @@ func durationOrDefault(key string, fallback time.Duration) (time.Duration, error
 	}
 
 	return parsed, nil
+}
+
+func originsOrDefault(key, fallback string) ([]string, error) {
+	origins := make([]string, 0)
+
+	for origin := range strings.SplitSeq(stringOrDefault(key, fallback), originSeparator) {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+
+		parsed, err := url.Parse(origin)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+			parsed.Scheme+"://"+parsed.Host != origin {
+			return nil, fmt.Errorf(formatMustListOrigins, key, origin)
+		}
+
+		origins = append(origins, origin)
+	}
+
+	return origins, nil
 }

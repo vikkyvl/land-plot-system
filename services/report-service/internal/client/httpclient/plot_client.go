@@ -33,9 +33,7 @@ func (plotClient *PlotClient) Get(
 	caller service.Caller,
 	plotID string,
 ) (domain.PlotSnapshot, error) {
-	header := http.Header{}
-	header.Set("Authorization", "Bearer "+caller.AccessToken)
-	header.Set(requestIDHeader, caller.RequestID)
+	header := authorizedHeader(caller)
 
 	response, err := plotClient.send(requestContext, "/internal/plots/"+url.PathEscape(plotID), header)
 	if err != nil {
@@ -47,8 +45,10 @@ func (plotClient *PlotClient) Get(
 	case http.StatusOK:
 	case http.StatusNotFound:
 		return domain.PlotSnapshot{}, domain.ErrPlotNotFound
+	case http.StatusUnauthorized:
+		return domain.PlotSnapshot{}, domain.ErrPlotServiceRejectedToken
 	case http.StatusForbidden:
-		return domain.PlotSnapshot{}, domain.ErrForbidden
+		return domain.PlotSnapshot{}, forbiddenError(response)
 	default:
 		return domain.PlotSnapshot{}, fmt.Errorf(wrapReturned, service.ErrPlotServiceUnavailable, response.Status)
 	}
@@ -67,10 +67,10 @@ func (plotClient *PlotClient) Get(
 
 func (plotClient *PlotClient) Trace(
 	requestContext context.Context,
-	requestID, message string,
+	caller service.Caller,
+	message string,
 ) ([]domain.TraceHop, error) {
-	header := http.Header{}
-	header.Set(requestIDHeader, requestID)
+	header := authorizedHeader(caller)
 
 	query := url.Values{"message": []string{message}}.Encode()
 
@@ -94,4 +94,21 @@ func (plotClient *PlotClient) Trace(
 	}
 
 	return trace.toDomain(), nil
+}
+
+func authorizedHeader(caller service.Caller) http.Header {
+	header := http.Header{}
+	header.Set(authorizationHeader, bearerPrefix+caller.AccessToken)
+	header.Set(requestIDHeader, caller.RequestID)
+
+	return header
+}
+
+func forbiddenError(response *http.Response) error {
+	var body errorResponse
+	if decodeLimited(response.Body, &body) == nil && body.Code == codeInsufficientScope {
+		return domain.ErrInsufficientScope
+	}
+
+	return domain.ErrForbidden
 }

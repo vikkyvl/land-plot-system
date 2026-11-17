@@ -44,7 +44,9 @@ func (stub *plotClientStub) Get(_ context.Context, caller Caller, plotID string)
 	return stub.plot, stub.err
 }
 
-func (stub *plotClientStub) Trace(context.Context, string, string) ([]domain.TraceHop, error) {
+func (stub *plotClientStub) Trace(_ context.Context, caller Caller, _ string) ([]domain.TraceHop, error) {
+	stub.caller = caller
+
 	return []domain.TraceHop{{Service: "land-plot-service", Instance: "plot-1", Protocol: "HTTP"}}, stub.err
 }
 
@@ -126,9 +128,10 @@ func TestReportServiceProtectsStoredReport(t *testing.T) {
 }
 
 func TestReportServiceBuildsDiagnosticPath(t *testing.T) {
-	reports := NewReportService(&reportRepositoryStub{}, &plotClientStub{}, testInstanceID)
+	plots := &plotClientStub{}
+	reports := NewReportService(&reportRepositoryStub{}, plots, testInstanceID)
 
-	trace, err := reports.Trace(context.Background(), "gateway-1", "request-1", "hello")
+	trace, err := reports.Trace(context.Background(), testCaller, "gateway-1", "hello")
 	if err != nil {
 		t.Fatalf("Trace() error = %v", err)
 	}
@@ -136,6 +139,10 @@ func TestReportServiceBuildsDiagnosticPath(t *testing.T) {
 	if len(trace.Path) != 3 || trace.Path[0].Instance != "gateway-1" || trace.Path[1].Instance != testInstanceID ||
 		trace.Path[2].Instance != "plot-1" {
 		t.Fatalf("Trace() = %#v", trace)
+	}
+
+	if plots.caller != testCaller {
+		t.Fatalf("land-plot-service got caller %#v, want %#v", plots.caller, testCaller)
 	}
 }
 

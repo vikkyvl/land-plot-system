@@ -10,7 +10,7 @@ This Go module lets AI models and agents use the Land Plot System API. It contai
 | `cmd/consumer-agent`   | A2A agent over `report-service`, the event consumer: builds reports and delegates to the producer |
 | `cmd/a2a-call`         | Small A2A client that sends a task and prints its states and artifacts                      |
 
-Every part works with the system only through `api-gateway` with a JWT, like any other client. No part reads the databases or RabbitMQ directly, and the Go services of the system are not changed.
+Every part works with the system only through `api-gateway` with an access token from Keycloak, like any other client. No part reads the databases or RabbitMQ directly, and the Go services of the system are not changed.
 
 ## Layout
 
@@ -18,7 +18,7 @@ Every part works with the system only through `api-gateway` with a JWT, like any
 ai/
 ├── cmd/                     # one main.go per command, each calls bootstrap
 └── internal/
-    ├── landapi/             # REST client for the gateway: login, plots, reports
+    ├── landapi/             # REST client for the gateway: client credentials token, plots, reports
     ├── tools/               # tool definitions, JSON schemas, argument validation, results
     ├── guard/               # token budget, step limit, prompt injection checks, secret redaction
     ├── llm/                 # Provider interface, Gemini adapter, fake provider for tests
@@ -58,7 +58,10 @@ All settings are environment variables; `.env.example` lists them with defaults.
 | `USER_INPUT_MAX_CHARS`      | `2000`                   | fc-client, agents  | Maximum request length                                     |
 | `TOOL_RESULT_MAX_BYTES`     | `4000`                   | all                | Tool results are cut to this size                          |
 | `GATEWAY_URL`               | `http://localhost:8080`  | all                | Gateway address; containers use `http://api-gateway:8080`  |
-| `AI_USER_EMAIL`, `AI_USER_PASSWORD` | —                | all                | Technical user of all parts; registered on the first start |
+| `OIDC_TOKEN_URL`            | `http://localhost:8180/realms/land-plot/protocol/openid-connect/token` | all | Keycloak token endpoint; containers use `http://keycloak:8080/...` |
+| `AI_CLIENT_ID`              | `land-plot-ai`           | all                | Confidential Keycloak client of all AI programs            |
+| `AI_CLIENT_SECRET`          | —                        | all                | Secret of `land-plot-ai`; the realm is imported with the same value |
+| `AI_SCOPES`                 | all four API scopes      | all                | Scopes requested for the program (see below)               |
 | `MCP_ACCESS_TOKEN`          | empty                    | mcp-server (HTTP)  | Static bearer token, at least 32 characters                |
 | `MCP_RATE_LIMIT_PER_MINUTE` | `30`                     | mcp-server         | Tool calls per minute                                      |
 | `PRODUCER_AGENT_URL`        | `http://localhost:8091`  | consumer-agent     | The only producer the consumer trusts                      |
@@ -70,13 +73,26 @@ A command started on the host does not read `.env` by itself; export it first:
 set -a; . ./.env; set +a
 ```
 
+## Access tokens
+
+All AI programs share the confidential Keycloak client `land-plot-ai` and get tokens through the OAuth 2.0 Client Credentials grant: `landapi` posts `grant_type=client_credentials`, the client ID and secret and the requested `scope` to `OIDC_TOKEN_URL`, caches the token until 30 seconds before it expires, and asks for a new one when the gateway answers `401`. The programs therefore act as one service account with one `sub` and see the same plots, but each requests only the scopes it needs:
+
+| Program          | `AI_SCOPES`                               |
+|------------------|-------------------------------------------|
+| `producer-agent` | `plots:read plots:write`                  |
+| `consumer-agent` | `plots:read reports:read reports:write`   |
+| `fc-client`      | all four                                  |
+| `mcp-server`     | all four                                  |
+
+Docker Compose sets these values for the containers. If the producer tried to build a report, the gateway would answer `403 insufficient_scope`.
+
 ## Guardrails
 
 - **Tokens.** Every model answer is limited by `LLM_MAX_OUTPUT_TOKENS`. Usage reported by the model is added to `AGENT_TOKEN_BUDGET`; when the budget is spent, the agent stops with «Бюджет токенів вичерпано» instead of calling the model again. `AGENT_MAX_STEPS` limits tool-calling steps. Every model call is logged with input, output, thinking and total tokens.
 - **Free tier limits.** Model calls are at least `LLM_MIN_INTERVAL` apart. On `429` the client waits for the delay suggested by the API, or 2, 4 and 8 seconds, and retries up to 3 times; a spent daily quota is reported at once without retries.
 - **Arguments.** Every tool has a JSON schema without extra properties and is validated before the API call: UUIDs, a name of 1 to 120 characters without control characters, 3 to 100 points within latitude and longitude ranges, an open polygon, `timeout_seconds` from 1 to 40. A validation error is returned to the model as a tool error and the API is not called.
 - **Prompt injection.** The system prompts say that tool results are data. Tool results are wrapped in `<tool_result>…</tool_result>`. Requests with phrases such as `ignore previous instructions`, `ігноруй попередні інструкції`, `system prompt` or `api key` are rejected; the same phrases inside API data, such as plot names, are replaced with `[вилучено]` and logged. Only the tools given to an agent can be called, and the API has no destructive operations.
-- **Secrets.** The model never sees the JWT, the password or the key; logins happen inside `landapi`. The final answer is checked for the password, the key, JWTs and bearer tokens.
+- **Secrets.** The model never sees the access token, the client secret or the LLM key; `landapi` gets and refreshes tokens itself. The final answer is checked for the client secret, the key, JWTs and bearer tokens.
 
 ## Function calling: `fc-client`
 
@@ -116,7 +132,7 @@ docker compose up -d
 make ai-mcp-inspector
 ```
 
-The target builds `ai/bin/mcp-server` and opens [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) with the server over stdio and the AI user from `.env`. The Tools, Resources and Prompts tabs list everything above.
+The target builds `ai/bin/mcp-server` and opens [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) with the server over stdio and the AI client credentials from `.env`. The Tools, Resources and Prompts tabs list everything above.
 
 ### Claude Desktop (stdio)
 
@@ -130,8 +146,10 @@ Build the binary with `go -C ai build -o "$(pwd)/ai/bin/" ./cmd/mcp-server` and 
       "args": ["-transport", "stdio"],
       "env": {
         "GATEWAY_URL": "http://localhost:8080",
-        "AI_USER_EMAIL": "ai-agent@example.com",
-        "AI_USER_PASSWORD": "AiAgentPassword123"
+        "OIDC_TOKEN_URL": "http://localhost:8180/realms/land-plot/protocol/openid-connect/token",
+        "AI_CLIENT_ID": "land-plot-ai",
+        "AI_CLIENT_SECRET": "<the value of AI_CLIENT_SECRET from .env>",
+        "AI_SCOPES": "plots:read plots:write reports:read reports:write"
       }
     }
   }

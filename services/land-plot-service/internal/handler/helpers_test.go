@@ -52,16 +52,25 @@ func (stub *plotServiceStub) Update(
 	return stub.plot, stub.err
 }
 
+var allScopes = []string{domain.ScopePlotsRead, domain.ScopePlotsWrite}
+
 type verifierStub struct {
 	userID string
+	scopes []string
 	err    error
 }
 
-func (stub verifierStub) Verify(string) (string, error) { return stub.userID, stub.err }
+func (stub verifierStub) Verify(string) (domain.Principal, error) {
+	return domain.Principal{Subject: stub.userID, Scopes: stub.scopes}, stub.err
+}
 
 func newTestRouter(plots PlotService) http.Handler {
+	return newTestRouterWithScopes(plots, allScopes...)
+}
+
+func newTestRouterWithScopes(plots PlotService, scopes ...string) http.Handler {
 	logger := slog.New(slog.DiscardHandler)
-	return NewRouter(logger, testServiceName, testInstanceID, plots, verifierStub{userID: testOwnerID})
+	return NewRouter(logger, testServiceName, testInstanceID, plots, verifierStub{userID: testOwnerID, scopes: scopes})
 }
 
 func authorizedRequest(method, target, body string) *http.Request {

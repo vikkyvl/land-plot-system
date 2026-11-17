@@ -20,13 +20,13 @@ const (
 type Config struct {
 	BaseURL     string
 	Timeout     time.Duration
-	Credentials Credentials
+	Credentials ClientCredentials
 }
 
 type Client struct {
 	baseURL     string
 	httpClient  *http.Client
-	credentials Credentials
+	credentials ClientCredentials
 	now         func() time.Time
 
 	tokenMutex sync.Mutex

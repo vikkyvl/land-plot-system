@@ -8,21 +8,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 const ServiceName = "identity-service"
 
 const (
 	defaultHTTPAddress     = ":8081"
+	defaultOIDCAudience    = "land-plot-api"
+	defaultOIDCTimeout     = 5 * time.Second
 	defaultConsulAddress   = "http://localhost:8500"
 	defaultShutdownTimeout = 10 * time.Second
 	defaultConsulTimeout   = 3 * time.Second
 	defaultDatabaseTimeout = 5 * time.Second
-	defaultTokenTTL        = time.Hour
-	defaultBcryptCost      = 12
-	minimumJWTSecretLength = 32
 	maximumPort            = 65535
 )
 
@@ -38,9 +35,10 @@ type Config struct {
 	InstanceID      string
 	DatabaseURL     string
 	DatabaseTimeout time.Duration
-	JWTSecret       string
-	TokenTTL        time.Duration
-	BcryptCost      int
+	OIDCIssuer      string
+	OIDCJWKSURL     string
+	OIDCAudience    string
+	OIDCTimeout     time.Duration
 }
 
 func Load() (Config, error) {
@@ -50,7 +48,9 @@ func Load() (Config, error) {
 		ServiceAddress: os.Getenv(envServiceAddress),
 		InstanceID:     os.Getenv(envServiceInstanceID),
 		DatabaseURL:    os.Getenv(envDatabaseURL),
-		JWTSecret:      os.Getenv(envJWTSecret),
+		OIDCIssuer:     os.Getenv(envOIDCIssuer),
+		OIDCJWKSURL:    os.Getenv(envOIDCJWKSURL),
+		OIDCAudience:   stringOrDefault(envOIDCAudience, defaultOIDCAudience),
 	}
 	if err := serviceConfig.loadDurations(); err != nil {
 		return Config{}, err
@@ -61,10 +61,6 @@ func Load() (Config, error) {
 	}
 
 	var err error
-	if serviceConfig.BcryptCost, err = parseBcryptCost(); err != nil {
-		return Config{}, err
-	}
-
 	if serviceConfig.HTTPPort, err = parsePort(serviceConfig.HTTPAddress); err != nil {
 		return Config{}, err
 	}
@@ -85,9 +81,9 @@ func (serviceConfig *Config) loadDurations() error {
 		fallback time.Duration
 	}{
 		{envHTTPShutdownTimeout, &serviceConfig.ShutdownTimeout, defaultShutdownTimeout},
+		{envOIDCTimeout, &serviceConfig.OIDCTimeout, defaultOIDCTimeout},
 		{envConsulTimeout, &serviceConfig.ConsulTimeout, defaultConsulTimeout},
 		{envDatabaseTimeout, &serviceConfig.DatabaseTimeout, defaultDatabaseTimeout},
-		{envJWTTTL, &serviceConfig.TokenTTL, defaultTokenTTL},
 	}
 	for _, duration := range durations {
 		value, err := durationOrDefault(duration.key, duration.fallback)
@@ -108,6 +104,9 @@ func (serviceConfig *Config) validate() error {
 	}{
 		{envHTTPAddress, serviceConfig.HTTPAddress},
 		{envConsulAddress, serviceConfig.ConsulAddress},
+		{envOIDCIssuer, serviceConfig.OIDCIssuer},
+		{envOIDCJWKSURL, serviceConfig.OIDCJWKSURL},
+		{envOIDCAudience, serviceConfig.OIDCAudience},
 		{envDatabaseURL, serviceConfig.DatabaseURL},
 	}
 	for _, setting := range required {
@@ -116,25 +115,7 @@ func (serviceConfig *Config) validate() error {
 		}
 	}
 
-	if len(strings.TrimSpace(serviceConfig.JWTSecret)) < minimumJWTSecretLength {
-		return fmt.Errorf(formatMustContainAtLeastCharacters, envJWTSecret, minimumJWTSecretLength)
-	}
-
 	return nil
-}
-
-func parseBcryptCost() (int, error) {
-	value, ok := os.LookupEnv(envBcryptCost)
-	if !ok {
-		return defaultBcryptCost, nil
-	}
-
-	cost, err := strconv.Atoi(value)
-	if err != nil || cost < bcrypt.MinCost || cost > bcrypt.MaxCost {
-		return 0, fmt.Errorf(formatMustBeBetweenAnd, envBcryptCost, bcrypt.MinCost, bcrypt.MaxCost)
-	}
-
-	return cost, nil
 }
 
 func parsePort(address string) (int, error) {

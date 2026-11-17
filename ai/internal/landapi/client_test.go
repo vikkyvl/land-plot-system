@@ -14,43 +14,57 @@ import (
 )
 
 const (
-	testToken    = "token-1"
-	testPlotID   = "4b6f1a52-38f5-4c3e-9e8b-1d2f3a4b5c6d"
-	testReportID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+	testTokenPath    = "/realms/land-plot/protocol/openid-connect/token"
+	testClientID     = "land-plot-ai"
+	testClientSecret = "ai-client-secret"
+	testToken        = "token-1|plots:read plots:write reports:read reports:write"
+	testPlotID       = "4b6f1a52-38f5-4c3e-9e8b-1d2f3a4b5c6d"
+	testReportID     = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
 )
 
-var testNow = time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+var (
+	testNow   = time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	allScopes = []string{"plots:read", "plots:write", "reports:read", "reports:write"}
+)
 
 type fakeGateway struct {
-	logins        atomic.Int32
-	registrations atomic.Int32
-	mux           *http.ServeMux
+	tokens atomic.Int32
+	mux    *http.ServeMux
 }
 
 func newFakeGateway() *fakeGateway {
 	gateway := &fakeGateway{mux: http.NewServeMux()}
-	gateway.mux.HandleFunc("POST /api/v1/auth/login", func(response http.ResponseWriter, _ *http.Request) {
-		number := gateway.logins.Add(1)
+	gateway.mux.HandleFunc("POST "+testTokenPath, func(response http.ResponseWriter, request *http.Request) {
+		number := gateway.tokens.Add(1)
 		writeJSON(response, http.StatusOK, map[string]any{
-			"access_token": "token-" + strconv.Itoa(int(number)),
+			"access_token": "token-" + strconv.Itoa(int(number)) + "|" + request.FormValue("scope"),
 			"token_type":   "Bearer",
-			"expires_at":   testNow.Add(time.Hour),
+			"expires_in":   900,
 		})
 	})
 
 	return gateway
 }
 
-func (gateway *fakeGateway) start(t *testing.T) *Client {
+func (gateway *fakeGateway) start(t *testing.T, scopes ...string) *Client {
 	t.Helper()
 
 	server := httptest.NewServer(gateway.mux)
 	t.Cleanup(server.Close)
 
+	if len(scopes) == 0 {
+		scopes = allScopes
+	}
+
 	client := New(Config{
-		BaseURL:     server.URL,
-		Timeout:     time.Second,
-		Credentials: Credentials{Email: "agent@example.com", Password: "AgentPassword123"},
+		BaseURL: server.URL,
+		Timeout: time.Second,
+		Credentials: ClientCredentials{
+			TokenURL:     server.URL + testTokenPath,
+			ClientID:     testClientID,
+			ClientSecret: testClientSecret,
+			Scopes:       scopes,
+		},
 	})
 	client.now = func() time.Time { return testNow }
 
@@ -67,93 +81,6 @@ func writeError(response http.ResponseWriter, status int, code string) {
 	writeJSON(response, status, map[string]string{"code": code, "message": code + " message", "request_id": "r"})
 }
 
-func TestAuthenticateRegistersUnknownUserAndLogsIn(t *testing.T) {
-	gateway := &fakeGateway{mux: http.NewServeMux()}
-	registered := atomic.Bool{}
-
-	gateway.mux.HandleFunc("POST /api/v1/auth/register", func(response http.ResponseWriter, request *http.Request) {
-		gateway.registrations.Add(1)
-
-		var credentials Credentials
-		if err := json.NewDecoder(request.Body).
-			Decode(&credentials); err != nil ||
-			credentials.Email != "agent@example.com" {
-			writeError(response, http.StatusBadRequest, "invalid_body")
-			return
-		}
-
-		registered.Store(true)
-		writeJSON(response, http.StatusCreated, map[string]string{"id": "u"})
-	})
-	gateway.mux.HandleFunc("POST /api/v1/auth/login", func(response http.ResponseWriter, _ *http.Request) {
-		gateway.logins.Add(1)
-
-		if !registered.Load() {
-			writeError(response, http.StatusUnauthorized, CodeLoginRejected)
-			return
-		}
-
-		writeJSON(
-			response,
-			http.StatusOK,
-			map[string]any{"access_token": testToken, "expires_at": testNow.Add(time.Hour)},
-		)
-	})
-
-	client := gateway.start(t)
-
-	if err := client.Authenticate(context.Background()); err != nil {
-		t.Fatalf("Authenticate() error = %v", err)
-	}
-
-	if gateway.registrations.Load() != 1 || gateway.logins.Load() != 2 || client.token != testToken {
-		t.Fatalf("registrations = %d, logins = %d, token = %q",
-			gateway.registrations.Load(), gateway.logins.Load(), client.token)
-	}
-}
-
-func TestAuthenticateIgnoresUserThatAlreadyExists(t *testing.T) {
-	gateway := &fakeGateway{mux: http.NewServeMux()}
-	gateway.mux.HandleFunc("POST /api/v1/auth/register", func(response http.ResponseWriter, _ *http.Request) {
-		gateway.registrations.Add(1)
-		writeError(response, http.StatusConflict, CodeUserExists)
-	})
-	gateway.mux.HandleFunc("POST /api/v1/auth/login", func(response http.ResponseWriter, _ *http.Request) {
-		if gateway.logins.Add(1) == 1 {
-			writeError(response, http.StatusUnauthorized, CodeLoginRejected)
-			return
-		}
-
-		writeJSON(
-			response,
-			http.StatusOK,
-			map[string]any{"access_token": testToken, "expires_at": testNow.Add(time.Hour)},
-		)
-	})
-
-	if err := gateway.start(t).Authenticate(context.Background()); err != nil {
-		t.Fatalf("Authenticate() error = %v", err)
-	}
-
-	if gateway.registrations.Load() != 1 || gateway.logins.Load() != 2 {
-		t.Fatalf("registrations = %d, logins = %d", gateway.registrations.Load(), gateway.logins.Load())
-	}
-}
-
-func TestAuthenticateReturnsLoginFailure(t *testing.T) {
-	gateway := &fakeGateway{mux: http.NewServeMux()}
-	gateway.mux.HandleFunc("POST /api/v1/auth/login", func(response http.ResponseWriter, _ *http.Request) {
-		writeError(response, http.StatusServiceUnavailable, "service_unavailable")
-	})
-
-	err := gateway.start(t).Authenticate(context.Background())
-
-	apiError, ok := errors.AsType[*APIError](err)
-	if !ok || apiError.Status != http.StatusServiceUnavailable || gateway.registrations.Load() != 0 {
-		t.Fatalf("Authenticate() error = %v", err)
-	}
-}
-
 func TestClientReusesTokenUntilItIsAboutToExpire(t *testing.T) {
 	gateway := newFakeGateway()
 	gateway.mux.HandleFunc("GET /api/v1/plots", func(response http.ResponseWriter, _ *http.Request) {
@@ -167,18 +94,18 @@ func TestClientReusesTokenUntilItIsAboutToExpire(t *testing.T) {
 		}
 	}
 
-	if gateway.logins.Load() != 1 {
-		t.Fatalf("logins = %d, want 1", gateway.logins.Load())
+	if gateway.tokens.Load() != 1 {
+		t.Fatalf("tokens = %d, want 1", gateway.tokens.Load())
 	}
 
-	client.now = func() time.Time { return testNow.Add(time.Hour - refreshMargin) }
+	client.now = func() time.Time { return testNow.Add(900*time.Second - refreshMargin) }
 
 	if _, err := client.ListPlots(context.Background()); err != nil {
 		t.Fatalf("ListPlots() error = %v", err)
 	}
 
-	if gateway.logins.Load() != 2 {
-		t.Fatalf("logins after expiry = %d, want 2", gateway.logins.Load())
+	if gateway.tokens.Load() != 2 {
+		t.Fatalf("tokens after expiry = %d, want 2", gateway.tokens.Load())
 	}
 }
 
@@ -189,7 +116,7 @@ func TestClientLogsInAgainAfterUnauthorizedResponse(t *testing.T) {
 	gateway.mux.HandleFunc("GET /api/v1/plots", func(response http.ResponseWriter, request *http.Request) {
 		requests.Add(1)
 
-		if request.Header.Get("Authorization") == "Bearer token-1" {
+		if request.Header.Get("Authorization") == "Bearer "+testToken {
 			writeError(response, http.StatusUnauthorized, "unauthorized")
 			return
 		}
@@ -202,8 +129,8 @@ func TestClientLogsInAgainAfterUnauthorizedResponse(t *testing.T) {
 		t.Fatalf("ListPlots() = %#v, %v", plots, err)
 	}
 
-	if gateway.logins.Load() != 2 || requests.Load() != 2 {
-		t.Fatalf("logins = %d, requests = %d", gateway.logins.Load(), requests.Load())
+	if gateway.tokens.Load() != 2 || requests.Load() != 2 {
+		t.Fatalf("tokens = %d, requests = %d", gateway.tokens.Load(), requests.Load())
 	}
 }
 
@@ -216,8 +143,8 @@ func TestClientRetriesUnauthorizedRequestOnlyOnce(t *testing.T) {
 	_, err := gateway.start(t).ListPlots(context.Background())
 
 	apiError, ok := errors.AsType[*APIError](err)
-	if !ok || apiError.Status != http.StatusUnauthorized || gateway.logins.Load() != 2 {
-		t.Fatalf("ListPlots() error = %v, logins = %d", err, gateway.logins.Load())
+	if !ok || apiError.Status != http.StatusUnauthorized || gateway.tokens.Load() != 2 {
+		t.Fatalf("ListPlots() error = %v, tokens = %d", err, gateway.tokens.Load())
 	}
 }
 
@@ -233,7 +160,7 @@ func TestCreatePlotSendsTokenAndCoordinates(t *testing.T) {
 		points, _ := body["points"].([]any)
 		first, _ := points[0].(map[string]any)
 
-		if request.Header.Get("Authorization") != "Bearer token-1" ||
+		if request.Header.Get("Authorization") != "Bearer "+testToken ||
 			request.Header.Get("Content-Type") != contentTypeJSON || first["lat"] != 50.5 || first["lon"] != 30.2 {
 			writeError(response, http.StatusBadRequest, "unexpected_request")
 			return

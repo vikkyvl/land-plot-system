@@ -20,7 +20,7 @@ type ReportRepository interface {
 
 type PlotClient interface {
 	Get(requestContext context.Context, caller Caller, plotID string) (domain.PlotSnapshot, error)
-	Trace(requestContext context.Context, requestID, message string) ([]domain.TraceHop, error)
+	Trace(requestContext context.Context, caller Caller, message string) ([]domain.TraceHop, error)
 }
 
 type PlotSummaryRepository interface {

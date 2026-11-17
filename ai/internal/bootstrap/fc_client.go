@@ -71,7 +71,7 @@ func RunFCClient(runContext context.Context, arguments []string, stdout, stderr 
 			TokenBudget:       settings.limits.TokenBudget,
 			MaxSteps:          settings.limits.MaxSteps,
 			UserInputMaxChars: settings.limits.UserInputMaxChars,
-			Secrets:           []string{settings.gateway.Password, settings.llm.APIKey},
+			Secrets:           []string{settings.gateway.ClientSecret, settings.llm.APIKey},
 		},
 		logger,
 	)

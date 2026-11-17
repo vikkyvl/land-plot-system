@@ -39,23 +39,30 @@ func (stub *reportServiceStub) Get(_ context.Context, ownerID, _ string) (domain
 	return stub.report, stub.err
 }
 
-func (stub *reportServiceStub) Trace(context.Context, string, string, string) (domain.Trace, error) {
+func (stub *reportServiceStub) Trace(_ context.Context, caller service.Caller, _, _ string) (domain.Trace, error) {
+	stub.caller = caller
+
 	return stub.trace, stub.err
 }
 
+var allScopes = []string{domain.ScopePlotsRead, domain.ScopeReportsRead, domain.ScopeReportsWrite}
+
 type verifierStub struct {
 	userID string
+	scopes []string
 	err    error
 }
 
-func (stub verifierStub) Verify(string) (string, error) { return stub.userID, stub.err }
+func (stub verifierStub) Verify(string) (domain.Principal, error) {
+	return domain.Principal{Subject: stub.userID, Scopes: stub.scopes}, stub.err
+}
 
 func newTestRouterWithVerifier(reports ReportService, verifier middleware.TokenVerifier) http.Handler {
 	return NewRouter(slog.New(slog.DiscardHandler), testServiceName, reports, verifier)
 }
 
 func newTestRouter(reports ReportService) http.Handler {
-	return newTestRouterWithVerifier(reports, verifierStub{userID: testOwnerID})
+	return newTestRouterWithVerifier(reports, verifierStub{userID: testOwnerID, scopes: allScopes})
 }
 
 func authorizedRequest(method, target, body string) *http.Request {

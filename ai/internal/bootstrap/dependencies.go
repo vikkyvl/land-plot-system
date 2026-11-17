@@ -22,9 +22,11 @@ func newLandClient(gateway config.Gateway) *landapi.Client {
 	return landapi.New(landapi.Config{
 		BaseURL: gateway.URL,
 		Timeout: gateway.Timeout,
-		Credentials: landapi.Credentials{
-			Email:    gateway.Email,
-			Password: gateway.Password,
+		Credentials: landapi.ClientCredentials{
+			TokenURL:     gateway.TokenURL,
+			ClientID:     gateway.ClientID,
+			ClientSecret: gateway.ClientSecret,
+			Scopes:       gateway.Scopes,
 		},
 	})
 }

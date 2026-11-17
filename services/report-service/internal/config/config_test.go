@@ -1,7 +1,6 @@
 package config
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
@@ -10,7 +9,8 @@ func setRequiredEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("DATABASE_URL", "postgres://localhost/report_db")
 	t.Setenv("RABBITMQ_URL", "amqp://localhost")
-	t.Setenv("JWT_SECRET", strings.Repeat("s", minimumJWTSecretLength))
+	t.Setenv("OIDC_ISSUER", "http://localhost:8180/realms/land-plot")
+	t.Setenv("OIDC_JWKS_URL", "http://keycloak:8080/realms/land-plot/protocol/openid-connect/certs")
 	t.Setenv("SERVICE_INSTANCE_ID", "report-1")
 }
 
@@ -43,7 +43,9 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 	tests := map[string]string{
 		"RABBITMQ_URL":           " ",
 		"LAND_PLOT_SERVICE_NAME": "",
-		"JWT_SECRET":             "short",
+		"OIDC_ISSUER":            " ",
+		"OIDC_JWKS_URL":          "",
+		"OIDC_TIMEOUT":           "0s",
 		"HTTP_ADDRESS":           "no-port",
 		"UPSTREAM_TIMEOUT":       "0s",
 		"RABBITMQ_PREFETCH":      "0",

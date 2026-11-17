@@ -15,8 +15,11 @@ import (
 )
 
 const (
-	maximumResponseSize = 1 << 20
-	requestIDHeader     = "X-Request-ID"
+	maximumResponseSize   = 1 << 20
+	requestIDHeader       = "X-Request-ID"
+	authorizationHeader   = "Authorization"
+	bearerPrefix          = "Bearer "
+	codeInsufficientScope = "insufficient_scope"
 )
 
 func (plotClient *PlotClient) send(

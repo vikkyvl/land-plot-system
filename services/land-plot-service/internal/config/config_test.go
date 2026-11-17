@@ -1,7 +1,6 @@
 package config
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
@@ -10,7 +9,8 @@ func setRequiredEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("DATABASE_URL", "postgres://localhost/plot_db")
 	t.Setenv("RABBITMQ_URL", "amqp://localhost")
-	t.Setenv("JWT_SECRET", strings.Repeat("s", minimumJWTSecretLength))
+	t.Setenv("OIDC_ISSUER", "http://localhost:8180/realms/land-plot")
+	t.Setenv("OIDC_JWKS_URL", "http://keycloak:8080/realms/land-plot/protocol/openid-connect/certs")
 	t.Setenv("SERVICE_INSTANCE_ID", "plot-1")
 }
 
@@ -41,7 +41,9 @@ func TestLoadReadsDurations(t *testing.T) {
 func TestLoadRejectsInvalidSettings(t *testing.T) {
 	tests := map[string]string{
 		"DATABASE_URL":     " ",
-		"JWT_SECRET":       "short",
+		"OIDC_ISSUER":      " ",
+		"OIDC_JWKS_URL":    "",
+		"OIDC_TIMEOUT":     "0s",
 		"HTTP_ADDRESS":     ":99999",
 		"CONSUL_TIMEOUT":   "-1s",
 		"DATABASE_TIMEOUT": "soon",
@@ -128,5 +130,20 @@ func TestLoadReadsMessageProcessingTimeout(t *testing.T) {
 	serviceConfig, err := Load()
 	if err != nil || serviceConfig.ProcessingTimeout != 7*time.Second {
 		t.Fatalf("Load() processing timeout = %v, %v", serviceConfig.ProcessingTimeout, err)
+	}
+}
+
+func TestLoadReadsOIDCSettings(t *testing.T) {
+	setRequiredEnv(t)
+
+	serviceConfig, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if serviceConfig.OIDCIssuer != "http://localhost:8180/realms/land-plot" ||
+		serviceConfig.OIDCAudience != defaultOIDCAudience || serviceConfig.OIDCTimeout != defaultOIDCTimeout {
+		t.Fatalf("Load() OIDC settings = %q, %q, %v",
+			serviceConfig.OIDCIssuer, serviceConfig.OIDCAudience, serviceConfig.OIDCTimeout)
 	}
 }

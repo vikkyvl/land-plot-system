@@ -20,4 +20,5 @@ SQL
 create_role_and_database "$IDENTITY_DB_NAME" "$IDENTITY_DB_USER" "$IDENTITY_DB_PASSWORD"
 create_role_and_database "$PLOT_DB_NAME" "$PLOT_DB_USER" "$PLOT_DB_PASSWORD"
 create_role_and_database "$REPORT_DB_NAME" "$REPORT_DB_USER" "$REPORT_DB_PASSWORD"
+create_role_and_database "$KEYCLOAK_DB_NAME" "$KEYCLOAK_DB_USER" "$KEYCLOAK_DB_PASSWORD"
 

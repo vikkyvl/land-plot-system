@@ -8,8 +8,7 @@ import (
 
 func setGatewayEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("AI_USER_EMAIL", "agent@example.com")
-	t.Setenv("AI_USER_PASSWORD", "AgentPassword123")
+	t.Setenv("AI_CLIENT_SECRET", "ai-client-secret")
 }
 
 func TestLoadGatewayAppliesDefaults(t *testing.T) {
@@ -21,8 +20,22 @@ func TestLoadGatewayAppliesDefaults(t *testing.T) {
 	}
 
 	if gateway.URL != defaultGatewayURL || gateway.Timeout != defaultGatewayTimeout ||
-		gateway.Email != "agent@example.com" {
+		gateway.TokenURL != defaultGrantEndpoint || gateway.ClientID != defaultAIClientID ||
+		gateway.ClientSecret != "ai-client-secret" ||
+		strings.Join(gateway.Scopes, " ") != "plots:read plots:write reports:read reports:write" {
 		t.Fatalf("LoadGateway() = %#v", gateway)
+	}
+}
+
+func TestLoadGatewayReadsTheScopesOfTheProgram(t *testing.T) {
+	setGatewayEnv(t)
+	t.Setenv("AI_SCOPES", " plots:read   plots:write ")
+	t.Setenv("OIDC_TOKEN_URL", "http://keycloak:8080/realms/land-plot/protocol/openid-connect/token")
+
+	gateway, err := LoadGateway()
+	if err != nil || strings.Join(gateway.Scopes, ",") != "plots:read,plots:write" ||
+		gateway.TokenURL != "http://keycloak:8080/realms/land-plot/protocol/openid-connect/token" {
+		t.Fatalf("LoadGateway() = %#v, %v", gateway, err)
 	}
 }
 
@@ -38,8 +51,10 @@ func TestLoadGatewayTrimsTrailingSlash(t *testing.T) {
 
 func TestLoadGatewayRejectsInvalidSettings(t *testing.T) {
 	tests := map[string]string{
-		"AI_USER_EMAIL":    " ",
-		"AI_USER_PASSWORD": "short",
+		"AI_CLIENT_SECRET": " ",
+		"AI_CLIENT_ID":     " ",
+		"AI_SCOPES":        "  ",
+		"OIDC_TOKEN_URL":   "keycloak:8080/token",
 		"GATEWAY_URL":      "api-gateway:8080",
 		"GATEWAY_TIMEOUT":  "0s",
 	}

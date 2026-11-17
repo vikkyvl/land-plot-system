@@ -7,13 +7,11 @@ import (
 )
 
 const (
-	CodeLoginRejected    = "invalid_credentials"
-	CodeUserExists       = "user_exists"
 	CodePlotNotFound     = "plot_not_found"
 	CodePlotNotConfirmed = "plot_not_confirmed"
 )
 
-var errMissingAccessToken = errors.New("login response has no access token")
+var errMissingAccessToken = errors.New("token response has no access token")
 
 type APIError struct {
 	Status  int
@@ -28,11 +26,6 @@ func (apiError *APIError) Error() string {
 func IsNotFound(err error) bool {
 	apiError, ok := errors.AsType[*APIError](err)
 	return ok && apiError.Status == http.StatusNotFound
-}
-
-func hasCode(err error, code string) bool {
-	apiError, ok := errors.AsType[*APIError](err)
-	return ok && apiError.Code == code
 }
 
 func isUnauthorized(err error) bool {

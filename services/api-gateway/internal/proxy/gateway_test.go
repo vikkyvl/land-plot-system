@@ -128,7 +128,8 @@ func TestGatewayErrors(t *testing.T) {
 			"/api/v1/reports",
 			http.StatusServiceUnavailable,
 		},
-		{"upstream failure", oneInstance, "/api/v1/auth/login", http.StatusBadGateway},
+		{"removed login route", oneInstance, "/api/v1/auth/login", http.StatusNotFound},
+		{"upstream failure", oneInstance, "/api/v1/users/profile", http.StatusBadGateway},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -144,5 +145,30 @@ func TestGatewayErrors(t *testing.T) {
 				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestGatewayRemovesCORSHeadersFromUpstream(t *testing.T) {
+	transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		response := okResponse()
+		response.Header.Set("Access-Control-Allow-Origin", "*")
+		response.Header.Set("Access-Control-Allow-Credentials", "true")
+		response.Header.Set(HeaderRequestID, "request-1")
+		response.Header.Set("Content-Type", "application/json")
+
+		return response, nil
+	})
+	resolver := &resolverStub{instances: []discovery.Instance{{ID: "plot-1", Address: "10.0.0.1", Port: 8082}}}
+
+	response := httptest.NewRecorder()
+	newTestGateway(
+		resolver,
+		transport,
+	).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/plots", http.NoBody))
+
+	headers := response.Header()
+	if headers.Get("Access-Control-Allow-Origin") != "" || headers.Get("Access-Control-Allow-Credentials") != "" ||
+		headers.Get(HeaderRequestID) != "request-1" || headers.Get(HeaderServedBy) != "plot-1" {
+		t.Fatalf("headers = %#v", headers)
 	}
 }

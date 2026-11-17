@@ -2,14 +2,13 @@ package handler
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
 func TestTraceIncludesInstance(t *testing.T) {
 	response := serve(
 		newTestRouter(nil),
-		httptest.NewRequest(http.MethodGet, "/internal/demo/chain?message=hi", http.NoBody),
+		authorizedRequest(http.MethodGet, "/internal/demo/chain?message=hi", ""),
 	)
 
 	body := decodeBody[traceResponse](t, response)
@@ -20,7 +19,7 @@ func TestTraceIncludesInstance(t *testing.T) {
 }
 
 func TestTraceUsesDefaultMessage(t *testing.T) {
-	response := serve(newTestRouter(nil), httptest.NewRequest(http.MethodGet, "/internal/demo/chain", http.NoBody))
+	response := serve(newTestRouter(nil), authorizedRequest(http.MethodGet, "/internal/demo/chain", ""))
 
 	if body := decodeBody[traceResponse](t, response); body.Message != defaultTraceMessage {
 		t.Fatalf("message = %q, want %q", body.Message, defaultTraceMessage)
