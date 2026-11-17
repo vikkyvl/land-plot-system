@@ -49,7 +49,7 @@ func sanitizeUserHeaders(next http.Handler) http.Handler {
 
 func authenticate(verifier TokenVerifier, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if !proxy.RequiresAuthentication(request.URL.Path) {
+		if !proxy.RequiresAuthentication(request.URL.Path) || proxy.IsPublicRoute(request.Method, request.URL.Path) {
 			next.ServeHTTP(response, request)
 			return
 		}

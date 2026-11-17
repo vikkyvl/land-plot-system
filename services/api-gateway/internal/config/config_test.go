@@ -22,7 +22,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	}
 
 	if serviceConfig.HTTPPort != 8080 || serviceConfig.UpstreamTimeout != defaultUpstreamTimeout ||
-		serviceConfig.InstanceID != "gateway-1" {
+		serviceConfig.InstanceID != "gateway-1" || serviceConfig.PreviewRateLimitPerMinute != 60 {
 		t.Fatalf("Load() = %#v", serviceConfig)
 	}
 }
@@ -37,6 +37,16 @@ func TestLoadReadsUpstreamTimeout(t *testing.T) {
 	}
 }
 
+func TestLoadReadsPreviewRateLimit(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("PREVIEW_RATE_LIMIT_PER_MINUTE", "5")
+
+	serviceConfig, err := Load()
+	if err != nil || serviceConfig.PreviewRateLimitPerMinute != 5 {
+		t.Fatalf("Load() = %v, %v", serviceConfig.PreviewRateLimitPerMinute, err)
+	}
+}
+
 func TestLoadRejectsInvalidSettings(t *testing.T) {
 	tests := map[string]string{
 		"CONSUL_ADDRESS":   " ",
@@ -45,6 +55,8 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		"OIDC_TIMEOUT":     "0s",
 		"HTTP_ADDRESS":     ":http-port",
 		"UPSTREAM_TIMEOUT": "-5s",
+
+		"PREVIEW_RATE_LIMIT_PER_MINUTE": "0",
 	}
 	for key, value := range tests {
 		t.Run(key, func(t *testing.T) {

@@ -26,6 +26,9 @@ var (
 
 	ErrZeroArea = NewError(KindValidation, "zero_area",
 		"polygon area must be positive")
+
+	ErrTooManyPoints = NewError(KindValidation, "too_many_points",
+		fmt.Sprintf("polygon must contain at most %d points", MaximumPolygonPoints))
 )
 
 var (

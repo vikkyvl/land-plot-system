@@ -21,25 +21,27 @@ const (
 	defaultShutdownTimeout    = 10 * time.Second
 	defaultConsulTimeout      = 3 * time.Second
 	defaultUpstreamTimeout    = 5 * time.Second
+	defaultPreviewRateLimit   = 60
 	maximumPort               = 65535
 )
 
 var errInvalidPort = errors.New(envHTTPAddress + " must contain a valid port")
 
 type Config struct {
-	HTTPAddress     string
-	HTTPPort        int
-	ShutdownTimeout time.Duration
-	ConsulAddress   string
-	ConsulTimeout   time.Duration
-	UpstreamTimeout time.Duration
-	ServiceAddress  string
-	InstanceID      string
-	OIDCIssuer      string
-	OIDCJWKSURL     string
-	OIDCAudience    string
-	OIDCTimeout     time.Duration
-	AllowedOrigins  []string
+	HTTPAddress               string
+	HTTPPort                  int
+	ShutdownTimeout           time.Duration
+	ConsulAddress             string
+	ConsulTimeout             time.Duration
+	UpstreamTimeout           time.Duration
+	ServiceAddress            string
+	InstanceID                string
+	OIDCIssuer                string
+	OIDCJWKSURL               string
+	OIDCAudience              string
+	OIDCTimeout               time.Duration
+	AllowedOrigins            []string
+	PreviewRateLimitPerMinute int
 }
 
 func Load() (Config, error) {
@@ -64,6 +66,13 @@ func Load() (Config, error) {
 	if serviceConfig.AllowedOrigins, err = originsOrDefault(
 		envCORSAllowedOrigins,
 		defaultCORSAllowedOrigins,
+	); err != nil {
+		return Config{}, err
+	}
+
+	if serviceConfig.PreviewRateLimitPerMinute, err = positiveIntOrDefault(
+		envPreviewRateLimit,
+		defaultPreviewRateLimit,
 	); err != nil {
 		return Config{}, err
 	}

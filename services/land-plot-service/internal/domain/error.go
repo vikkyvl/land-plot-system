@@ -16,6 +16,7 @@ type Error struct {
 	Kind    ErrorKind
 	Code    string
 	Message string
+	Details any
 }
 
 func NewError(kind ErrorKind, code, message string) *Error {
@@ -24,4 +25,17 @@ func NewError(kind ErrorKind, code, message string) *Error {
 
 func (domainError *Error) Error() string {
 	return domainError.Message
+}
+
+func (domainError *Error) WithDetails(details any) *Error {
+	detailed := *domainError
+	detailed.Details = details
+
+	return &detailed
+}
+
+func (domainError *Error) Is(target error) bool {
+	targetError, ok := target.(*Error)
+
+	return ok && targetError.Kind == domainError.Kind && targetError.Code == domainError.Code
 }

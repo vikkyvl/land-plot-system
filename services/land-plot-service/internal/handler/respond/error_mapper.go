@@ -26,9 +26,12 @@ var statusByKind = map[domain.ErrorKind]int{
 func (writer Writer) Error(response http.ResponseWriter, request *http.Request, err error) {
 	status, code, message := http.StatusInternalServerError, codeInternalError, messageInternalError
 
+	var details any
+
 	if domainError, ok := errors.AsType[*domain.Error](err); ok {
 		if kindStatus, known := statusByKind[domainError.Kind]; known {
 			status, code, message = kindStatus, domainError.Code, domainError.Message
+			details = detailsResponse(domainError.Details)
 		}
 	}
 
@@ -43,6 +46,7 @@ func (writer Writer) Error(response http.ResponseWriter, request *http.Request, 
 	writer.JSON(response, status, ErrorResponse{
 		Code:      code,
 		Message:   message,
+		Details:   details,
 		RequestID: request.Header.Get(RequestIDHeader),
 	})
 }

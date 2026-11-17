@@ -21,6 +21,8 @@ func TestRequiredScopes(t *testing.T) {
 		{http.MethodPost, "/api/v1/reports", []string{ScopeReportsWrite, ScopePlotsRead}, true},
 		{http.MethodGet, "/api/v1/users/profile", []string{ScopeOpenID}, true},
 		{http.MethodGet, "/api/v1/demo/chain", nil, true},
+		{http.MethodPost, "/api/v1/plots/preview", nil, true},
+		{http.MethodGet, "/api/v1/plots/preview", []string{ScopePlotsRead}, true},
 		{http.MethodDelete, "/api/v1/plots/plot-1", nil, false},
 		{http.MethodGet, "/api/v1/plots/plot-1/history", nil, false},
 		{http.MethodGet, "/api/v1/plots/", nil, false},
@@ -42,5 +44,26 @@ func TestPrincipalHasScopes(t *testing.T) {
 	if !principal.HasScopes([]string{ScopeReportsWrite, ScopePlotsRead}) || !principal.HasScopes(nil) ||
 		principal.HasScopes([]string{ScopePlotsWrite}) {
 		t.Fatal("HasScopes() is wrong")
+	}
+}
+
+func TestOnlyPreviewIsPublicAndRateLimited(t *testing.T) {
+	tests := []struct {
+		method string
+		path   string
+		public bool
+	}{
+		{http.MethodPost, "/api/v1/plots/preview", true},
+		{http.MethodGet, "/api/v1/plots/preview", false},
+		{http.MethodPost, "/api/v1/plots", false},
+		{http.MethodGet, "/api/v1/demo/chain", false},
+		{http.MethodPost, "/api/v1/plots/preview/extra", false},
+	}
+	for _, test := range tests {
+		if IsPublicRoute(test.method, test.path) != test.public ||
+			IsRateLimitedRoute(test.method, test.path) != test.public {
+			t.Fatalf("%s %s: public = %v, rate limited = %v, want %v", test.method, test.path,
+				IsPublicRoute(test.method, test.path), IsRateLimitedRoute(test.method, test.path), test.public)
+		}
 	}
 }

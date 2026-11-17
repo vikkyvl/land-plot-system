@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
 )
@@ -22,8 +23,24 @@ func (stub verifierStub) Verify(string) (proxy.Principal, error) {
 	return proxy.Principal{Subject: stub.userID, Email: stub.email, Scopes: stub.scopes}, stub.err
 }
 
+type limiterStub struct {
+	allowed    bool
+	retryAfter time.Duration
+	keys       []string
+}
+
+func (stub *limiterStub) Allow(key string) (bool, time.Duration) {
+	stub.keys = append(stub.keys, key)
+
+	return stub.allowed, stub.retryAfter
+}
+
 func newTestRouter(upstream http.Handler, verifier TokenVerifier) http.Handler {
-	return NewRouter(slog.New(slog.DiscardHandler), "api-gateway", upstream, verifier, testOrigins)
+	return newTestRouterWithLimiter(upstream, verifier, &limiterStub{allowed: true})
+}
+
+func newTestRouterWithLimiter(upstream http.Handler, verifier TokenVerifier, limiter RequestLimiter) http.Handler {
+	return NewRouter(slog.New(slog.DiscardHandler), "api-gateway", upstream, verifier, limiter, testOrigins)
 }
 
 func serve(router http.Handler, request *http.Request) *httptest.ResponseRecorder {

@@ -20,7 +20,7 @@ func (edge segment) contains(point metricPoint) bool {
 		point.y <= math.Max(edge.start.y, edge.end.y)+geometryEpsilon
 }
 
-func selfIntersects(points []metricPoint) bool {
+func findSelfIntersection(points []metricPoint) (SelfIntersectionDetails, bool) {
 	count := len(points)
 	for i := range points {
 		first := segment{start: points[i], end: points[(i+1)%count]}
@@ -31,12 +31,19 @@ func selfIntersects(points []metricPoint) bool {
 
 			second := segment{start: points[j], end: points[(j+1)%count]}
 			if segmentsIntersect(first, second) {
-				return true
+				return newSelfIntersectionDetails(i, j, count), true
 			}
 		}
 	}
 
-	return false
+	return SelfIntersectionDetails{}, false
+}
+
+func newSelfIntersectionDetails(first, second, count int) SelfIntersectionDetails {
+	return SelfIntersectionDetails{
+		Segments: [2][2]int{{first, first + 1}, {second, (second + 1) % count}},
+		Swap:     [2]int{first + 1, second},
+	}
 }
 
 func adjacentEdges(first, second, count int) bool {

@@ -13,4 +13,5 @@ const (
 	envOIDCIssuer          = "OIDC_ISSUER"
 	envOIDCJWKSURL         = "OIDC_JWKS_URL"
 	envOIDCTimeout         = "OIDC_TIMEOUT"
+	envPreviewRateLimit    = "PREVIEW_RATE_LIMIT_PER_MINUTE"
 )

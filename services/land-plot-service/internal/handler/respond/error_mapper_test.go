@@ -57,3 +57,21 @@ func TestUnknownErrorHidesDetails(t *testing.T) {
 		t.Fatalf("status = %d body = %s", status, rawBody)
 	}
 }
+
+func TestValidationErrorCarriesDetails(t *testing.T) {
+	err := domain.ErrInvalidCoordinate.WithDetails(domain.InvalidCoordinateDetails{Index: 3})
+
+	status, _, rawBody := writeError(t, fmt.Errorf("create plot: %w", err))
+
+	if status != http.StatusUnprocessableEntity || !strings.Contains(rawBody, `"details":{"index":3}`) {
+		t.Fatalf("status = %d body = %s", status, rawBody)
+	}
+}
+
+func TestErrorWithoutDetailsOmitsTheField(t *testing.T) {
+	_, _, rawBody := writeError(t, domain.ErrPlotNotFound)
+
+	if strings.Contains(rawBody, "details") {
+		t.Fatalf("body = %s", rawBody)
+	}
+}

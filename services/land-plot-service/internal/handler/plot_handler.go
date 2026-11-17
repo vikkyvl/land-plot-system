@@ -33,6 +33,17 @@ func (handler *plotHandler) create(response http.ResponseWriter, request *http.R
 	handler.responses.JSON(response, http.StatusCreated, newPlotResponse(plot))
 }
 
+func (handler *plotHandler) preview(response http.ResponseWriter, request *http.Request) {
+	body, err := respond.DecodeJSON[previewPlotRequest](response, request)
+	if err != nil || body.Points == nil {
+		handler.responses.Error(response, request, errInvalidPreviewBody)
+		return
+	}
+
+	inspection := handler.plots.Preview(toCoordinates(*body.Points))
+	handler.responses.JSON(response, http.StatusOK, newPreviewPlotResponse(inspection))
+}
+
 func (handler *plotHandler) list(response http.ResponseWriter, request *http.Request) {
 	plots, err := handler.plots.List(request.Context(), middleware.UserID(request.Context()))
 	if err != nil {

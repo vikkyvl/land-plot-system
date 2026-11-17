@@ -16,6 +16,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/ratelimit"
 )
 
 func Run() error {
@@ -41,7 +42,14 @@ func Run() error {
 	}
 	defer stopVerifier()
 
-	router := handler.NewRouter(logger, config.ServiceName, gateway, verifier, serviceConfig.AllowedOrigins)
+	router := handler.NewRouter(
+		logger,
+		config.ServiceName,
+		gateway,
+		verifier,
+		ratelimit.NewIPLimiter(serviceConfig.PreviewRateLimitPerMinute),
+		serviceConfig.AllowedOrigins,
+	)
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)

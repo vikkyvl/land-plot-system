@@ -4,6 +4,7 @@ import "math"
 
 const (
 	MinimumPolygonPoints = 3
+	MaximumPolygonPoints = 1000
 	minimumAreaM2        = 1e-6
 	degreesInHalfTurn    = 180
 )
@@ -17,55 +18,92 @@ type AreaCalculator interface {
 	Calculate(points []Coordinate) AreaResult
 }
 
+type PolygonInspection struct {
+	Area   AreaResult
+	Errors []*Error
+}
+
+func (inspection PolygonInspection) Valid() bool {
+	return len(inspection.Errors) == 0
+}
+
 type metricPoint struct {
 	x float64
 	y float64
 }
 
-func ValidatePolygon(points []Coordinate) error {
-	if err := validatePoints(points); err != nil {
-		return err
+func InspectPolygon(points []Coordinate, calculator AreaCalculator) PolygonInspection {
+	if len(points) > MaximumPolygonPoints {
+		return PolygonInspection{Errors: []*Error{ErrTooManyPoints}}
 	}
 
-	if selfIntersects(projectToLocalPlane(points)) {
-		return ErrSelfIntersection
+	if problems := pointProblems(points); len(problems) > 0 {
+		return PolygonInspection{Errors: problems}
 	}
 
-	return nil
+	if intersection, found := findSelfIntersection(projectToLocalPlane(points)); found {
+		return PolygonInspection{Errors: []*Error{ErrSelfIntersection.WithDetails(intersection)}}
+	}
+
+	area := calculator.Calculate(points)
+	if area.AreaM2 <= minimumAreaM2 {
+		return PolygonInspection{Errors: []*Error{ErrZeroArea}}
+	}
+
+	return PolygonInspection{Area: area}
 }
 
 func measure(points []Coordinate, calculator AreaCalculator) (AreaResult, error) {
-	if err := ValidatePolygon(points); err != nil {
-		return AreaResult{}, err
+	inspection := InspectPolygon(points, calculator)
+	if !inspection.Valid() {
+		return AreaResult{}, inspection.Errors[0]
 	}
 
-	result := calculator.Calculate(points)
-	if result.AreaM2 <= minimumAreaM2 {
-		return AreaResult{}, ErrZeroArea
-	}
-
-	return result, nil
+	return inspection.Area, nil
 }
 
-func validatePoints(points []Coordinate) error {
+func pointProblems(points []Coordinate) []*Error {
+	var problems []*Error
+
 	if len(points) < MinimumPolygonPoints {
-		return ErrInsufficientPoints
+		problems = append(problems, ErrInsufficientPoints)
 	}
 
-	seen := make(map[Coordinate]struct{}, len(points))
-	for _, point := range points {
+	if index, found := firstInvalidCoordinate(points); found {
+		problems = append(problems, ErrInvalidCoordinate.WithDetails(InvalidCoordinateDetails{Index: index}))
+	}
+
+	if first, second, found := firstDuplicatePair(points); found {
+		problems = append(
+			problems,
+			ErrDuplicatePoint.WithDetails(DuplicatePointDetails{Indices: [2]int{first, second}}),
+		)
+	}
+
+	return problems
+}
+
+func firstInvalidCoordinate(points []Coordinate) (int, bool) {
+	for index, point := range points {
 		if !point.isValid() {
-			return ErrInvalidCoordinate
+			return index, true
 		}
-
-		if _, exists := seen[point]; exists {
-			return ErrDuplicatePoint
-		}
-
-		seen[point] = struct{}{}
 	}
 
-	return nil
+	return 0, false
+}
+
+func firstDuplicatePair(points []Coordinate) (int, int, bool) {
+	seen := make(map[Coordinate]int, len(points))
+	for index, point := range points {
+		if earlier, exists := seen[point]; exists {
+			return earlier, index, true
+		}
+
+		seen[point] = index
+	}
+
+	return 0, 0, false
 }
 
 func degreesToRadians(value float64) float64 { return value * math.Pi / degreesInHalfTurn }

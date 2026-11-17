@@ -53,6 +53,10 @@ func (plotService *PlotService) Create(requestContext context.Context, draft dom
 	return plot, nil
 }
 
+func (plotService *PlotService) Preview(points []domain.Coordinate) domain.PolygonInspection {
+	return domain.InspectPolygon(points, plotService.calculator)
+}
+
 func (plotService *PlotService) List(requestContext context.Context, ownerID string) ([]domain.Plot, error) {
 	plots, err := plotService.repository.ListByOwner(requestContext, ownerID)
 	if err != nil {

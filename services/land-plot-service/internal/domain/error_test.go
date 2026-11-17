@@ -24,3 +24,15 @@ func TestErrorMessageIsClientFacing(t *testing.T) {
 		t.Fatalf("Error() = %q, want the message", ErrInvalidName.Error())
 	}
 }
+
+func TestErrorWithDetailsKeepsItsIdentity(t *testing.T) {
+	detailed := ErrDuplicatePoint.WithDetails(DuplicatePointDetails{Indices: [2]int{0, 2}})
+
+	if !errors.Is(fmt.Errorf("create plot: %w", detailed), ErrDuplicatePoint) || errors.Is(detailed, ErrZeroArea) {
+		t.Fatalf("errors.Is mismatch for %#v", detailed)
+	}
+
+	if ErrDuplicatePoint.Details != nil {
+		t.Fatalf("the shared error was changed: %#v", ErrDuplicatePoint)
+	}
+}

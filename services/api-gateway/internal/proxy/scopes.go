@@ -17,12 +17,15 @@ const (
 )
 
 type scopeRule struct {
-	method  string
-	pattern string
-	scopes  []string
+	method      string
+	pattern     string
+	scopes      []string
+	public      bool
+	rateLimited bool
 }
 
 var scopeRules = []scopeRule{
+	{method: http.MethodPost, pattern: "/api/v1/plots/preview", public: true, rateLimited: true},
 	{method: http.MethodGet, pattern: "/api/v1/plots", scopes: []string{ScopePlotsRead}},
 	{method: http.MethodGet, pattern: "/api/v1/plots/{id}", scopes: []string{ScopePlotsRead}},
 	{method: http.MethodPost, pattern: "/api/v1/plots", scopes: []string{ScopePlotsWrite}},
@@ -34,13 +37,31 @@ var scopeRules = []scopeRule{
 }
 
 func RequiredScopes(method, path string) ([]string, bool) {
+	rule, known := findScopeRule(method, path)
+
+	return rule.scopes, known
+}
+
+func IsPublicRoute(method, path string) bool {
+	rule, known := findScopeRule(method, path)
+
+	return known && rule.public
+}
+
+func IsRateLimitedRoute(method, path string) bool {
+	rule, known := findScopeRule(method, path)
+
+	return known && rule.rateLimited
+}
+
+func findScopeRule(method, path string) (scopeRule, bool) {
 	for _, rule := range scopeRules {
 		if rule.method == method && matchesPattern(rule.pattern, path) {
-			return rule.scopes, true
+			return rule, true
 		}
 	}
 
-	return nil, false
+	return scopeRule{}, false
 }
 
 func (principal Principal) HasScopes(scopes []string) bool {

@@ -33,6 +33,11 @@ var (
 		Message: "route not found",
 	}
 
+	ErrRateLimited = &Error{
+		Status: http.StatusTooManyRequests, Code: "rate_limited",
+		Message: "too many requests; retry later",
+	}
+
 	ErrServiceUnavailable = &Error{
 		Status: http.StatusServiceUnavailable, Code: "service_unavailable",
 		Message: "service is temporarily unavailable",

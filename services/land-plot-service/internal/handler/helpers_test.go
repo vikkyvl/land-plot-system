@@ -52,6 +52,10 @@ func (stub *plotServiceStub) Update(
 	return stub.plot, stub.err
 }
 
+func (stub *plotServiceStub) Preview(points []domain.Coordinate) domain.PolygonInspection {
+	return domain.InspectPolygon(points, domain.LocalEllipsoidCalculator{})
+}
+
 var allScopes = []string{domain.ScopePlotsRead, domain.ScopePlotsWrite}
 
 type verifierStub struct {

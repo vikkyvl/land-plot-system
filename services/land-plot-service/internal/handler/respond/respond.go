@@ -20,6 +20,7 @@ var errTrailingJSON = errors.New("request body must contain one JSON object")
 type ErrorResponse struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
+	Details   any    `json:"details,omitempty"`
 	RequestID string `json:"request_id"`
 }
 

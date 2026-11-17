@@ -10,4 +10,6 @@ var (
 
 	errInvalidUpdatePlotBody = domain.NewError(domain.KindInvalidRequest, codeInvalidRequest,
 		"request body must contain valid name or points fields")
+	errInvalidPreviewBody = domain.NewError(domain.KindInvalidRequest, codeInvalidRequest,
+		"request body must contain points")
 )

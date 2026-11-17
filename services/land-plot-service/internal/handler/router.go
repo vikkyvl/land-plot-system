@@ -27,6 +27,7 @@ func NewRouter(
 
 	router := http.NewServeMux()
 	router.HandleFunc("GET /health", healthHandler(serviceName, responses))
+	router.HandleFunc("POST /api/v1/plots/preview", plotHandler.preview)
 
 	for _, route := range protectedRoutes(plotHandler, traceHandler) {
 		router.Handle(route.pattern, middleware.Authenticate(verifier, responses,
