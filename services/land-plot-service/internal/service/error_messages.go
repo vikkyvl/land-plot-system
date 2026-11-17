@@ -5,6 +5,7 @@ const (
 	wrapCompensateSaga         = "compensate saga: %w"
 	wrapConfirmSaga            = "confirm saga: %w"
 	wrapCreatePlot             = "create plot: %w"
+	wrapDeletePlot             = "delete plot: %w"
 	wrapGetPlot                = "get plot: %w"
 	wrapListPlots              = "list plots: %w"
 	wrapUpdatePlot             = "update plot: %w"

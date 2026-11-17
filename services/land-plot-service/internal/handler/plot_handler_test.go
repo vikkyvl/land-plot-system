@@ -73,3 +73,47 @@ func TestUpdatePendingPlotReturnsConflict(t *testing.T) {
 		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
 	}
 }
+
+func TestDeletePlotReturnsNoContent(t *testing.T) {
+	plots := &plotServiceStub{}
+
+	response := serve(newTestRouter(plots), authorizedRequest(http.MethodDelete, "/api/v1/plots/plot-1", ""))
+
+	if response.Code != http.StatusNoContent || response.Body.Len() != 0 ||
+		plots.deletedID != "plot-1" || plots.ownerID != testOwnerID {
+		t.Fatalf("status = %d body = %q deleted = %q owner = %q",
+			response.Code, response.Body.String(), plots.deletedID, plots.ownerID)
+	}
+}
+
+func TestDeletePlotErrors(t *testing.T) {
+	tests := []struct {
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{domain.ErrPlotDeleted, http.StatusGone, "plot_deleted"},
+		{domain.ErrPlotNotConfirmed, http.StatusConflict, "plot_not_confirmed"},
+		{domain.ErrForbidden, http.StatusForbidden, "forbidden"},
+	}
+	for _, test := range tests {
+		t.Run(test.wantCode, func(t *testing.T) {
+			response := serve(newTestRouter(&plotServiceStub{err: test.err}),
+				authorizedRequest(http.MethodDelete, "/api/v1/plots/plot-1", ""))
+
+			if response.Code != test.wantStatus ||
+				decodeBody[respond.ErrorResponse](t, response).Code != test.wantCode {
+				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestDeletePlotNeedsWriteScope(t *testing.T) {
+	response := serve(newTestRouterWithScopes(&plotServiceStub{}, domain.ScopePlotsRead),
+		authorizedRequest(http.MethodDelete, "/api/v1/plots/plot-1", ""))
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}

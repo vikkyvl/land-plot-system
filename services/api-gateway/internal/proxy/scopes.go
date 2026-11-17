@@ -30,6 +30,7 @@ var scopeRules = []scopeRule{
 	{method: http.MethodGet, pattern: "/api/v1/plots/{id}", scopes: []string{ScopePlotsRead}},
 	{method: http.MethodPost, pattern: "/api/v1/plots", scopes: []string{ScopePlotsWrite}},
 	{method: http.MethodPatch, pattern: "/api/v1/plots/{id}", scopes: []string{ScopePlotsWrite}},
+	{method: http.MethodDelete, pattern: "/api/v1/plots/{id}", scopes: []string{ScopePlotsWrite}},
 	{method: http.MethodGet, pattern: "/api/v1/reports/{id}", scopes: []string{ScopeReportsRead}},
 	{method: http.MethodPost, pattern: "/api/v1/reports", scopes: []string{ScopeReportsWrite, ScopePlotsRead}},
 	{method: http.MethodGet, pattern: "/api/v1/users/profile", scopes: []string{ScopeOpenID}},

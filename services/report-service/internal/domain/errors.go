@@ -29,6 +29,9 @@ var (
 	ErrPlotServiceRejectedToken = NewError(KindUnauthorized, "unauthorized",
 		"land-plot-service rejected the access token")
 
+	ErrPlotDeleted = NewError(KindGone, "plot_deleted",
+		"plot was deleted")
+
 	ErrPlotNotConfirmed = NewError(KindConflict, "plot_not_confirmed",
 		"plot is waiting for confirmation; retry the request later")
 )

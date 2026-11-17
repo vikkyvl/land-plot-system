@@ -100,7 +100,7 @@ func (message plotMessage) toDomain() domain.PlotEvent {
 
 func isSupportedEventType(eventType string) bool {
 	switch domain.PlotEventType(eventType) {
-	case domain.PlotCreated, domain.PlotUpdated, domain.PlotCancelled:
+	case domain.PlotCreated, domain.PlotUpdated, domain.PlotCancelled, domain.PlotDeleted:
 		return true
 	default:
 		return false

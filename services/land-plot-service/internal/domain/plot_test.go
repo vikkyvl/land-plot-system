@@ -145,3 +145,26 @@ func TestPlotUpdatedRequiresConfirmedPlot(t *testing.T) {
 		t.Fatalf("Updated() error = %v, want ErrPlotNotConfirmed", err)
 	}
 }
+
+func TestDeletedPlotKeepsDataAndBumpsVersion(t *testing.T) {
+	now := time.Date(2026, time.November, 17, 12, 0, 0, 0, time.UTC)
+	plot := Plot{ID: "plot-1", Name: "Plot", Version: 2, Status: StatusConfirmed}
+
+	deleted, err := plot.Deleted(now)
+	if err != nil {
+		t.Fatalf("Deleted() error = %v", err)
+	}
+
+	if !deleted.IsDeleted() || !deleted.DeletedAt.Equal(now) || deleted.Version != 3 ||
+		deleted.Name != "Plot" || plot.IsDeleted() {
+		t.Fatalf("deleted = %#v, original = %#v", deleted, plot)
+	}
+}
+
+func TestOnlyConfirmedPlotCanBeDeleted(t *testing.T) {
+	for _, status := range []PlotStatus{StatusPending, StatusCancelled} {
+		if _, err := (Plot{Status: status}).Deleted(time.Now()); !errors.Is(err, ErrPlotNotConfirmed) {
+			t.Fatalf("Deleted() of %s error = %v", status, err)
+		}
+	}
+}

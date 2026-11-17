@@ -9,6 +9,7 @@ const (
 	KindForbidden
 	KindNotFound
 	KindConflict
+	KindGone
 	KindUnavailable
 )
 

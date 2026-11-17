@@ -49,4 +49,7 @@ var (
 
 	ErrPlotNotConfirmed = NewError(KindConflict, "plot_not_confirmed",
 		"plot is waiting for confirmation; retry the request later")
+
+	ErrPlotDeleted = NewError(KindGone, "plot_deleted",
+		"plot was deleted")
 )

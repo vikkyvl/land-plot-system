@@ -20,6 +20,7 @@ type reportResponse struct {
 	AreaHectares float64   `json:"area_hectares"`
 	PerimeterM   float64   `json:"perimeter_m"`
 	CreatedAt    time.Time `json:"created_at"`
+	PlotDeleted  bool      `json:"plot_deleted"`
 }
 
 func newReportResponse(report domain.Report) reportResponse {
@@ -33,5 +34,6 @@ func newReportResponse(report domain.Report) reportResponse {
 		AreaHectares: report.AreaHectares,
 		PerimeterM:   report.PerimeterM,
 		CreatedAt:    report.CreatedAt,
+		PlotDeleted:  report.PlotDeleted(),
 	}
 }

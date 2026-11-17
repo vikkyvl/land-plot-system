@@ -8,6 +8,7 @@ const (
 	PlotCreated   PlotEventType = "plot.created"
 	PlotUpdated   PlotEventType = "plot.updated"
 	PlotCancelled PlotEventType = "plot.cancelled"
+	PlotDeleted   PlotEventType = "plot.deleted"
 )
 
 type PlotEvent struct {

@@ -24,9 +24,9 @@ func (store *plotStore) CreatePlot(requestContext context.Context, plot domain.P
 
 	_, err = store.transaction.Exec(requestContext, `
 		INSERT INTO plots (`+plotColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		plot.ID, plot.OwnerID, plot.Name, points, plot.AreaM2, plot.PerimeterM,
-		plot.Version, plot.Status, plot.CreatedAt, plot.UpdatedAt,
+		plot.Version, plot.Status, plot.CreatedAt, plot.UpdatedAt, plot.DeletedAt,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertPlot, err)
@@ -43,10 +43,11 @@ func (store *plotStore) UpdatePlot(requestContext context.Context, plot domain.P
 
 	command, err := store.transaction.Exec(requestContext, `
 		UPDATE plots
-		SET name = $1, points = $2, area_m2 = $3, perimeter_m = $4, version = $5, status = $6, updated_at = $7
-		WHERE id = $8 AND owner_id = $9 AND version = $10`,
+		SET name = $1, points = $2, area_m2 = $3, perimeter_m = $4, version = $5, status = $6, updated_at = $7,
+			deleted_at = $8
+		WHERE id = $9 AND owner_id = $10 AND version = $11 AND deleted_at IS NULL`,
 		plot.Name, points, plot.AreaM2, plot.PerimeterM, plot.Version, plot.Status, plot.UpdatedAt,
-		plot.ID, plot.OwnerID, expectedVersion,
+		plot.DeletedAt, plot.ID, plot.OwnerID, expectedVersion,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapUpdatePlotRow, err)

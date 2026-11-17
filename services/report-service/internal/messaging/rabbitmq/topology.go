@@ -37,6 +37,7 @@ func declareTopology(channel *amqp.Channel) error {
 		{queueName, string(domain.PlotCreated), exchangeName},
 		{queueName, string(domain.PlotUpdated), exchangeName},
 		{queueName, string(domain.PlotCancelled), exchangeName},
+		{queueName, string(domain.PlotDeleted), exchangeName},
 		{deadQueueName, allRoutingKeys, deadExchangeName},
 	}
 	for _, binding := range bindings {

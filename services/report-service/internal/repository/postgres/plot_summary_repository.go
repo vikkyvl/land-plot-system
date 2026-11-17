@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -63,6 +64,12 @@ func (repository *PlotSummaryRepository) writeSummary(
 		return err
 	}
 
+	if event.DeletesPlot() {
+		if err := markReportsPlotDeleted(processingContext, transaction, event); err != nil {
+			return err
+		}
+	}
+
 	return appendReply(processingContext, transaction, reply)
 }
 
@@ -88,8 +95,8 @@ func recordProcessedEvent(processingContext context.Context, transaction pgx.Tx,
 func upsertSummary(processingContext context.Context, transaction pgx.Tx, event domain.PlotEvent) error {
 	_, err := transaction.Exec(processingContext, `
 		INSERT INTO plot_summaries (
-			plot_id, owner_id, name, area_m2, version, occurred_at, updated_at, cancelled_at
-		) VALUES ($1, $2, $3, $4, $5, $6, NOW(), CASE WHEN $7 THEN NOW() END)
+			plot_id, owner_id, name, area_m2, version, occurred_at, updated_at, cancelled_at, deleted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, NOW(), CASE WHEN $7 THEN NOW() END, $8)
 		ON CONFLICT (plot_id) DO UPDATE SET
 			owner_id = EXCLUDED.owner_id,
 			name = EXCLUDED.name,
@@ -97,13 +104,35 @@ func upsertSummary(processingContext context.Context, transaction pgx.Tx, event 
 			version = EXCLUDED.version,
 			occurred_at = EXCLUDED.occurred_at,
 			updated_at = NOW(),
-			cancelled_at = EXCLUDED.cancelled_at
+			cancelled_at = EXCLUDED.cancelled_at,
+			deleted_at = EXCLUDED.deleted_at
 		WHERE EXCLUDED.version > plot_summaries.version`,
 		event.PlotID, event.OwnerID, event.Name, event.AreaM2, event.Version, event.OccurredAt,
-		event.Type == domain.PlotCancelled,
+		event.Type == domain.PlotCancelled, deletionTime(event),
 	)
 	if err != nil {
 		return fmt.Errorf(wrapUpsertPlotSummary, err)
+	}
+
+	return nil
+}
+
+func deletionTime(event domain.PlotEvent) *time.Time {
+	if !event.DeletesPlot() {
+		return nil
+	}
+
+	return &event.OccurredAt
+}
+
+func markReportsPlotDeleted(processingContext context.Context, transaction pgx.Tx, event domain.PlotEvent) error {
+	_, err := transaction.Exec(processingContext, `
+		UPDATE reports SET plot_deleted_at = $2
+		WHERE plot_id = $1 AND plot_deleted_at IS NULL`,
+		event.PlotID, event.OccurredAt,
+	)
+	if err != nil {
+		return fmt.Errorf(wrapMarkReportsPlotDeleted, err)
 	}
 
 	return nil

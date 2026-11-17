@@ -187,7 +187,7 @@ func TestUnknownMethodOnProtectedPathIsNotProxied(t *testing.T) {
 
 	if response := serve(
 		router,
-		authorized(http.MethodDelete, "/api/v1/plots/plot-1"),
+		authorized(http.MethodPut, "/api/v1/plots/plot-1"),
 	); response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}

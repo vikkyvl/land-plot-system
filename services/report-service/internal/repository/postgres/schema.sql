@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS processed_events (
 
 ALTER TABLE plot_summaries ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ NULL;
 
+ALTER TABLE plot_summaries ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS plot_deleted_at TIMESTAMPTZ NULL;
+
+CREATE INDEX IF NOT EXISTS reports_plot_id_idx ON reports (plot_id);
+
 CREATE TABLE IF NOT EXISTS outbox_events (
     id UUID PRIMARY KEY,
     position BIGSERIAL NOT NULL,

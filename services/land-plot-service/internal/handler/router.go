@@ -43,6 +43,7 @@ func protectedRoutes(plots *plotHandler, trace *traceHandler) []protectedRoute {
 		{pattern: "GET /api/v1/plots", scopes: []string{domain.ScopePlotsRead}, handle: plots.list},
 		{pattern: "GET /api/v1/plots/{id}", scopes: []string{domain.ScopePlotsRead}, handle: plots.get},
 		{pattern: "PATCH /api/v1/plots/{id}", scopes: []string{domain.ScopePlotsWrite}, handle: plots.update},
+		{pattern: "DELETE /api/v1/plots/{id}", scopes: []string{domain.ScopePlotsWrite}, handle: plots.remove},
 		{pattern: "GET /internal/plots/{id}", scopes: []string{domain.ScopePlotsRead}, handle: plots.get},
 		{pattern: "GET /internal/demo/chain", handle: trace.trace},
 	}

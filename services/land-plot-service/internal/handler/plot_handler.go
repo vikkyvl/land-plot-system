@@ -89,3 +89,13 @@ func (handler *plotHandler) update(response http.ResponseWriter, request *http.R
 
 	handler.responses.JSON(response, http.StatusOK, newPlotResponse(plot))
 }
+
+func (handler *plotHandler) remove(response http.ResponseWriter, request *http.Request) {
+	err := handler.plots.Delete(request.Context(), middleware.UserID(request.Context()), request.PathValue("id"))
+	if err != nil {
+		handler.responses.Error(response, request, err)
+		return
+	}
+
+	response.WriteHeader(http.StatusNoContent)
+}

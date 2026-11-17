@@ -45,6 +45,8 @@ func (plotClient *PlotClient) Get(
 	case http.StatusOK:
 	case http.StatusNotFound:
 		return domain.PlotSnapshot{}, domain.ErrPlotNotFound
+	case http.StatusGone:
+		return domain.PlotSnapshot{}, domain.ErrPlotDeleted
 	case http.StatusUnauthorized:
 		return domain.PlotSnapshot{}, domain.ErrPlotServiceRejectedToken
 	case http.StatusForbidden:

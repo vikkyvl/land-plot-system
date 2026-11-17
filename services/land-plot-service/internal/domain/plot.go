@@ -26,6 +26,7 @@ type Plot struct {
 	Status     PlotStatus
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	DeletedAt  *time.Time
 }
 
 type PlotDraft struct {
@@ -110,6 +111,25 @@ func (plot Plot) Updated(changes PlotChanges, calculator AreaCalculator, now tim
 	updated.UpdatedAt = now.UTC()
 
 	return updated, nil
+}
+
+func (plot Plot) Deleted(now time.Time) (Plot, error) {
+	if plot.Status != StatusConfirmed {
+		return Plot{}, ErrPlotNotConfirmed
+	}
+
+	deletedAt := now.UTC()
+
+	deleted := plot
+	deleted.Version++
+	deleted.UpdatedAt = deletedAt
+	deleted.DeletedAt = &deletedAt
+
+	return deleted, nil
+}
+
+func (plot Plot) IsDeleted() bool {
+	return plot.DeletedAt != nil
 }
 
 func (plot Plot) State() PlotState {

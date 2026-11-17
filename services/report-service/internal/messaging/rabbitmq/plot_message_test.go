@@ -96,3 +96,12 @@ func TestDecodePlotMessageRejectsMismatchedRoutingKey(t *testing.T) {
 		t.Fatalf("decodePlotMessage() error = %v, want ErrInvalidMessage", err)
 	}
 }
+
+func TestDecodePlotDeletedMessage(t *testing.T) {
+	message := validPlotMessage(domain.PlotDeleted)
+
+	event, err := decodePlotMessage(encodeMessage(t, message), message.EventType)
+	if err != nil || event.Type != domain.PlotDeleted || !event.DeletesPlot() || event.ChangesPlot() {
+		t.Fatalf("decodePlotMessage() = %#v, %v", event, err)
+	}
+}

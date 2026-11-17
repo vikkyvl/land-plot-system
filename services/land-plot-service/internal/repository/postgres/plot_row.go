@@ -7,7 +7,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
 )
 
-const plotColumns = "id, owner_id, name, points, area_m2, perimeter_m, version, status, created_at, updated_at"
+const plotColumns = "id, owner_id, name, points, area_m2, perimeter_m, version, status, created_at, updated_at, deleted_at"
 
 type pointRecord struct {
 	Latitude  float64 `json:"lat"`
@@ -26,7 +26,7 @@ func scanPlot(row rowScanner) (domain.Plot, error) {
 
 	err := row.Scan(
 		&plot.ID, &plot.OwnerID, &plot.Name, &points, &plot.AreaM2,
-		&plot.PerimeterM, &plot.Version, &plot.Status, &plot.CreatedAt, &plot.UpdatedAt,
+		&plot.PerimeterM, &plot.Version, &plot.Status, &plot.CreatedAt, &plot.UpdatedAt, &plot.DeletedAt,
 	)
 	if err != nil {
 		return domain.Plot{}, err

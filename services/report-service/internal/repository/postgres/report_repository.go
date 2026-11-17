@@ -39,9 +39,12 @@ func (repository *ReportRepository) Create(requestContext context.Context, repor
 func (repository *ReportRepository) GetByID(requestContext context.Context, id string) (domain.Report, error) {
 	var report domain.Report
 
-	err := repository.pool.QueryRow(requestContext, `SELECT `+reportColumns+` FROM reports WHERE id = $1`, id).Scan(
+	err := repository.pool.QueryRow(requestContext,
+		`SELECT `+reportColumns+`, plot_deleted_at FROM reports WHERE id = $1`, id,
+	).Scan(
 		&report.ID, &report.OwnerID, &report.PlotID, &report.PlotName, &report.PlotVersion,
 		&report.AreaM2, &report.AreaAres, &report.AreaHectares, &report.PerimeterM, &report.CreatedAt,
+		&report.PlotDeletedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Report{}, domain.ErrReportNotFound

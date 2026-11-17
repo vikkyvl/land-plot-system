@@ -12,6 +12,7 @@ const (
 	wrapInsertOutboxEvent           = "insert outbox event: %w"
 	wrapInsertReport                = "insert report: %w"
 	wrapMarkOutboxEventPublished    = "mark outbox event published: %w"
+	wrapMarkReportsPlotDeleted      = "mark reports of a deleted plot: %w"
 	wrapPublishOutboxEvent          = "publish outbox event: %w"
 	wrapQueryReportByID             = "query report by ID: %w"
 	wrapRecordOutboxFailure         = "record outbox failure: %w"

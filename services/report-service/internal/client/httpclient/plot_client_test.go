@@ -121,6 +121,7 @@ func TestPlotClientMapsErrors(t *testing.T) {
 			domain.ErrPlotServiceRejectedToken,
 		},
 		{"not found", singleInstance(), respondWith(http.StatusNotFound, ""), domain.ErrPlotNotFound},
+		{"deleted", singleInstance(), respondWith(http.StatusGone, `{"code":"plot_deleted"}`), domain.ErrPlotDeleted},
 		{"server error", singleInstance(), respondWith(http.StatusBadGateway, ""), service.ErrPlotServiceUnavailable},
 		{"malformed body", singleInstance(), respondWith(http.StatusOK, "{"), service.ErrInvalidPlotResponse},
 		{

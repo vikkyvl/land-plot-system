@@ -55,3 +55,31 @@ func TestGetReportUsesAuthenticatedOwner(t *testing.T) {
 		t.Fatalf("status = %d owner = %q", response.Code, reports.ownerID)
 	}
 }
+
+func TestReportShowsWhetherItsPlotWasDeleted(t *testing.T) {
+	deletedAt := time.Date(2026, time.November, 17, 12, 0, 0, 0, time.UTC)
+
+	for _, test := range []struct {
+		report domain.Report
+		want   bool
+	}{
+		{domain.Report{ID: "report-1"}, false},
+		{domain.Report{ID: "report-1", PlotDeletedAt: &deletedAt}, true},
+	} {
+		response := serve(newTestRouter(&reportServiceStub{report: test.report}),
+			authorizedRequest(http.MethodGet, "/api/v1/reports/report-1", ""))
+
+		if body := decodeBody[reportResponse](t, response); body.PlotDeleted != test.want {
+			t.Fatalf("plot_deleted = %v, want %v", body.PlotDeleted, test.want)
+		}
+	}
+}
+
+func TestReportForDeletedPlotIsGone(t *testing.T) {
+	response := serve(newTestRouter(&reportServiceStub{err: domain.ErrPlotDeleted}),
+		authorizedRequest(http.MethodPost, "/api/v1/reports", `{"plot_id":"7d1f0a2e-3b4c-4d5e-8f60-718293a4b5c6"}`))
+
+	if response.Code != http.StatusGone || decodeBody[respond.ErrorResponse](t, response).Code != "plot_deleted" {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+}

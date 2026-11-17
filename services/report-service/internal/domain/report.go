@@ -8,16 +8,21 @@ const (
 )
 
 type Report struct {
-	ID           string
-	OwnerID      string
-	PlotID       string
-	PlotName     string
-	PlotVersion  int64
-	AreaM2       float64
-	AreaAres     float64
-	AreaHectares float64
-	PerimeterM   float64
-	CreatedAt    time.Time
+	ID            string
+	OwnerID       string
+	PlotID        string
+	PlotName      string
+	PlotVersion   int64
+	AreaM2        float64
+	AreaAres      float64
+	AreaHectares  float64
+	PerimeterM    float64
+	CreatedAt     time.Time
+	PlotDeletedAt *time.Time
+}
+
+func (report Report) PlotDeleted() bool {
+	return report.PlotDeletedAt != nil
 }
 
 func NewReport(id string, plot PlotSnapshot, now time.Time) Report {

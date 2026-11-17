@@ -20,6 +20,7 @@ var statusByKind = map[domain.ErrorKind]int{
 	domain.KindForbidden:      http.StatusForbidden,
 	domain.KindNotFound:       http.StatusNotFound,
 	domain.KindConflict:       http.StatusConflict,
+	domain.KindGone:           http.StatusGone,
 	domain.KindUnavailable:    http.StatusServiceUnavailable,
 }
 

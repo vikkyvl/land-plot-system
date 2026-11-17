@@ -8,6 +8,7 @@ const (
 	PlotCreated   PlotEventType = "plot.created"
 	PlotUpdated   PlotEventType = "plot.updated"
 	PlotCancelled PlotEventType = "plot.cancelled"
+	PlotDeleted   PlotEventType = "plot.deleted"
 )
 
 type PlotEvent struct {
@@ -23,4 +24,8 @@ type PlotEvent struct {
 
 func (event PlotEvent) ChangesPlot() bool {
 	return event.Type == PlotCreated || event.Type == PlotUpdated
+}
+
+func (event PlotEvent) DeletesPlot() bool {
+	return event.Type == PlotDeleted
 }

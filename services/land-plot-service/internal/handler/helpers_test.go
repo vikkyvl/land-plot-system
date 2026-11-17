@@ -20,10 +20,11 @@ const (
 )
 
 type plotServiceStub struct {
-	ownerID string
-	changes domain.PlotChanges
-	plot    domain.Plot
-	err     error
+	ownerID   string
+	changes   domain.PlotChanges
+	deletedID string
+	plot      domain.Plot
+	err       error
 }
 
 func (stub *plotServiceStub) Create(_ context.Context, draft domain.PlotDraft) (domain.Plot, error) {
@@ -50,6 +51,13 @@ func (stub *plotServiceStub) Update(
 	stub.changes = changes
 
 	return stub.plot, stub.err
+}
+
+func (stub *plotServiceStub) Delete(_ context.Context, ownerID, plotID string) error {
+	stub.ownerID = ownerID
+	stub.deletedID = plotID
+
+	return stub.err
 }
 
 func (stub *plotServiceStub) Preview(points []domain.Coordinate) domain.PolygonInspection {

@@ -84,7 +84,38 @@ func (plotService *PlotService) Get(requestContext context.Context, ownerID, plo
 		return domain.Plot{}, domain.ErrForbidden
 	}
 
+	if plot.IsDeleted() {
+		return domain.Plot{}, domain.ErrPlotDeleted
+	}
+
 	return plot, nil
+}
+
+func (plotService *PlotService) Delete(requestContext context.Context, ownerID, plotID string) error {
+	plot, err := plotService.Get(requestContext, ownerID, plotID)
+	if err != nil {
+		return err
+	}
+
+	deleted, err := plot.Deleted(plotService.now())
+	if err != nil {
+		return err
+	}
+
+	event := domain.NewPlotEvent(uuid.NewString(), domain.PlotDeleted, deleted)
+
+	err = plotService.repository.InTransaction(requestContext, func(store PlotStore) error {
+		if err := store.UpdatePlot(requestContext, deleted, plot.Version); err != nil {
+			return err
+		}
+
+		return store.AppendEvent(requestContext, event)
+	})
+	if err != nil {
+		return fmt.Errorf(wrapDeletePlot, err)
+	}
+
+	return nil
 }
 
 func (plotService *PlotService) Update(

@@ -91,7 +91,7 @@ func (repository *PlotRepository) GetByID(requestContext context.Context, id str
 func (repository *PlotRepository) ListByOwner(requestContext context.Context, ownerID string) ([]domain.Plot, error) {
 	rows, err := repository.pool.Query(requestContext, `
 		SELECT `+plotColumns+` FROM plots
-		WHERE owner_id = $1 AND status <> $2
+		WHERE owner_id = $1 AND status <> $2 AND deleted_at IS NULL
 		ORDER BY created_at, id`,
 		ownerID, domain.StatusCancelled,
 	)
