@@ -1,6 +1,10 @@
 package postgres
 
 const (
+	wrapDecodeClimate               = "decode climate: %w"
+	wrapEncodeClimate               = "encode climate: %w"
+	wrapQueryClimateCache           = "query climate cache: %w"
+	wrapUpsertClimateCache          = "upsert climate cache: %w"
 	wrapApplyReportSchema           = "apply report schema: %w"
 	wrapBeginOutboxTransaction      = "begin outbox transaction: %w"
 	wrapBeginPlotEventTransaction   = "begin plot event transaction: %w"

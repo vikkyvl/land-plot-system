@@ -63,4 +63,15 @@ DROP INDEX IF EXISTS outbox_events_unpublished_idx;
 CREATE INDEX IF NOT EXISTS outbox_events_pending_idx
     ON outbox_events (position) WHERE published_at IS NULL AND failed_at IS NULL;
 
+-- Climate profiles per 0.1° cell and period of years; neighbouring plots share the same climate.
+CREATE TABLE IF NOT EXISTS climate_cache (
+    cell_latitude_tenths INT NOT NULL,
+    cell_longitude_tenths INT NOT NULL,
+    first_year INT NOT NULL,
+    last_year INT NOT NULL,
+    profile JSONB NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (cell_latitude_tenths, cell_longitude_tenths, first_year, last_year)
+);
+
 COMMIT;

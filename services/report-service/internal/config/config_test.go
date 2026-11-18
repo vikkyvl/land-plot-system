@@ -130,6 +130,8 @@ func TestLoadReadsExternalDataSettings(t *testing.T) {
 	}
 
 	if serviceConfig.OpenMeteo.ElevationURL != defaultElevationURL ||
+		serviceConfig.OpenMeteo.ArchiveURL != defaultArchiveURL ||
+		serviceConfig.Climate != (ClimateConfig{Years: 10, CacheTTL: 8760 * time.Hour}) ||
 		serviceConfig.OpenMeteo.Timeout != defaultOpenMeteoTimeout ||
 		serviceConfig.Terrain != (TerrainConfig{GridSide: 10, MarginM: 90, CoarseAreaM2: 10_000}) {
 		t.Fatalf("Load() = %+v, %+v", serviceConfig.OpenMeteo, serviceConfig.Terrain)
@@ -141,6 +143,9 @@ func TestLoadReadsExternalDataSettings(t *testing.T) {
 		"TERRAIN_GRID_SIDE":        "11",
 		"TERRAIN_MARGIN_M":         "-5",
 		"TERRAIN_COARSE_AREA_M2":   "lots",
+		"OPEN_METEO_ARCHIVE_URL":   "archive",
+		"CLIMATE_YEARS":            "0",
+		"CLIMATE_CACHE_TTL":        "a year",
 	}
 	for key, value := range invalid {
 		t.Run(key, func(t *testing.T) {

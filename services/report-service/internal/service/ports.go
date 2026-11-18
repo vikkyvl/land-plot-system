@@ -28,6 +28,24 @@ type ElevationProvider interface {
 	Elevations(requestContext context.Context, points []domain.Coordinate) ([]float64, error)
 }
 
+type ClimateProvider interface {
+	DailyWeather(
+		requestContext context.Context,
+		point domain.Coordinate,
+		from, to time.Time,
+	) ([]domain.DailyWeather, error)
+}
+
+type ClimateCache interface {
+	Get(requestContext context.Context, key ClimateCacheKey, notBefore time.Time) (domain.Climate, bool, error)
+	Put(requestContext context.Context, key ClimateCacheKey, climate domain.Climate, fetchedAt time.Time) error
+}
+
+type ClimateCacheKey struct {
+	Cell   domain.ClimateCell
+	Period domain.ClimatePeriod
+}
+
 type PlotSummaryRepository interface {
 	Apply(processingContext context.Context, event domain.PlotEvent, reply domain.SummaryApplied) error
 }

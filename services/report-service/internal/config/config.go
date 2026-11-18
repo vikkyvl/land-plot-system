@@ -34,6 +34,9 @@ const (
 
 const (
 	defaultElevationURL     = "https://api.open-meteo.com/v1/elevation"
+	defaultArchiveURL       = "https://archive-api.open-meteo.com/v1/archive"
+	defaultClimateYears     = 10
+	defaultClimateCacheTTL  = 365 * 24 * time.Hour
 	defaultOpenMeteoTimeout = 3 * time.Second
 	defaultTerrainGridSide  = 10
 	defaultTerrainMarginM   = 90
@@ -82,11 +85,18 @@ type Config struct {
 
 	OpenMeteo OpenMeteoConfig
 	Terrain   TerrainConfig
+	Climate   ClimateConfig
 }
 
 type OpenMeteoConfig struct {
 	ElevationURL string
+	ArchiveURL   string
 	Timeout      time.Duration
+}
+
+type ClimateConfig struct {
+	Years    int
+	CacheTTL time.Duration
 }
 
 type TerrainConfig struct {
@@ -181,7 +191,20 @@ func (serviceConfig *Config) loadExternalData() error {
 		return err
 	}
 
+	serviceConfig.OpenMeteo.ArchiveURL = stringOrDefault(envOpenMeteoArchiveURL, defaultArchiveURL)
+	if err := requireHTTPURL(envOpenMeteoArchiveURL, serviceConfig.OpenMeteo.ArchiveURL); err != nil {
+		return err
+	}
+
 	var err error
+	if serviceConfig.Climate.Years, err = positiveIntOrDefault(envClimateYears, defaultClimateYears); err != nil {
+		return err
+	}
+
+	if serviceConfig.Climate.CacheTTL, err = durationOrDefault(envClimateCacheTTL, defaultClimateCacheTTL); err != nil {
+		return err
+	}
+
 	if serviceConfig.OpenMeteo.Timeout, err = durationOrDefault(
 		envOpenMeteoTimeout,
 		defaultOpenMeteoTimeout,

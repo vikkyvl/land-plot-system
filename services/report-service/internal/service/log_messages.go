@@ -1,6 +1,8 @@
 package service
 
 const (
+	logReadClimateCache               = "read climate cache"
+	logWriteClimateCache              = "write climate cache"
 	logDeletePublishedOutboxMessages  = "delete published outbox messages"
 	logOutboxMessageAbandoned         = "outbox message abandoned after too many rejections"
 	logOutboxMessagesPublished        = "outbox messages published"

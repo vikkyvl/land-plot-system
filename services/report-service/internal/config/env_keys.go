@@ -1,6 +1,9 @@
 package config
 
 const (
+	envClimateCacheTTL          = "CLIMATE_CACHE_TTL"
+	envClimateYears             = "CLIMATE_YEARS"
+	envOpenMeteoArchiveURL      = "OPEN_METEO_ARCHIVE_URL"
 	envOpenMeteoElevationURL    = "OPEN_METEO_ELEVATION_URL"
 	envOpenMeteoTimeout         = "OPEN_METEO_TIMEOUT"
 	envTerrainCoarseAreaM2      = "TERRAIN_COARSE_AREA_M2"

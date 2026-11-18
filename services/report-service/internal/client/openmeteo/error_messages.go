@@ -7,4 +7,5 @@ const (
 	formatStatusReason = "%w: status %d: %s"
 	formatMissingValue = "%w: value %d is missing"
 	formatValueCount   = "%w: %d values for %d points"
+	formatSeriesLength = "%w: daily series differ from %d dates"
 )
