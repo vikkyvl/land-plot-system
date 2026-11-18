@@ -91,7 +91,7 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── .golangci.yml               # formatter and linter configuration
 ├── Makefile                    # fmt / lint / test / vet / compose checks, demos
 ├── deploy/postgres/            # creates per-service databases and roles
-├── infra/keycloak/            # Keycloak realm land-plot, imported on the first start
+├── infra/keycloak/            # Keycloak realm land-plot (imported on the first start) and the Arqetra login theme
 ├── postman/                   # Postman collection with OAuth 2.0 Authorization Code + PKCE
 ├── scripts/demo.sh             # end-to-end demo against the running stack
 ├── scripts/demo_lr3.sh         # transactional outbox and saga demo
@@ -349,7 +349,9 @@ The admin console is at `http://localhost:8180/admin` (`KC_BOOTSTRAP_ADMIN_USERN
 
 The realm allows self-registration and password reset, and its pages are in Ukrainian by default (`uk`, with `en`). Keycloak sends its emails, such as the password reset link, to the development mail catcher **Mailpit**: nothing leaves the machine, and the messages are at `http://localhost:8025`.
 
-Keycloak imports the realm only when it does not exist yet. `./scripts/keycloak_realm.sh` applies the registration, password reset, language and SMTP settings from the realm file to a running Keycloak without deleting volumes; it can be run any number of times and prints no passwords or secrets. To start from a clean realm, recreate the volumes:
+The login pages use the **Arqetra theme** from `infra/keycloak/themes/arqetra/login`, mounted read-only into the container: sign-in, registration, password reset, the new password after the email, one-time password setup and entry, the error page and the expired page look like the web app. The theme extends `keycloak.v2`; it changes the look through its own CSS (the design tokens of `apps/web`, a local Montserrat font) and Ukrainian texts in `messages_uk.properties` with English as the fallback, and overrides only `login.ftl` and `register.ftl` (sign-in and register tabs) and `footer.ftl`. `start-dev` does not cache themes, so changes appear after a page reload. A test in `apps/web/tests/keycloakTheme.test.ts` keeps the theme tokens equal to the app tokens.
+
+Keycloak imports the realm only when it does not exist yet. `./scripts/keycloak_realm.sh` applies the display name, login theme, registration, password reset, language and SMTP settings from the realm file to a running Keycloak without deleting volumes; it can be run any number of times and prints no passwords or secrets. To start from a clean realm, recreate the volumes:
 
 ```sh
 docker compose --profile ai down -v

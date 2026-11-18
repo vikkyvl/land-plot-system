@@ -2414,7 +2414,8 @@
   "clientPolicies": {
     "policies": []
   },
-  "displayName": "Land Plot System",
+  "displayName": "Arqetra",
+  "loginTheme": "arqetra",
   "users": [
     {
       "username": "olena.koval@example.com",

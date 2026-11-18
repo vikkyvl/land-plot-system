@@ -99,6 +99,7 @@ services:
       - "127.0.0.1:${KEYCLOAK_PORT:-8180}:8080"
     volumes:
       - ./infra/keycloak/realm-land-plot.json:/opt/keycloak/data/import/realm-land-plot.json:ro
+      - ./infra/keycloak/themes/arqetra:/opt/keycloak/themes/arqetra:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q 'HTTP/1.0 200' <&3"]
       interval: 10s

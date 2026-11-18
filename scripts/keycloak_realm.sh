@@ -10,8 +10,8 @@ fi
 
 realm=${KEYCLOAK_REALM:-land-plot}
 realm_file=infra/keycloak/realm-land-plot.json
-settings='{registrationAllowed, resetPasswordAllowed, internationalizationEnabled, supportedLocales, defaultLocale, smtpServer}'
-shown_fields='registrationAllowed,resetPasswordAllowed,internationalizationEnabled,supportedLocales,defaultLocale,smtpServer(host,port,from,auth)'
+settings='{displayName, loginTheme, registrationAllowed, resetPasswordAllowed, internationalizationEnabled, supportedLocales, defaultLocale, smtpServer}'
+shown_fields='displayName,loginTheme,registrationAllowed,resetPasswordAllowed,internationalizationEnabled,supportedLocales,defaultLocale,smtpServer(host,port,from,auth)'
 
 for command_name in docker jq; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
