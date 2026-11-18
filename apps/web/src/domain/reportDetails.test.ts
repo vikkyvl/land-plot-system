@@ -13,6 +13,9 @@ const report: Report = {
   measurement: { area: { squareMeters: 24100, ares: 241, hectares: 2.41 }, perimeterMeters: 598 },
   createdAt: new Date('2026-10-26T10:00:00Z'),
   plotDeleted: false,
+  accuracy: null,
+  terrain: null,
+  climate: null,
 }
 
 const points = [
@@ -26,6 +29,7 @@ function details(plotVersion: number | null, deleted = false): ReportDetails {
     report: { ...report, plotDeleted: deleted },
     plot: plotVersion === null ? null : ({ version: plotVersion } as Plot),
     points: plotVersion === null ? null : points,
+    obstructions: [],
   }
 }
 

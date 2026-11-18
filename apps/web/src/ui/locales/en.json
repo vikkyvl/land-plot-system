@@ -29,7 +29,8 @@
   "counts": {
     "points": "{n} point | {n} points",
     "plots": "{n} plot | {n} plots",
-    "versions": "{n} version | {n} versions"
+    "versions": "{n} version | {n} versions",
+    "growingDays": "{n} day with a mean temperature ≥ 5 °C | {n} days with a mean temperature ≥ 5 °C"
   },
   "login": {
     "eyebrow": "Account",
@@ -286,5 +287,47 @@
     "unclear": "Boundary hard to see",
     "cancel": "Cancel",
     "coveredBySide": "Side {from}–{to} is hidden by"
+  },
+  "seasons": {
+    "winter": "Winter",
+    "spring": "Spring",
+    "summer": "Summer",
+    "autumn": "Autumn"
+  },
+  "surroundings": {
+    "accuracyTitle": "Measurement accuracy",
+    "terrainTitle": "Terrain",
+    "climateTitle": "Climate",
+    "climatePeriod": "Average for {from}–{to}",
+    "noData": "No data for this report.",
+    "unavailable": "Temporarily unavailable: the data source did not answer when the report was created.",
+    "marginOf": "{margin} ({percent})",
+    "confidence": "with {value} probability",
+    "shareScale": "Map scale",
+    "shareObstructions": "Obstructed boundary",
+    "slope": "Mean slope",
+    "surfaceArea": "Surface area",
+    "elevations": "Elevations",
+    "relief": "Relief",
+    "elevationRange": "{from}–{to} m",
+    "increase": "+{value}",
+    "coarse": "Rough estimate",
+    "coarseDetails": "The plot is smaller than 1 ha and the elevation model step is 90 m.",
+    "cadastral": "The cadastral (legal) area is the horizontal projection, as in the calculation above. The surface area is for reference only.",
+    "season": "Season",
+    "mean": "Mean",
+    "minimum": "Min",
+    "maximum": "Max",
+    "precipitation": "Precipitation",
+    "frostDays": "Frost days",
+    "heatDays": "Hot days",
+    "celsius": "{value} °C",
+    "millimeters": "{value} mm",
+    "seasonTemperatures": "min {min} · max {max}",
+    "seasonDays": "frost days {frost} · hot days {heat}",
+    "lastSpringFrost": "Last spring frost: {date}",
+    "firstAutumnFrost": "First autumn frost: {date}",
+    "noFrost": "none",
+    "sources": "Data: Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90"
   }
 }

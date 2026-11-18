@@ -1,11 +1,13 @@
 import type { Coordinate } from './coordinate'
 import type { Plot } from './plot'
 import type { Report } from './report'
+import type { Obstruction } from './survey'
 
 export interface ReportDetails {
   readonly report: Report
   readonly plot: Plot | null
   readonly points: readonly Coordinate[] | null
+  readonly obstructions: readonly Obstruction[]
 }
 
 const reportNumberLength = 4

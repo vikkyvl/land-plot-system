@@ -24,17 +24,17 @@ export class ReportService {
   async details(id: string): Promise<ReportDetails> {
     const report = await this.reports.get(id)
     if (report.plotDeleted) {
-      return { report, plot: null, points: null }
+      return { report, plot: null, points: null, obstructions: [] }
     }
 
     try {
       const [plot, versions] = await Promise.all([this.plots.get(report.plotId), this.plots.versions(report.plotId)])
       const version = versions.find((candidate) => candidate.version === report.plotVersion)
 
-      return { report, plot, points: version?.points ?? null }
+      return { report, plot, points: version?.points ?? null, obstructions: version?.obstructions ?? [] }
     } catch (error) {
       if (isDomainError(error) && error.kind === 'gone') {
-        return { report: { ...report, plotDeleted: true }, plot: null, points: null }
+        return { report: { ...report, plotDeleted: true }, plot: null, points: null, obstructions: [] }
       }
       throw error
     }

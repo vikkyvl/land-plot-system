@@ -19,6 +19,9 @@ function report(id: string, name: string, deleted = false): Report {
     measurement: { area: { squareMeters: 24810, ares: 248.1, hectares: 2.481 }, perimeterMeters: 612 },
     createdAt: new Date(2026, 9, 26),
     plotDeleted: deleted,
+    accuracy: null,
+    terrain: null,
+    climate: null,
   }
 }
 

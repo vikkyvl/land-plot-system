@@ -48,6 +48,7 @@ describe('ReportService', () => {
       report: { ...report, plotDeleted: true },
       plot: null,
       points: null,
+      obstructions: [],
     })
     expect(plots.get).not.toHaveBeenCalled()
   })

@@ -7,6 +7,10 @@ import { reportToGeoJson } from '../../domain/geoJson'
 import { hasScope, Scope } from '../../domain/profile'
 import { isOutdated, isPlotDeleted, reportNumber, type ReportDetails } from '../../domain/reportDetails'
 import PlotViewMap from '../components/PlotViewMap.vue'
+import ReportAccuracy from '../components/ReportAccuracy.vue'
+import ReportBlock from '../components/ReportBlock.vue'
+import ReportClimate from '../components/ReportClimate.vue'
+import ReportTerrain from '../components/ReportTerrain.vue'
 import { copyText, downloadJson, safeFileName } from '../composables/fileExport'
 import { formatAres, formatDate, formatHectareNumber, formatMeters, formatSquareMeters } from '../composables/format'
 import { useMapLayers, useReportService, useSettingsService } from '../composables/services'
@@ -36,6 +40,18 @@ const outdated = computed(() => details.value !== null && isOutdated(details.val
 const deleted = computed(() => details.value !== null && isPlotDeleted(details.value))
 const points = computed(() => details.value?.points ?? null)
 const canReport = computed(() => profile.value === null || hasScope(profile.value, Scope.ReportsWrite))
+const terrainState = computed(() => blockState(report.value?.terrain ?? null))
+const climateState = computed(() => blockState(report.value?.climate ?? null))
+const showSources = computed(() => terrainState.value === 'ready' || climateState.value === 'ready')
+
+function blockState(block: { readonly status: string } | null): 'ready' | 'no-data' | 'unavailable' {
+  if (block === null) {
+    return 'no-data'
+  }
+
+  return block.status === 'available' ? 'ready' : 'unavailable'
+}
+
 const owner = computed(() => profile.value?.email ?? profile.value?.name ?? null)
 const backLink = computed(() =>
   report.value !== null && !deleted.value
@@ -273,6 +289,55 @@ async function share(): Promise<void> {
           </div>
         </dl>
 
+        <ReportBlock
+          :title="$t('surroundings.accuracyTitle')"
+          :state="report.accuracy ? 'ready' : 'no-data'"
+          :can-refresh="canReport"
+          :refreshing="refreshing"
+          @refresh="refresh"
+        >
+          <ReportAccuracy
+            v-if="report.accuracy"
+            :accuracy="report.accuracy"
+            :obstructions="details?.obstructions ?? []"
+            :point-count="points?.length ?? 0"
+          />
+        </ReportBlock>
+        <ReportBlock
+          :title="$t('surroundings.terrainTitle')"
+          :state="terrainState"
+          :can-refresh="canReport"
+          :refreshing="refreshing"
+          @refresh="refresh"
+        >
+          <ReportTerrain
+            v-if="report.terrain"
+            :terrain="report.terrain"
+          />
+        </ReportBlock>
+        <ReportBlock
+          :title="$t('surroundings.climateTitle')"
+          :state="climateState"
+          :can-refresh="canReport"
+          :refreshing="refreshing"
+          @refresh="refresh"
+        >
+          <ReportClimate
+            v-if="report.climate"
+            :climate="report.climate"
+          />
+        </ReportBlock>
+        <p
+          v-if="showSources"
+          class="report__sources"
+        >
+          <a
+            href="https://open-meteo.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ $t('surroundings.sources') }}</a>
+        </p>
+
         <section
           v-if="points"
           class="report__coordinates"
@@ -337,6 +402,16 @@ async function share(): Promise<void> {
 .report__share-mobile,
 .report__note-mobile {
   display: none;
+}
+
+.report__sources {
+  margin: 0;
+  color: var(--color-ink-3);
+  font-size: var(--fs-xs);
+}
+
+.report__sources a {
+  color: inherit;
 }
 
 .report__head {

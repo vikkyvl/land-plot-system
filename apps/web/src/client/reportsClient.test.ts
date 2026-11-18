@@ -36,6 +36,63 @@ describe('ReportsClient', () => {
       measurement: { area: { squareMeters: 24812.4, ares: 248.124, hectares: 2.48124 }, perimeterMeters: 648.2 },
       createdAt: new Date('2026-10-27T12:30:00Z'),
       plotDeleted: true,
+      accuracy: null,
+      terrain: null,
+      climate: null,
+    })
+  })
+
+  it('maps the terrain and climate blocks', async () => {
+    const server = new FakeServer().reply({
+      status: 200,
+      body: {
+        ...reportDto,
+        terrain: {
+          status: 'available',
+          slope_degrees: 16.7,
+          surface_area_m2: 25_900,
+          surface_area_hectares: 2.59,
+          surface_increase_percent: 4.42,
+          min_elevation_m: 1301,
+          max_elevation_m: 1532,
+          relief_m: 231,
+          coarse: false,
+          source: 'Open-Meteo.com (CC BY 4.0), Copernicus DEM GLO-90',
+        },
+        climate: {
+          status: 'unavailable',
+          first_year: 2016,
+          last_year: 2025,
+          seasons: [],
+          last_spring_frost: '04-05',
+          first_autumn_frost: null,
+          growing_days: 0,
+          source: 'Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5',
+        },
+      },
+    })
+
+    const report = await reports(server).get('report-14')
+
+    expect(report.terrain).toEqual({
+      status: 'available',
+      slopeDegrees: 16.7,
+      surfaceSquareMeters: 25_900,
+      surfaceHectares: 2.59,
+      surfaceIncreasePercent: 4.42,
+      minElevationMeters: 1301,
+      maxElevationMeters: 1532,
+      reliefMeters: 231,
+      coarse: false,
+    })
+    expect(report.climate).toEqual({
+      status: 'unavailable',
+      firstYear: 2016,
+      lastYear: 2025,
+      seasons: [],
+      lastSpringFrost: { month: 4, day: 5 },
+      firstAutumnFrost: null,
+      growingDays: 0,
     })
   })
 

@@ -5,6 +5,7 @@ import type { Measurement } from '../domain/measurement'
 import type { Plot, PlotPreview, PlotStatus, PlotVersion } from '../domain/plot'
 import type { Profile } from '../domain/profile'
 import type { Report } from '../domain/report'
+import { parseMonthDay, type Climate, type DataStatus, type Season, type Terrain } from '../domain/surroundings'
 import type { Capture, Obstruction, ObstructionReason, PointerKind } from '../domain/survey'
 
 import { toProblem, type ProblemDto } from './errors'
@@ -76,6 +77,38 @@ export interface PlotPreviewDto {
   readonly errors: ProblemDto[] | null
 }
 
+export interface TerrainDto {
+  readonly status: DataStatus
+  readonly slope_degrees: number
+  readonly surface_area_m2: number
+  readonly surface_area_hectares: number
+  readonly surface_increase_percent: number
+  readonly min_elevation_m: number
+  readonly max_elevation_m: number
+  readonly relief_m: number
+  readonly coarse: boolean
+}
+
+export interface SeasonDto {
+  readonly season: Season
+  readonly mean_c: number
+  readonly mean_min_c: number
+  readonly mean_max_c: number
+  readonly precipitation_mm: number
+  readonly frost_days: number
+  readonly heat_days: number
+}
+
+export interface ClimateDto {
+  readonly status: DataStatus
+  readonly first_year: number
+  readonly last_year: number
+  readonly seasons: SeasonDto[] | null
+  readonly last_spring_frost: string | null
+  readonly first_autumn_frost: string | null
+  readonly growing_days: number
+}
+
 export interface ReportDto extends MeasurementDto {
   readonly id: string
   readonly plot_id: string
@@ -83,6 +116,9 @@ export interface ReportDto extends MeasurementDto {
   readonly plot_version: number
   readonly created_at: string
   readonly plot_deleted: boolean
+  readonly accuracy?: AccuracyDto | null
+  readonly terrain?: TerrainDto | null
+  readonly climate?: ClimateDto | null
 }
 
 export interface ProfileDto {
@@ -193,6 +229,51 @@ export function toReport(dto: ReportDto): Report {
     measurement: toMeasurement(dto),
     createdAt: new Date(dto.created_at),
     plotDeleted: dto.plot_deleted,
+    accuracy: toAccuracy(dto.accuracy),
+    terrain: toTerrain(dto.terrain),
+    climate: toClimate(dto.climate),
+  }
+}
+
+function toTerrain(dto: TerrainDto | null | undefined): Terrain | null {
+  if (dto === null || dto === undefined) {
+    return null
+  }
+
+  return {
+    status: dto.status,
+    slopeDegrees: dto.slope_degrees,
+    surfaceSquareMeters: dto.surface_area_m2,
+    surfaceHectares: dto.surface_area_hectares,
+    surfaceIncreasePercent: dto.surface_increase_percent,
+    minElevationMeters: dto.min_elevation_m,
+    maxElevationMeters: dto.max_elevation_m,
+    reliefMeters: dto.relief_m,
+    coarse: dto.coarse,
+  }
+}
+
+function toClimate(dto: ClimateDto | null | undefined): Climate | null {
+  if (dto === null || dto === undefined) {
+    return null
+  }
+
+  return {
+    status: dto.status,
+    firstYear: dto.first_year,
+    lastYear: dto.last_year,
+    seasons: (dto.seasons ?? []).map((season) => ({
+      season: season.season,
+      meanCelsius: season.mean_c,
+      meanMinCelsius: season.mean_min_c,
+      meanMaxCelsius: season.mean_max_c,
+      precipitationMillimeters: season.precipitation_mm,
+      frostDays: season.frost_days,
+      heatDays: season.heat_days,
+    })),
+    lastSpringFrost: parseMonthDay(dto.last_spring_frost),
+    firstAutumnFrost: parseMonthDay(dto.first_autumn_frost),
+    growingDays: dto.growing_days,
   }
 }
 

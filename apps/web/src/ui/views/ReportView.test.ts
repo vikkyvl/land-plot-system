@@ -27,6 +27,9 @@ const report: Report = {
   measurement: { area: { squareMeters: 24100, ares: 241, hectares: 2.41 }, perimeterMeters: 598 },
   createdAt: new Date(2026, 9, 26),
   plotDeleted: false,
+  accuracy: null,
+  terrain: null,
+  climate: null,
 }
 
 const points = [
@@ -83,9 +86,111 @@ function button(wrapper: Awaited<ReturnType<typeof mountReport>>['wrapper'], tex
   return wrapper.findAll('button').find((item) => item.text().includes(text))
 }
 
+const carpathians: Report = {
+  ...report,
+  accuracy: {
+    marginSquareMeters: 8040,
+    marginHectares: 0.804,
+    percent: 3.9,
+    confidence: 0.95,
+    scaleShare: 0.22,
+    obstructionShare: 0.78,
+    worstSide: 1,
+    groundShiftMeters: 4,
+    basis: 'capture',
+  },
+  terrain: {
+    status: 'available',
+    slopeDegrees: 16.74,
+    surfaceSquareMeters: 25_165,
+    surfaceHectares: 2.5165,
+    surfaceIncreasePercent: 4.42,
+    minElevationMeters: 1301,
+    maxElevationMeters: 1532,
+    reliefMeters: 231,
+    coarse: false,
+  },
+  climate: {
+    status: 'available',
+    firstYear: 2016,
+    lastYear: 2025,
+    seasons: [
+      {
+        season: 'winter',
+        meanCelsius: -4.2,
+        meanMinCelsius: -7.3,
+        meanMaxCelsius: -1.2,
+        precipitationMillimeters: 300,
+        frostDays: 85.2,
+        heatDays: 0,
+      },
+    ],
+    lastSpringFrost: { month: 5, day: 13 },
+    firstAutumnFrost: { month: 10, day: 3 },
+    growingDays: 180.4,
+  },
+}
+
+describe('ReportView blocks', () => {
+  it('shows accuracy, terrain and climate with their sources', async () => {
+    const { wrapper } = await mountReport({
+      report: carpathians,
+      plot: null,
+      points,
+      obstructions: [{ side: 1, reason: 'trees' }],
+    })
+    const text = wrapper.text()
+
+    expect(text).toContain('Точність вимірювання')
+    expect(text).toContain('± 0,80 га (3,9%)')
+    expect(text).toContain('Найбільше впливає: дерева на стороні 2–3')
+    expect(text).toContain('Середній ухил16,7°')
+    expect(text).toMatch(/1\s301–1\s532 м/u)
+    expect(text).toContain('Кадастрова (юридична) площа — це горизонтальна проєкція')
+    expect(text).not.toContain('Оцінка груба')
+    expect(wrapper.get('.report-climate__table').text()).toContain('Зима')
+    expect(wrapper.get('.report-climate__table').text()).toContain('-4,2 °C')
+    expect(text).toContain('Останній весняний заморозок: 13 травня')
+    expect(text).toContain('180 днів із середньою температурою ≥ 5 °C')
+    expect(wrapper.get('.report__sources').text()).toBe(
+      'Дані: Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90',
+    )
+  })
+
+  it('offers to refresh unavailable blocks and marks a coarse estimate', async () => {
+    const { wrapper, service } = await mountReport({
+      report: {
+        ...carpathians,
+        terrain: { ...(carpathians.terrain as NonNullable<Report['terrain']>), coarse: true },
+        climate: { status: 'unavailable', firstYear: 2016, lastYear: 2025, seasons: [], lastSpringFrost: null, firstAutumnFrost: null, growingDays: 0 },
+      },
+      plot: null,
+      points,
+      obstructions: [],
+    })
+
+    expect(wrapper.text()).toContain('Оцінка груба')
+    expect(wrapper.text()).toContain('Тимчасово недоступно')
+    await wrapper.get('.report-block__refresh').trigger('click')
+    await flushPromises()
+    expect(service.create).toHaveBeenCalledWith('plot-1')
+  })
+
+  it('says there is no data for an older report', async () => {
+    const { wrapper } = await mountReport({ report, plot: null, points, obstructions: [] })
+
+    expect(wrapper.findAll('.report-block__muted').map((item) => item.text())).toEqual([
+      'Даних немає для цього звіту.',
+      'Даних немає для цього звіту.',
+      'Даних немає для цього звіту.',
+    ])
+    expect(wrapper.find('.report__sources').exists()).toBe(false)
+  })
+})
+
 describe('ReportView', () => {
   it('shows the report from its own data and the boundary of its version', async () => {
-    const { wrapper } = await mountReport({ report, plot: { version: 1 } as Plot, points })
+    const { wrapper } = await mountReport({ report, plot: { version: 1 } as Plot, points , obstructions: [] })
 
     expect(wrapper.get('.report__title').text()).toBe('Звіт · Поле біля ставка')
     expect(wrapper.get('.report__meta').text()).toContain('Звіт № 0014 · сформовано 26.10.2026')
@@ -97,7 +202,7 @@ describe('ReportView', () => {
   })
 
   it('shows the banner for a changed plot and refreshes the report', async () => {
-    const { wrapper, router, service } = await mountReport({ report, plot: { version: 2 } as Plot, points })
+    const { wrapper, router, service } = await mountReport({ report, plot: { version: 2 } as Plot, points , obstructions: [] })
 
     const banner = wrapper.get('.report__banner')
     expect(banner.attributes('role')).toBe('status')
@@ -112,7 +217,7 @@ describe('ReportView', () => {
   })
 
   it('keeps the report of a deleted plot without map, coordinates or GeoJSON', async () => {
-    const { wrapper } = await mountReport({ report: { ...report, plotDeleted: true }, plot: null, points: null })
+    const { wrapper } = await mountReport({ report: { ...report, plotDeleted: true }, plot: null, points: null, obstructions: [] })
 
     expect(wrapper.get('.report__deleted').text()).toContain('Ділянку видалено')
     expect(wrapper.find('tbody').exists()).toBe(false)
@@ -132,7 +237,7 @@ describe('ReportView', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
     const writeText = vi.fn(async () => undefined)
     Object.assign(navigator, { clipboard: { writeText } })
-    const { wrapper } = await mountReport({ report, plot: { version: 1 } as Plot, points })
+    const { wrapper } = await mountReport({ report, plot: { version: 1 } as Plot, points , obstructions: [] })
 
     await button(wrapper, 'Завантажити GeoJSON')?.trigger('click')
     const feature = JSON.parse(await (created[0] as Blob).text())

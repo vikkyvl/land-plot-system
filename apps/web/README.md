@@ -50,7 +50,8 @@ The app repeats the layers of the Go services:
 
 ```
 src/
-├── domain/      types and pure functions: Plot, Report, Coordinate, Profile, DomainError, GeoJSON export
+├── domain/      types and pure functions: Plot, Report, Coordinate, Profile, DomainError, GeoJSON export,
+│                survey (capture and obstructed sides), accuracy, terrain and climate
 ├── port/        interfaces the services need: PlotGateway, ReportGateway, ProfileGateway,
 │                GeocodingGateway, AuthSession, DraftStore, PreferencesStore
 ├── service/     use cases: calculator, sessions, plots, reports, place search, saga confirmation
@@ -85,7 +86,9 @@ To add a text, add the same key to both files and use `$t('key')` in a template 
 - **Preview.** The calculator asks the server 300 ms after a point is added, removed, inserted or dropped after dragging, never while a vertex is being dragged, and only from three points. A self-intersection is drawn in red with a button that swaps the points named by the server. On `429` the panel counts down the seconds from `Retry-After`.
 - **Guest draft.** The points and the name are kept in IndexedDB. When a guest saves, the draft is marked, the user signs in and the plot is saved automatically after returning.
 - **Saga.** A new or changed plot is `PENDING` until `report-service` confirms it. The app checks the plot every 2 seconds for at most 60 seconds of visible time, pauses while the tab is hidden, runs one check per plot, and reports confirmation, cancellation (`404`) or a rolled-back change.
-- **Reports.** A report shows the boundary of the plot version it was built for. GeoJSON is generated in the browser from the report and that boundary.
+- **Area margin.** The calculator keeps for every point the smallest zoom at which it was placed or moved, and the layer and pointer (mouse, touch, pen) of the last change, and sends them as `capture` with the marked sides as `obstructions` in preview, create and update. So zooming in only at the end does not make the margin smaller; moving a point again at a closer zoom keeps its smallest zoom. The area reads «2,48 га ± 0,05 га» with the main source of the margin, the possible ground shift and a hint to zoom in when the map scale adds the most. A plot saved without a capture shows «≈ ± …» as approximate with a hint to change the boundary. The server calculates the margin; the app only formats it.
+- **Obstructed sides.** A tap or click on a side or its midpoint opens a menu (a popover on the web, a bottom sheet on phones) with «+ Додати точку тут» first and the reasons the boundary is hidden: trees, buildings and shadows, hard to see, or nothing. A marked side is drawn dashed with its reason. The points card lists every side with a select for keyboard and screen reader users. Marks follow their sides when points are inserted, undone or swapped, and a mark disappears with its side.
+- **Reports.** A report shows the boundary of the plot version it was built for. GeoJSON is generated in the browser from the report and that boundary. The blocks «Точність вимірювання», «Рельєф» (with «Оцінка груба» for plots under 1 ha and a note that the cadastral area is the horizontal projection) and «Клімат» (a table on the web, cards on phones) come from the report snapshot. A block whose source did not answer says it is temporarily unavailable and offers «Оновити звіт», which creates a new report; an older report without the blocks says there is no data. The data sources are credited under the blocks: Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90.
 
 ## Docker
 

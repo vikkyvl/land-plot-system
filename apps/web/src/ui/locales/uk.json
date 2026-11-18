@@ -29,7 +29,8 @@
   "counts": {
     "points": "{n} точка | {n} точки | {n} точок",
     "plots": "{n} ділянка | {n} ділянки | {n} ділянок",
-    "versions": "{n} версія | {n} версії | {n} версій"
+    "versions": "{n} версія | {n} версії | {n} версій",
+    "growingDays": "{n} день із середньою температурою ≥ 5 °C | {n} дні із середньою температурою ≥ 5 °C | {n} днів із середньою температурою ≥ 5 °C"
   },
   "login": {
     "eyebrow": "Обліковий запис",
@@ -286,5 +287,47 @@
     "unclear": "Погано видно межу",
     "cancel": "Скасувати",
     "coveredBySide": "Межу сторони {from}–{to} закривають"
+  },
+  "seasons": {
+    "winter": "Зима",
+    "spring": "Весна",
+    "summer": "Літо",
+    "autumn": "Осінь"
+  },
+  "surroundings": {
+    "accuracyTitle": "Точність вимірювання",
+    "terrainTitle": "Рельєф",
+    "climateTitle": "Клімат",
+    "climatePeriod": "Середнє за {from}–{to}",
+    "noData": "Даних немає для цього звіту.",
+    "unavailable": "Тимчасово недоступно: джерело даних не відповіло під час створення звіту.",
+    "marginOf": "{margin} ({percent})",
+    "confidence": "з імовірністю {value}",
+    "shareScale": "Масштаб карти",
+    "shareObstructions": "Перешкоди на межі",
+    "slope": "Середній ухил",
+    "surfaceArea": "Площа поверхні",
+    "elevations": "Висоти",
+    "relief": "Перепад висот",
+    "elevationRange": "{from}–{to} м",
+    "increase": "+{value}",
+    "coarse": "Оцінка груба",
+    "coarseDetails": "Ділянка менша за 1 га, а крок моделі висот — 90 м.",
+    "cadastral": "Кадастрова (юридична) площа — це горизонтальна проєкція, як у розрахунку вище. Площа поверхні довідкова.",
+    "season": "Сезон",
+    "mean": "Середня",
+    "minimum": "Мін.",
+    "maximum": "Макс.",
+    "precipitation": "Опади",
+    "frostDays": "Дні з морозом",
+    "heatDays": "Дні зі спекою",
+    "celsius": "{value} °C",
+    "millimeters": "{value} мм",
+    "seasonTemperatures": "мін. {min} · макс. {max}",
+    "seasonDays": "морозних днів {frost} · спекотних {heat}",
+    "lastSpringFrost": "Останній весняний заморозок: {date}",
+    "firstAutumnFrost": "Перший осінній заморозок: {date}",
+    "noFrost": "не буває",
+    "sources": "Дані: Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90"
   }
 }
