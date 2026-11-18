@@ -4,12 +4,14 @@ import type { MapLayers } from '../../domain/mapLayer'
 import type { CalculatorService } from '../../service/calculatorService'
 import type { MapPreferencesService } from '../../service/mapPreferencesService'
 import type { PlaceSearchService } from '../../service/placeSearchService'
+import type { PlotService } from '../../service/plotService'
 import type { SessionService } from '../../service/sessionService'
 
 export const sessionServiceKey: InjectionKey<SessionService> = Symbol('SessionService')
 export const calculatorServiceKey: InjectionKey<CalculatorService> = Symbol('CalculatorService')
 export const placeSearchServiceKey: InjectionKey<PlaceSearchService> = Symbol('PlaceSearchService')
 export const mapPreferencesServiceKey: InjectionKey<MapPreferencesService> = Symbol('MapPreferencesService')
+export const plotServiceKey: InjectionKey<PlotService> = Symbol('PlotService')
 export const mapLayersKey: InjectionKey<MapLayers> = Symbol('MapLayers')
 
 function required<T>(key: InjectionKey<T>): T {
@@ -25,4 +27,5 @@ export const useSessionService = (): SessionService => required(sessionServiceKe
 export const useCalculatorService = (): CalculatorService => required(calculatorServiceKey)
 export const usePlaceSearchService = (): PlaceSearchService => required(placeSearchServiceKey)
 export const useMapPreferencesService = (): MapPreferencesService => required(mapPreferencesServiceKey)
+export const usePlotService = (): PlotService => required(plotServiceKey)
 export const useMapLayers = (): MapLayers => required(mapLayersKey)

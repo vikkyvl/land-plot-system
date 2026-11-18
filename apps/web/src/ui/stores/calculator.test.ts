@@ -48,6 +48,8 @@ function fakeService(overrides: { preview?: () => Promise<PlotPreview>; loadDraf
       draft = { ...next, saveAfterSignIn: true }
     }),
     savePendingDraft: vi.fn(overrides.savePendingDraft ?? (async (): Promise<Plot | null> => null)),
+    loadPlot: vi.fn(async () => ({ id: 'plot-1', name: 'Поле', points: [a, b, c], status: 'CONFIRMED' }) as unknown as Plot),
+    update: vi.fn(async (_id: string, next: PlotDraft) => ({ id: 'plot-1', name: next.name, status: 'PENDING' }) as Plot),
   }
 }
 
@@ -214,5 +216,23 @@ describe('calculator store', () => {
 
     expect(store.savedPlot?.id).toBe('plot-1')
     expect(store.points).toEqual([])
+  })
+
+  it('edits a saved plot with PATCH and leaves the guest draft alone', async () => {
+    const { store, service } = useStore()
+
+    await store.startEditing('plot-1')
+    await settle(0)
+    expect(store.editingId).toBe('plot-1')
+    expect(store.points).toEqual([a, b, c])
+    expect(service.preview).toHaveBeenCalledWith([a, b, c])
+
+    store.addPoint(d)
+    await settle()
+    expect(service.keepDraft).not.toHaveBeenCalled()
+
+    expect(await store.save(true)).toBe('updated')
+    expect(service.update).toHaveBeenCalledWith('plot-1', { name: 'Поле', points: [a, b, c, d], saveAfterSignIn: false })
+    expect(service.save).not.toHaveBeenCalled()
   })
 })

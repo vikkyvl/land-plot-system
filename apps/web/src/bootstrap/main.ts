@@ -6,12 +6,14 @@ import { HttpClient } from '../client/http'
 import { NominatimClient } from '../client/nominatimClient'
 import { PlotsClient } from '../client/plotsClient'
 import { ProfileClient } from '../client/profileClient'
+import { ReportsClient } from '../client/reportsClient'
 import { readConfig } from '../config/env'
 import { IndexedDbDraftStore } from '../repository/indexedDbDraftStore'
 import { LocalPreferencesStore } from '../repository/localPreferencesStore'
 import { CalculatorService } from '../service/calculatorService'
 import { MapPreferencesService } from '../service/mapPreferencesService'
 import { PlaceSearchService } from '../service/placeSearchService'
+import { PlotService } from '../service/plotService'
 import { SessionService } from '../service/sessionService'
 import App from '../ui/App.vue'
 import {
@@ -19,6 +21,7 @@ import {
   mapLayersKey,
   mapPreferencesServiceKey,
   placeSearchServiceKey,
+  plotServiceKey,
   sessionServiceKey,
 } from '../ui/composables/services'
 import { createAppRouter } from '../ui/router'
@@ -40,12 +43,14 @@ const plots = new PlotsClient(http)
 const sessionService = new SessionService(auth, new ProfileClient(http))
 const calculatorService = new CalculatorService(plots, new IndexedDbDraftStore(), auth)
 const placeSearchService = new PlaceSearchService(new NominatimClient({ baseUrl: config.geocodingUrl }))
+const plotService = new PlotService(plots, new ReportsClient(http))
 const mapPreferencesService = new MapPreferencesService(new LocalPreferencesStore(window.localStorage))
 
 createApp(App)
   .provide(sessionServiceKey, sessionService)
   .provide(calculatorServiceKey, calculatorService)
   .provide(placeSearchServiceKey, placeSearchService)
+  .provide(plotServiceKey, plotService)
   .provide(mapPreferencesServiceKey, mapPreferencesService)
   .provide(mapLayersKey, mapLayersFrom(config))
   .use(createPinia())

@@ -24,7 +24,7 @@ export interface PreviewOutage {
   readonly secondsLeft: number | null
 }
 
-export type SaveOutcome = 'saved' | 'sign-in' | 'failed'
+export type SaveOutcome = 'saved' | 'updated' | 'sign-in' | 'failed'
 
 export const useCalculatorStore = defineStore('calculator', () => {
   const service = useCalculatorService()
@@ -41,6 +41,8 @@ export const useCalculatorStore = defineStore('calculator', () => {
   const saveError = shallowRef<DomainError | null>(null)
   const savedPlot = shallowRef<Plot | null>(null)
   const ready = ref(false)
+  const editingId = ref<string | null>(null)
+  const loadError = shallowRef<DomainError | null>(null)
 
   let previewTimer: ReturnType<typeof setTimeout> | null = null
   let countdownTimer: ReturnType<typeof setInterval> | null = null
@@ -80,7 +82,29 @@ export const useCalculatorStore = defineStore('calculator', () => {
     return { name: name.value, points: points.value, saveAfterSignIn: false }
   }
 
+  async function startEditing(plotId: string): Promise<void> {
+    editingId.value = plotId
+    loadError.value = null
+    savedPlot.value = null
+    saveError.value = null
+    points.value = []
+    name.value = ''
+    ready.value = false
+    try {
+      const plot = await service.loadPlot(plotId)
+      points.value = plot.points
+      name.value = plot.name
+      version.value += 1
+      ready.value = true
+      requestPreview(0)
+    } catch (error) {
+      loadError.value = asDomainError(error)
+    }
+  }
+
   async function start(): Promise<Plot | null> {
+    editingId.value = null
+    loadError.value = null
     const stored = await service.loadDraft()
     points.value = stored.points
     name.value = stored.name
@@ -109,14 +133,20 @@ export const useCalculatorStore = defineStore('calculator', () => {
     errorDismissed.value = false
     savedPlot.value = null
     saveError.value = null
-    void service.keepDraft(draft())
+    keepDraft()
     requestPreview(previewDelay)
   }
 
   function rename(value: string): void {
     name.value = value
     saveError.value = null
-    void service.keepDraft(draft())
+    keepDraft()
+  }
+
+  function keepDraft(): void {
+    if (editingId.value === null) {
+      void service.keepDraft(draft())
+    }
   }
 
   function requestPreview(delay: number): void {
@@ -199,6 +229,9 @@ export const useCalculatorStore = defineStore('calculator', () => {
   }
 
   async function save(signedIn: boolean): Promise<SaveOutcome> {
+    if (editingId.value !== null) {
+      return update(editingId.value)
+    }
     if (!signedIn) {
       await service.saveAfterSignIn(draft())
 
@@ -216,6 +249,26 @@ export const useCalculatorStore = defineStore('calculator', () => {
       if (failure.kind === 'unauthorized') {
         await service.saveAfterSignIn(draft())
 
+        return 'sign-in'
+      }
+      saveError.value = failure
+
+      return 'failed'
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function update(plotId: string): Promise<SaveOutcome> {
+    saving.value = true
+    saveError.value = null
+    try {
+      savedPlot.value = await service.update(plotId, draft())
+
+      return 'updated'
+    } catch (error) {
+      const failure = asDomainError(error)
+      if (failure.kind === 'unauthorized') {
         return 'sign-in'
       }
       saveError.value = failure
@@ -253,6 +306,8 @@ export const useCalculatorStore = defineStore('calculator', () => {
     saveError,
     savedPlot,
     ready,
+    editingId,
+    loadError,
     enoughPoints,
     problems,
     measurement,
@@ -261,6 +316,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
     flaggedVertices,
     canSave,
     start,
+    startEditing,
     stop,
     rename,
     retryPreview,

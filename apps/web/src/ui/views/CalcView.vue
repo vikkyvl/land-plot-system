@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import type { Coordinate } from '../../domain/coordinate'
 import type { MapLayerId } from '../../domain/mapLayer'
@@ -25,8 +26,13 @@ import { useMapLayers, useMapPreferencesService } from '../composables/services'
 import { useSignInRedirect } from '../composables/useSignInRedirect'
 import { useCalculatorStore } from '../stores/calculator'
 import { useSessionStore } from '../stores/session'
+import { useToastStore } from '../stores/toast'
+
+const props = defineProps<{ plotId?: string }>()
 
 const calculator = useCalculatorStore()
+const router = useRouter()
+const toasts = useToastStore()
 const session = useSessionStore()
 const signIn = useSignInRedirect()
 const layers = useMapLayers()
@@ -41,6 +47,8 @@ const {
   saving,
   saveError,
   savedPlot,
+  editingId,
+  loadError,
   enoughPoints,
   problems,
   measurement,
@@ -78,12 +86,20 @@ function add(point: Coordinate): void {
 }
 
 async function save(): Promise<void> {
-  if ((await calculator.save(signedIn.value)) === 'sign-in') {
-    await signIn('/')
+  const outcome = await calculator.save(signedIn.value)
+  if (outcome === 'sign-in') {
+    await signIn(editingId.value === null ? '/' : undefined)
+  } else if (outcome === 'updated' && editingId.value !== null) {
+    toasts.show('Межу збережено. Сервер підтверджує зміни.')
+    await router.push(`/plots/${editingId.value}`)
   }
 }
 
-onMounted(() => calculator.start())
+watch(
+  () => props.plotId,
+  (plotId) => (plotId === undefined ? calculator.start() : calculator.startEditing(plotId)),
+  { immediate: true },
+)
 onBeforeUnmount(() => calculator.stop())
 </script>
 
@@ -137,6 +153,25 @@ onBeforeUnmount(() => calculator.stop())
       class="calc__panel"
       aria-label="Розрахунок"
     >
+      <div
+        v-if="editingId"
+        class="calc__editing"
+      >
+        <span>Зміна межі ділянки<template v-if="name"> «{{ name }}»</template></span>
+        <RouterLink :to="`/plots/${editingId}`">
+          Скасувати зміни
+        </RouterLink>
+      </div>
+      <div
+        v-if="loadError"
+        class="calc__save-error"
+        role="alert"
+      >
+        {{ errorText(loadError) }}
+        <RouterLink to="/plots">
+          До списку ділянок
+        </RouterLink>
+      </div>
       <OutagePanel
         v-if="outage"
         :outage="outage"
@@ -261,7 +296,7 @@ onBeforeUnmount(() => calculator.stop())
           <small v-if="saveError.requestId">Код запиту: {{ saveError.requestId }}</small>
         </div>
         <p
-          v-if="savedPlot"
+          v-if="savedPlot && !editingId"
           class="calc__saved"
           role="status"
         >
@@ -520,6 +555,20 @@ onBeforeUnmount(() => calculator.stop())
 
 .calc__clear {
   grid-area: clear;
+}
+
+.calc__editing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-hover);
+  font-size: var(--fs-control);
+  font-weight: 600;
 }
 
 .calc__muted,

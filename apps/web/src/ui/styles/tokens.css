@@ -90,6 +90,7 @@
   --shadow-dropdown: 0 8px 20px rgba(31, 42, 36, 0.16);
 
   --radius-xs: 10px;
+  --radius-dialog: 20px;
   --control-h-md: 52px;
 
   --fs-tile: 19px;
@@ -98,6 +99,8 @@
   --fs-control: 14px;
   --fs-panel-title: 18px;
   --fs-metric-2xl: 48px;
+  --fs-title-md: 20px;
+  --fs-title-lg: 24px;
 
   --control-h-search: 46px;
   --control-h-segment: 38px;

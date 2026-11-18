@@ -47,8 +47,16 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
         <RouterLink
           class="app-header__tab"
           to="/"
+          :aria-current="route.name === 'home' || route.name === 'plot-edit' ? 'page' : undefined"
         >
           Розрахунок
+        </RouterLink>
+        <RouterLink
+          class="app-header__tab"
+          to="/plots"
+          :aria-current="route.path.startsWith('/plots') && route.name !== 'plot-edit' ? 'page' : undefined"
+        >
+          Мої ділянки
         </RouterLink>
       </nav>
       <div
@@ -124,7 +132,7 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
   text-decoration: none;
 }
 
-.app-header__tab.router-link-exact-active {
+.app-header__tab[aria-current='page'] {
   background: var(--color-primary-soft);
   color: var(--color-primary);
   font-weight: 700;

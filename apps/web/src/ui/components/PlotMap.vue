@@ -244,6 +244,14 @@ watch(
   () => draw(),
 )
 watch(
+  () => props.points,
+  (points, previous) => {
+    if (previous.length === 0 && points.length > 0) {
+      fitPoints()
+    }
+  },
+)
+watch(
   () => props.layer,
   (layer) => showLayer(layer),
 )

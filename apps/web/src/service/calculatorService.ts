@@ -41,6 +41,14 @@ export class CalculatorService {
     return plot
   }
 
+  loadPlot(id: string): Promise<Plot> {
+    return this.plots.get(id)
+  }
+
+  update(id: string, draft: PlotDraft): Promise<Plot> {
+    return this.plots.update(id, { name: draft.name.trim(), points: draft.points })
+  }
+
   saveAfterSignIn(draft: PlotDraft): Promise<void> {
     return this.drafts.save({ ...draft, saveAfterSignIn: true })
   }

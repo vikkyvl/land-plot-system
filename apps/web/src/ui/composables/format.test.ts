@@ -3,10 +3,14 @@ import { describe, expect, it } from 'vitest'
 import {
   formatAres,
   formatCoordinate,
+  formatDate,
   formatHectares,
   formatMeters,
+  formatPlotCount,
   formatPointCount,
   formatSquareMeters,
+  formatVersionCount,
+  initials,
 } from './format'
 
 const space = ' '
@@ -33,5 +37,18 @@ describe('format', () => {
     [21, '21 точка'],
   ])('names %i points', (count, text) => {
     expect(formatPointCount(count)).toBe(text)
+  })
+
+  it('formats dates as dd.mm.yyyy and names plots and versions', () => {
+    expect(formatDate(new Date(2026, 9, 7))).toBe('07.10.2026')
+    expect(formatPlotCount(3)).toBe('3 ділянки')
+    expect(formatPlotCount(5)).toBe('5 ділянок')
+    expect(formatVersionCount(2)).toBe('2 версії')
+    expect(formatVersionCount(1)).toBe('1 версія')
+  })
+
+  it('takes initials from a name or an email', () => {
+    expect(initials('Вікторія Лещенко')).toBe('ВЛ')
+    expect(initials('taras.melnyk@example.com')).toBe('TM')
   })
 })

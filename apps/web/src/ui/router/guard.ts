@@ -13,6 +13,8 @@ declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
     guestOnly?: boolean
+    ownMobileHeader?: boolean
+    bottomNav?: boolean
   }
 }
 

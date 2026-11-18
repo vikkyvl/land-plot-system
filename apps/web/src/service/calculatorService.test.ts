@@ -39,8 +39,10 @@ class MemoryDrafts implements DraftStore {
 function setup(options: { draft?: PlotDraft | null; signedIn?: boolean; create?: () => Promise<Plot> } = {}) {
   const plots = {
     create: vi.fn(options.create ?? (async () => plot)),
+    get: vi.fn(async () => plot),
+    update: vi.fn(async () => plot),
     preview: vi.fn(async () => ({ valid: true, measurement: null, problems: [] })),
-  } as unknown as PlotGateway & { create: ReturnType<typeof vi.fn> }
+  } as unknown as PlotGateway & Record<'create' | 'get' | 'update', ReturnType<typeof vi.fn>>
   const drafts = new MemoryDrafts(options.draft ?? null)
   const service = new CalculatorService(plots, drafts, { isSignedIn: async () => options.signedIn ?? true })
 
@@ -102,5 +104,15 @@ describe('CalculatorService', () => {
 
     await expect(service.savePendingDraft()).rejects.toBe(rejected)
     expect(drafts.draft).toEqual({ name: '', points, saveAfterSignIn: false })
+  })
+
+  it('loads a saved plot and updates its boundary without touching the draft', async () => {
+    const { service, plots, drafts } = setup({ draft: { name: 'Чернетка', points, saveAfterSignIn: false } })
+
+    expect(await service.loadPlot('plot-1')).toBe(plot)
+    await service.update('plot-1', { name: ' Поле ', points, saveAfterSignIn: false })
+
+    expect(plots.update).toHaveBeenCalledWith('plot-1', { name: 'Поле', points })
+    expect(drafts.draft?.name).toBe('Чернетка')
   })
 })
