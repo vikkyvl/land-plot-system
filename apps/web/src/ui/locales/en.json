@@ -23,7 +23,8 @@
     "squareMeters": "m²",
     "ares": "ares",
     "perimeter": "perimeter",
-    "noHectares": "— ha"
+    "noHectares": "— ha",
+    "squareMetersValue": "{value} m²"
   },
   "counts": {
     "points": "{n} point | {n} points",
@@ -258,5 +259,21 @@
     "bad_gateway": "The service is temporarily unavailable. Try again later.",
     "internal_error": "Something went wrong. Try again.",
     "network_error": "No connection to the server. Check the internet."
+  },
+  "accuracy": {
+    "margin": "± {value}",
+    "approximate": "≈ ± {value}",
+    "approximateNote": "(approximate: the plot was saved without map scale data)",
+    "refineHint": "Change the boundary to refine the margin",
+    "mainSource": "Affected most by: {source}",
+    "scaleSource": "map scale",
+    "sideSource": "{reason} on side {from}–{to}",
+    "zoomHint": "Zoom in to reduce the margin",
+    "groundShift": "Possible shift on the ground ± {value} m"
+  },
+  "obstructions": {
+    "trees": "trees",
+    "buildings": "buildings and shadows",
+    "unclear": "unclear boundary"
   }
 }

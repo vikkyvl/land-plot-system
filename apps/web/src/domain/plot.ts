@@ -1,6 +1,8 @@
+import type { Accuracy } from './accuracy'
 import type { Coordinate } from './coordinate'
 import type { Measurement } from './measurement'
 import type { Problem } from './problem'
+import type { Capture, Obstruction } from './survey'
 
 export const PlotStatus = {
   Pending: 'PENDING',
@@ -16,6 +18,9 @@ export interface Plot {
   readonly name: string
   readonly points: readonly Coordinate[]
   readonly measurement: Measurement
+  readonly capture: Capture | null
+  readonly obstructions: readonly Obstruction[]
+  readonly accuracy: Accuracy | null
   readonly version: number
   readonly status: PlotStatus
   readonly createdAt: Date
@@ -27,15 +32,22 @@ export interface PlotVersion {
   readonly name: string
   readonly points: readonly Coordinate[]
   readonly measurement: Measurement
+  readonly obstructions: readonly Obstruction[]
+  readonly accuracy: Accuracy | null
   readonly createdAt: Date
 }
 
-export interface NewPlot {
+export interface SurveyFacts {
+  readonly capture: Capture | null
+  readonly obstructions: readonly Obstruction[]
+}
+
+export interface NewPlot extends SurveyFacts {
   readonly name: string
   readonly points: readonly Coordinate[]
 }
 
-export interface PlotChanges {
+export interface PlotChanges extends Partial<SurveyFacts> {
   readonly name?: string
   readonly points?: readonly Coordinate[]
 }
@@ -43,6 +55,7 @@ export interface PlotChanges {
 export interface PlotPreview {
   readonly valid: boolean
   readonly measurement: Measurement | null
+  readonly accuracy: Accuracy | null
   readonly problems: readonly Problem[]
 }
 

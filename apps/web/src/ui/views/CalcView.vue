@@ -7,6 +7,8 @@ import type { Coordinate } from '../../domain/coordinate'
 import type { MapLayerId } from '../../domain/mapLayer'
 import type { Place } from '../../domain/place'
 import { hasScope, Scope } from '../../domain/profile'
+import type { MapGesture } from '../../domain/survey'
+import AccuracyNotes from '../components/AccuracyNotes.vue'
 import ChecksCard from '../components/ChecksCard.vue'
 import ErrorPanel from '../components/ErrorPanel.vue'
 import LayerSwitch from '../components/LayerSwitch.vue'
@@ -15,6 +17,7 @@ import PlaceSearch from '../components/PlaceSearch.vue'
 import PlotMap from '../components/PlotMap.vue'
 import PointsCard from '../components/PointsCard.vue'
 import StalledNotice from '../components/StalledNotice.vue'
+import { formatMargin } from '../composables/accuracyText'
 import { errorText } from '../composables/errorText'
 import {
   formatAres,
@@ -58,6 +61,8 @@ const {
   enoughPoints,
   problems,
   measurement,
+  accuracy,
+  survey,
   updating,
   selfIntersection,
   flaggedVertices,
@@ -89,8 +94,20 @@ const status = computed(() => {
 
 watch(layerId, (value) => preferences.chooseLayer(value))
 
-function add(point: Coordinate): void {
-  calculator.addPoint(point)
+function gestureOn(mapGesture: MapGesture) {
+  return { ...mapGesture, layer: layerId.value }
+}
+
+function add(point: Coordinate, mapGesture: MapGesture): void {
+  calculator.addPoint(point, gestureOn(mapGesture))
+}
+
+function move(index: number, point: Coordinate, mapGesture: MapGesture): void {
+  calculator.movePoint(index, point, gestureOn(mapGesture))
+}
+
+function insert(afterIndex: number, point: Coordinate, mapGesture: MapGesture): void {
+  calculator.insertPoint(afterIndex, point, gestureOn(mapGesture))
 }
 
 async function save(): Promise<void> {
@@ -159,8 +176,8 @@ onBeforeUnmount(() => calculator.stop())
         :show-numbers="selfIntersection !== null"
         :place="place"
         @add="add"
-        @move="calculator.movePoint"
-        @insert="calculator.insertPoint"
+        @move="move"
+        @insert="insert"
       >
         <p
           v-if="chip"
@@ -229,7 +246,18 @@ onBeforeUnmount(() => calculator.stop())
             :class="{ 'calc__value--empty': measurement === null }"
           >
             {{ measurement ? formatHectares(measurement.area.hectares) : $t('units.noHectares') }}
+            <span
+              v-if="accuracy"
+              class="calc__margin"
+            >{{ formatMargin(accuracy) }}</span>
           </p>
+          <AccuracyNotes
+            v-if="accuracy"
+            :accuracy="accuracy"
+            :obstructions="survey.obstructions"
+            :point-count="points.length"
+            zoom-hint
+          />
         </div>
 
         <dl
@@ -494,6 +522,15 @@ onBeforeUnmount(() => calculator.stop())
 
 .calc__value--empty {
   color: var(--color-ink-disabled);
+}
+
+.calc__margin {
+  display: inline-block;
+  color: var(--color-ink-2);
+  font-size: var(--fs-h3);
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .calc__tiles {

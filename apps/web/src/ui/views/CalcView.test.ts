@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { DomainError } from '../../domain/error'
 import type { MapLayers } from '../../domain/mapLayer'
 import type { PlotPreview } from '../../domain/plot'
+import { emptySurvey } from '../../domain/survey'
 import type { CalculatorService } from '../../service/calculatorService'
 import type { SettingsService } from '../../service/settingsService'
 import type { PlaceSearchService } from '../../service/placeSearchService'
@@ -31,12 +32,14 @@ const square = [
 const valid: PlotPreview = {
   valid: true,
   measurement: { area: { squareMeters: 24810.4, ares: 248.104, hectares: 2.48104 }, perimeterMeters: 611.7 },
+  accuracy: null,
   problems: [],
 }
 
 const crossed: PlotPreview = {
   valid: false,
   measurement: null,
+  accuracy: null,
   problems: [
     {
       code: 'self_intersection',
@@ -55,7 +58,7 @@ async function mountCalc(preview: () => Promise<PlotPreview>) {
   const calculator = {
     canPreview: (points: readonly unknown[]) => points.length >= 3,
     preview: vi.fn(preview),
-    loadDraft: vi.fn(async () => ({ name: '', points: square, saveAfterSignIn: false })),
+    loadDraft: vi.fn(async () => ({ name: '', points: square, survey: { ...emptySurvey, zooms: square.map(() => null) }, saveAfterSignIn: false })),
     keepDraft: vi.fn(async () => undefined),
     save: vi.fn(),
     saveAfterSignIn: vi.fn(async () => undefined),
@@ -104,6 +107,27 @@ afterEach(() => {
 })
 
 describe('CalcView', () => {
+  it('shows the margin next to the area with its main source', async () => {
+    const accuracy = {
+      marginSquareMeters: 508,
+      marginHectares: 0.0508,
+      percent: 2.05,
+      confidence: 0.95,
+      scaleShare: 1,
+      obstructionShare: 0,
+      worstSide: null,
+      groundShiftMeters: 4,
+      basis: 'capture' as const,
+    }
+    const { wrapper, calculator } = await mountCalc(async () => ({ ...valid, accuracy }))
+
+    expect(wrapper.get('.calc__value').text()).toBe('2,48 га ± 0,05 га')
+    expect(wrapper.get('.calc__area').text()).toContain('Найбільше впливає: масштаб карти')
+    expect(wrapper.get('.calc__area').text()).toContain('Наблизьте карту, щоб зменшити похибку')
+    expect(wrapper.get('.calc__area').text()).toContain('Можливий зсув на місцевості ± 4 м')
+    expect(calculator.preview).toHaveBeenCalledWith(square, { ...emptySurvey, zooms: square.map(() => null) })
+  })
+
   it('shows the server area in the agreed format', async () => {
     const { wrapper } = await mountCalc(async () => valid)
 
@@ -128,7 +152,7 @@ describe('CalcView', () => {
 
     await panel.findAll('button').find((button) => button.text() === 'Поміняти точки 3 і 4')?.trigger('click')
     await vi.advanceTimersByTimeAsync(300)
-    expect(calculator.preview).toHaveBeenLastCalledWith([square[0], square[1], square[3], square[2]])
+    expect(calculator.preview).toHaveBeenLastCalledWith([square[0], square[1], square[3], square[2]], expect.anything())
   })
 
   it('hides the panel on «Виправлю сам»', async () => {

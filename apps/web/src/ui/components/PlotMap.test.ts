@@ -47,7 +47,9 @@ describe('PlotMap', () => {
     expect(wrapper.emitted('move')).toBeUndefined()
 
     vertex.fire('dragend')
-    expect(wrapper.emitted('move')).toEqual([[1, { latitude: 50.4515, longitude: 30.5235 }]])
+    expect(wrapper.emitted('move')).toEqual([
+      [1, { latitude: 50.4515, longitude: 30.5235 }, { zoom: expect.any(Number), pointer: 'mouse' }],
+    ])
     wrapper.unmount()
   })
 

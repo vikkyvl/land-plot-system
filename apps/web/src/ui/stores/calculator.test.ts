@@ -5,6 +5,7 @@ import { createApp } from 'vue'
 import { DomainError } from '../../domain/error'
 import type { PlotDraft } from '../../domain/draft'
 import type { Plot, PlotPreview } from '../../domain/plot'
+import { emptySurvey } from '../../domain/survey'
 import type { CalculatorService } from '../../service/calculatorService'
 import { calculatorServiceKey } from '../composables/services'
 
@@ -14,16 +15,19 @@ const a = { latitude: 50.45, longitude: 30.52 }
 const b = { latitude: 50.451, longitude: 30.523 }
 const c = { latitude: 50.449, longitude: 30.524 }
 const d = { latitude: 50.448, longitude: 30.521 }
+const gesture = { zoom: 18, layer: 'map', pointer: 'mouse' } as const
 
 const valid: PlotPreview = {
   valid: true,
   measurement: { area: { squareMeters: 24810, ares: 248.1, hectares: 2.481 }, perimeterMeters: 612 },
+  accuracy: null,
   problems: [],
 }
 
 const crossed: PlotPreview = {
   valid: false,
   measurement: null,
+  accuracy: null,
   problems: [
     {
       code: 'self_intersection',
@@ -34,7 +38,7 @@ const crossed: PlotPreview = {
 }
 
 function fakeService(overrides: { preview?: () => Promise<PlotPreview>; loadDraft?: () => Promise<PlotDraft>; savePendingDraft?: () => Promise<Plot | null> } = {}) {
-  let draft: PlotDraft = { name: '', points: [], saveAfterSignIn: false }
+  let draft: PlotDraft = { name: '', points: [], survey: emptySurvey, saveAfterSignIn: false }
 
   return {
     canPreview: (points: readonly unknown[]) => points.length >= 3,
@@ -45,10 +49,20 @@ function fakeService(overrides: { preview?: () => Promise<PlotPreview>; loadDraf
     }),
     save: vi.fn(async (next: PlotDraft) => ({ id: 'plot-1', name: next.name, status: 'PENDING' }) as Plot),
     saveAfterSignIn: vi.fn(async (next: PlotDraft) => {
-      draft = { ...next, saveAfterSignIn: true }
+      draft = { ...next, survey: emptySurvey, saveAfterSignIn: true }
     }),
     savePendingDraft: vi.fn(overrides.savePendingDraft ?? (async (): Promise<Plot | null> => null)),
-    loadPlot: vi.fn(async () => ({ id: 'plot-1', name: 'Поле', points: [a, b, c], status: 'CONFIRMED' }) as unknown as Plot),
+    loadPlot: vi.fn(
+      async () =>
+        ({
+          id: 'plot-1',
+          name: 'Поле',
+          points: [a, b, c],
+          capture: { zoom: 17, layer: 'satellite', pointer: 'touch' },
+          obstructions: [{ side: 2, reason: 'trees' }],
+          status: 'CONFIRMED',
+        }) as unknown as Plot,
+    ),
     update: vi.fn(async (_id: string, next: PlotDraft) => ({ id: 'plot-1', name: next.name, status: 'PENDING' }) as Plot),
   }
 }
@@ -79,49 +93,49 @@ describe('calculator store', () => {
   it('asks the server for a preview 300 ms after the third point, not earlier', async () => {
     const { store, service } = useStore()
 
-    store.addPoint(a)
-    store.addPoint(b)
+    store.addPoint(a, gesture)
+    store.addPoint(b, gesture)
     await settle()
     expect(service.preview).not.toHaveBeenCalled()
 
-    store.addPoint(c)
+    store.addPoint(c, gesture)
     await settle(previewDelay - 1)
     expect(service.preview).not.toHaveBeenCalled()
     expect(store.updating).toBe(true)
 
     await settle(1)
     expect(service.preview).toHaveBeenCalledTimes(1)
-    expect(service.preview).toHaveBeenCalledWith([a, b, c])
+    expect(service.preview).toHaveBeenCalledWith([a, b, c], expect.anything())
     expect(store.measurement?.area.hectares).toBe(2.481)
     expect(store.canSave).toBe(true)
   })
 
   it('sends one preview for quick edits in a row', async () => {
     const { store, service } = useStore()
-    store.addPoint(a)
-    store.addPoint(b)
-    store.addPoint(c)
+    store.addPoint(a, gesture)
+    store.addPoint(b, gesture)
+    store.addPoint(c, gesture)
     await settle(100)
-    store.insertPoint(2, d)
+    store.insertPoint(2, d, gesture)
     await settle(100)
-    store.movePoint(0, b)
+    store.movePoint(0, b, gesture)
     await settle()
 
     expect(service.preview).toHaveBeenCalledTimes(1)
-    expect(service.preview).toHaveBeenCalledWith([b, b, c, d])
+    expect(service.preview).toHaveBeenCalledWith([b, b, c, d], expect.anything())
   })
 
   it('shows the last value as updating while a new preview runs and ignores stale answers', async () => {
     let answer: (preview: PlotPreview) => void = () => undefined
     const service = fakeService()
     const { store } = useStore(service)
-    store.addPoint(a)
-    store.addPoint(b)
-    store.addPoint(c)
+    store.addPoint(a, gesture)
+    store.addPoint(b, gesture)
+    store.addPoint(c, gesture)
     await settle()
 
     service.preview.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
-    store.addPoint(d)
+    store.addPoint(d, gesture)
     await settle()
     expect(store.updating).toBe(true)
     expect(store.preview).toBe(valid)
@@ -139,7 +153,7 @@ describe('calculator store', () => {
     const service = fakeService({ preview: async () => crossed })
     const { store } = useStore(service)
     for (const point of [a, b, c, d]) {
-      store.addPoint(point)
+      store.addPoint(point, gesture)
     }
     await settle()
 
@@ -156,9 +170,9 @@ describe('calculator store', () => {
     const service = fakeService()
     service.preview.mockRejectedValueOnce(limited)
     const { store } = useStore(service)
-    store.addPoint(a)
-    store.addPoint(b)
-    store.addPoint(c)
+    store.addPoint(a, gesture)
+    store.addPoint(b, gesture)
+    store.addPoint(c, gesture)
     await settle()
 
     expect(store.outage).toEqual({ rateLimited: true, secondsLeft: 3 })
@@ -175,16 +189,21 @@ describe('calculator store', () => {
 
   it('keeps the guest draft for saving after the sign-in', async () => {
     const { store, service } = useStore()
-    store.addPoint(a)
+    store.addPoint(a, gesture)
     store.rename('Поле')
 
     expect(await store.save(false)).toBe('sign-in')
-    expect(service.saveAfterSignIn).toHaveBeenCalledWith({ name: 'Поле', points: [a], saveAfterSignIn: false })
+    expect(service.saveAfterSignIn).toHaveBeenCalledWith({
+      name: 'Поле',
+      points: [a],
+      survey: { zooms: [18], layer: 'map', pointer: 'mouse', obstructions: [] },
+      saveAfterSignIn: false,
+    })
   })
 
   it('saves for a signed-in user and starts a new plot', async () => {
     const { store } = useStore()
-    store.addPoint(a)
+    store.addPoint(a, gesture)
     store.rename('Поле')
 
     expect(await store.save(true)).toBe('saved')
@@ -207,7 +226,7 @@ describe('calculator store', () => {
 
   it('restores the draft and finishes the save started before the sign-in', async () => {
     const service = fakeService({
-      loadDraft: async () => ({ name: 'Поле', points: [a, b, c], saveAfterSignIn: true }),
+      loadDraft: async () => ({ name: 'Поле', points: [a, b, c], survey: emptySurvey, saveAfterSignIn: true }),
       savePendingDraft: async () => ({ id: 'plot-1', name: 'Поле', status: 'PENDING' }) as Plot,
     })
     const { store } = useStore(service)
@@ -225,14 +244,27 @@ describe('calculator store', () => {
     await settle(0)
     expect(store.editingId).toBe('plot-1')
     expect(store.points).toEqual([a, b, c])
-    expect(service.preview).toHaveBeenCalledWith([a, b, c])
+    expect(service.preview).toHaveBeenCalledWith([a, b, c], expect.anything())
 
-    store.addPoint(d)
+    store.addPoint(d, gesture)
     await settle()
     expect(service.keepDraft).not.toHaveBeenCalled()
 
     expect(await store.save(true)).toBe('updated')
-    expect(service.update).toHaveBeenCalledWith('plot-1', { name: 'Поле', points: [a, b, c, d], saveAfterSignIn: false })
+    expect(service.update).toHaveBeenCalledWith('plot-1', {
+      name: 'Поле',
+      points: [a, b, c, d],
+      survey: {
+        zooms: [17, 17, 17, 18],
+        layer: 'map',
+        pointer: 'mouse',
+        obstructions: [
+          { side: 2, reason: 'trees' },
+          { side: 3, reason: 'trees' },
+        ],
+      },
+      saveAfterSignIn: false,
+    })
     expect(service.save).not.toHaveBeenCalled()
   })
 })

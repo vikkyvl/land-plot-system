@@ -23,7 +23,8 @@
     "squareMeters": "м²",
     "ares": "ари",
     "perimeter": "периметр",
-    "noHectares": "— га"
+    "noHectares": "— га",
+    "squareMetersValue": "{value} м²"
   },
   "counts": {
     "points": "{n} точка | {n} точки | {n} точок",
@@ -258,5 +259,21 @@
     "bad_gateway": "Сервіс тимчасово недоступний. Спробуйте пізніше.",
     "internal_error": "Щось пішло не так. Спробуйте ще раз.",
     "network_error": "Немає з'єднання з сервером. Перевірте інтернет."
+  },
+  "accuracy": {
+    "margin": "± {value}",
+    "approximate": "≈ ± {value}",
+    "approximateNote": "(орієнтовно: ділянку збережено без даних про масштаб)",
+    "refineHint": "Змініть межу, щоб уточнити похибку",
+    "mainSource": "Найбільше впливає: {source}",
+    "scaleSource": "масштаб карти",
+    "sideSource": "{reason} на стороні {from}–{to}",
+    "zoomHint": "Наблизьте карту, щоб зменшити похибку",
+    "groundShift": "Можливий зсув на місцевості ± {value} м"
+  },
+  "obstructions": {
+    "trees": "дерева",
+    "buildings": "будівлі й тіні",
+    "unclear": "погано видно межу"
   }
 }

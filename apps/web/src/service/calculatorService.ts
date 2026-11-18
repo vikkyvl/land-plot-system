@@ -1,6 +1,7 @@
 import type { Coordinate } from '../domain/coordinate'
 import { emptyDraft, type PlotDraft } from '../domain/draft'
-import type { Plot, PlotPreview } from '../domain/plot'
+import type { Plot, PlotPreview, SurveyFacts } from '../domain/plot'
+import { captureOf, type Survey } from '../domain/survey'
 import type { AuthSession } from '../port/authSession'
 import type { DraftStore } from '../port/draftStore'
 import type { PlotGateway } from '../port/plotGateway'
@@ -22,8 +23,8 @@ export class CalculatorService {
     return points.length >= minimumPreviewPoints
   }
 
-  preview(points: readonly Coordinate[]): Promise<PlotPreview> {
-    return this.plots.preview(points)
+  preview(points: readonly Coordinate[], survey: Survey): Promise<PlotPreview> {
+    return this.plots.preview(points, factsOf(survey))
   }
 
   async loadDraft(): Promise<PlotDraft> {
@@ -35,7 +36,7 @@ export class CalculatorService {
   }
 
   async save(draft: PlotDraft): Promise<Plot> {
-    const plot = await this.plots.create({ name: draft.name.trim(), points: draft.points })
+    const plot = await this.plots.create({ name: draft.name.trim(), points: draft.points, ...factsOf(draft.survey) })
     await this.drafts.clear().catch(() => undefined)
 
     return plot
@@ -46,7 +47,7 @@ export class CalculatorService {
   }
 
   update(id: string, draft: PlotDraft): Promise<Plot> {
-    return this.plots.update(id, { name: draft.name.trim(), points: draft.points })
+    return this.plots.update(id, { name: draft.name.trim(), points: draft.points, ...factsOf(draft.survey) })
   }
 
   saveAfterSignIn(draft: PlotDraft): Promise<void> {
@@ -66,4 +67,8 @@ export class CalculatorService {
       throw error
     }
   }
+}
+
+function factsOf(survey: Survey): SurveyFacts {
+  return { capture: captureOf(survey), obstructions: survey.obstructions }
 }

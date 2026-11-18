@@ -34,6 +34,9 @@ function plot(status: Plot['status'] = 'CONFIRMED'): Plot {
     name: 'Поле біля ставка',
     points,
     measurement: { area: { squareMeters: 24810, ares: 248.1, hectares: 2.481 }, perimeterMeters: 612 },
+    capture: null,
+    obstructions: [],
+    accuracy: null,
     version: 2,
     status,
     createdAt: new Date(2026, 9, 25),
@@ -47,6 +50,8 @@ const versions: PlotVersion[] = [
     name: 'Поле біля ставка',
     points,
     measurement: { area: { squareMeters: 24810, ares: 248.1, hectares: 2.481 }, perimeterMeters: 612 },
+    obstructions: [],
+    accuracy: null,
     createdAt: new Date(2026, 9, 27),
   },
   {
@@ -54,6 +59,8 @@ const versions: PlotVersion[] = [
     name: 'Поле',
     points: points.slice(0, 3),
     measurement: { area: { squareMeters: 24100, ares: 241, hectares: 2.41 }, perimeterMeters: 598 },
+    obstructions: [],
+    accuracy: null,
     createdAt: new Date(2026, 9, 25),
   },
 ]

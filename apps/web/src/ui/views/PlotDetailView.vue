@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 
 import { isPending, type Plot, type PlotVersion } from '../../domain/plot'
 import { hasScope, Scope } from '../../domain/profile'
+import AccuracyNotes from '../components/AccuracyNotes.vue'
 import DeletePlotDialog from '../components/DeletePlotDialog.vue'
 import PlotStatusBadge from '../components/PlotStatusBadge.vue'
 import PlotViewMap from '../components/PlotViewMap.vue'
@@ -18,6 +19,7 @@ import {
   formatPointCount,
   formatSquareMeters,
 } from '../composables/format'
+import { formatMargin } from '../composables/accuracyText'
 import { useMapLayers, usePlotService, useSettingsService } from '../composables/services'
 import { useFailure, type Failure } from '../composables/useFailure'
 import { useFollowedPlots } from '../composables/useFollowedPlots'
@@ -340,6 +342,10 @@ async function createReport(): Promise<void> {
       <div class="detail__summary">
         <p class="detail__hectares">
           {{ formatHectares(plot.measurement.area.hectares) }}
+          <span
+            v-if="plot.accuracy"
+            class="detail__margin"
+          >{{ formatMargin(plot.accuracy) }}</span>
         </p>
         <p class="detail__line">
           {{
@@ -355,7 +361,13 @@ async function createReport(): Promise<void> {
       <dl class="detail__tiles">
         <div class="detail__tile">
           <dt>{{ $t('plot.area') }}</dt>
-          <dd>{{ formatHectares(plot.measurement.area.hectares) }}</dd>
+          <dd>
+            {{ formatHectares(plot.measurement.area.hectares) }}
+            <span
+              v-if="plot.accuracy"
+              class="detail__margin"
+            >{{ formatMargin(plot.accuracy) }}</span>
+          </dd>
         </div>
         <div class="detail__tile">
           <dt>{{ $t('plot.inSquareMeters') }}</dt>
@@ -366,6 +378,14 @@ async function createReport(): Promise<void> {
           <dd>{{ formatMeters(plot.measurement.perimeterMeters) }}</dd>
         </div>
       </dl>
+
+      <AccuracyNotes
+        v-if="plot.accuracy"
+        class="detail__accuracy"
+        :accuracy="plot.accuracy"
+        :obstructions="plot.obstructions"
+        :point-count="plot.points.length"
+      />
 
       <section
         class="detail__history"
@@ -573,6 +593,17 @@ async function createReport(): Promise<void> {
 
 .detail__map {
   height: 280px;
+}
+
+.detail__margin {
+  color: var(--color-ink-2);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.detail__accuracy {
+  margin-bottom: var(--space-4);
 }
 
 .detail__tiles {

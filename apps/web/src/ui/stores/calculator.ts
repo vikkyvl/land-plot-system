@@ -13,6 +13,19 @@ import {
 import { DomainError, isDomainError } from '../../domain/error'
 import type { Plot, PlotPreview } from '../../domain/plot'
 import type { Problem, SelfIntersectionDetails } from '../../domain/problem'
+import {
+  emptySurvey,
+  surveyAfterAdd,
+  surveyAfterInsert,
+  surveyAfterMove,
+  surveyAfterRemoveLast,
+  surveyAfterSwap,
+  surveyOfPlot,
+  surveyWithObstruction,
+  type Gesture,
+  type ObstructionReason,
+  type Survey,
+} from '../../domain/survey'
 import { useCalculatorService } from '../composables/services'
 
 export const previewDelay = 300
@@ -31,6 +44,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
 
   const points = shallowRef<readonly Coordinate[]>([])
   const name = ref('')
+  const survey = shallowRef<Survey>(emptySurvey)
   const preview = shallowRef<PlotPreview | null>(null)
   const previewedVersion = ref(-1)
   const version = ref(0)
@@ -51,6 +65,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
   const enoughPoints = computed(() => service.canPreview(points.value))
   const problems = computed<readonly Problem[]>(() => (enoughPoints.value ? (preview.value?.problems ?? []) : []))
   const measurement = computed(() => (enoughPoints.value && preview.value?.valid ? preview.value.measurement : null))
+  const accuracy = computed(() => (measurement.value === null ? null : (preview.value?.accuracy ?? null)))
   const upToDate = computed(() => previewedVersion.value === version.value && !previewing.value)
   const updating = computed(() => enoughPoints.value && !upToDate.value && outage.value === null)
   const selfIntersection = computed<SelfIntersectionDetails | null>(() => {
@@ -79,7 +94,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
   )
 
   function draft(): PlotDraft {
-    return { name: name.value, points: points.value, saveAfterSignIn: false }
+    return { name: name.value, points: points.value, survey: survey.value, saveAfterSignIn: false }
   }
 
   async function startEditing(plotId: string): Promise<void> {
@@ -89,10 +104,12 @@ export const useCalculatorStore = defineStore('calculator', () => {
     saveError.value = null
     points.value = []
     name.value = ''
+    survey.value = emptySurvey
     ready.value = false
     try {
       const plot = await service.loadPlot(plotId)
       points.value = plot.points
+      survey.value = surveyOfPlot(plot.points.length, plot.capture, plot.obstructions)
       name.value = plot.name
       version.value += 1
       ready.value = true
@@ -107,6 +124,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
     loadError.value = null
     const stored = await service.loadDraft()
     points.value = stored.points
+    survey.value = stored.survey
     name.value = stored.name
     ready.value = true
     requestPreview(0)
@@ -127,8 +145,9 @@ export const useCalculatorStore = defineStore('calculator', () => {
     }
   }
 
-  function change(next: readonly Coordinate[]): void {
+  function change(next: readonly Coordinate[], nextSurvey: Survey): void {
     points.value = next
+    survey.value = nextSurvey
     version.value += 1
     errorDismissed.value = false
     savedPlot.value = null
@@ -179,7 +198,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
     previewing.value = true
 
     try {
-      const result = await service.preview(points.value)
+      const result = await service.preview(points.value, survey.value)
       if (request !== requestNumber) {
         return
       }
@@ -282,6 +301,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
   function finishSave(plot: Plot): void {
     savedPlot.value = plot
     points.value = []
+    survey.value = emptySurvey
     name.value = ''
     version.value += 1
     requestPreview(0)
@@ -298,6 +318,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
   return {
     points,
     name,
+    survey,
     preview,
     previewing,
     outage,
@@ -311,6 +332,7 @@ export const useCalculatorStore = defineStore('calculator', () => {
     enoughPoints,
     problems,
     measurement,
+    accuracy,
     updating,
     selfIntersection,
     flaggedVertices,
@@ -321,12 +343,18 @@ export const useCalculatorStore = defineStore('calculator', () => {
     rename,
     retryPreview,
     save,
-    addPoint: (point: Coordinate) => change(appendPoint(points.value, point)),
-    movePoint: (index: number, point: Coordinate) => change(replacePoint(points.value, index, point)),
-    insertPoint: (afterIndex: number, point: Coordinate) => change(insertPointAfter(points.value, afterIndex, point)),
-    undo: () => change(removeLastPoint(points.value)),
-    clear: () => change([]),
-    swap: (first: number, second: number) => change(exchangePoints(points.value, first, second)),
+    addPoint: (point: Coordinate, gesture: Gesture) =>
+      change(appendPoint(points.value, point), surveyAfterAdd(survey.value, gesture)),
+    movePoint: (index: number, point: Coordinate, gesture: Gesture) =>
+      change(replacePoint(points.value, index, point), surveyAfterMove(survey.value, index, gesture)),
+    insertPoint: (afterIndex: number, point: Coordinate, gesture: Gesture) =>
+      change(insertPointAfter(points.value, afterIndex, point), surveyAfterInsert(survey.value, afterIndex, gesture)),
+    undo: () => change(removeLastPoint(points.value), surveyAfterRemoveLast(survey.value)),
+    clear: () => change([], emptySurvey),
+    swap: (first: number, second: number) =>
+      change(exchangePoints(points.value, first, second), surveyAfterSwap(survey.value, first, second)),
+    markSide: (side: number, reason: ObstructionReason | null) =>
+      change(points.value, surveyWithObstruction(survey.value, side, reason)),
     dismissError: () => {
       errorDismissed.value = true
     },

@@ -52,6 +52,9 @@ describe('PlotsClient', () => {
         { latitude: 50.449, longitude: 30.524 },
       ],
       measurement,
+      capture: null,
+      obstructions: [],
+      accuracy: null,
       version: 3,
       status: 'CONFIRMED',
       createdAt: new Date('2026-10-14T09:00:00Z'),
@@ -76,6 +79,8 @@ describe('PlotsClient', () => {
         { latitude: 50.45, longitude: 30.52 },
         { latitude: 50.451, longitude: 30.523 },
       ],
+      capture: { zoom: 18, layer: 'satellite', pointer: 'touch' },
+      obstructions: [{ side: 1, reason: 'trees' }],
     })
 
     expect(plot.status).toBe('PENDING')
@@ -88,6 +93,8 @@ describe('PlotsClient', () => {
           { lat: 50.45, lon: 30.52 },
           { lat: 50.451, lon: 30.523 },
         ],
+        capture: { zoom: 18, layer: 'satellite', pointer: 'touch' },
+        obstructions: [{ side: 1, reason: 'trees' }],
       },
     })
   })
@@ -135,6 +142,8 @@ describe('PlotsClient', () => {
         name: 'Поле',
         points: plotDto.points.map(({ lat, lon }) => ({ latitude: lat, longitude: lon })),
         measurement,
+        obstructions: [],
+        accuracy: null,
         createdAt: new Date('2026-10-20T08:00:00Z'),
       },
     ])
@@ -143,18 +152,54 @@ describe('PlotsClient', () => {
   it('previews a valid polygon without a token', async () => {
     const server = new FakeServer().reply({
       status: 200,
-      body: { area_m2: 24812.4, area_ares: 248.124, area_hectares: 2.48124, perimeter_m: 648.2, valid: true, errors: [] },
+      body: {
+        area_m2: 24812.4,
+        area_ares: 248.124,
+        area_hectares: 2.48124,
+        perimeter_m: 648.2,
+        accuracy: {
+          area_m2_margin: 520,
+          area_hectares_margin: 0.052,
+          percent: 2.1,
+          confidence: 0.95,
+          contributions: { scale: 0.3, obstructions: 0.7 },
+          worst_side: 2,
+          ground_shift_m: 4,
+          basis: 'capture',
+        },
+        valid: true,
+        errors: [],
+      },
     })
 
-    const preview = await plots(server).preview([{ latitude: 50.45, longitude: 30.52 }])
+    const preview = await plots(server).preview([{ latitude: 50.45, longitude: 30.52 }], {
+      capture: null,
+      obstructions: [{ side: 2, reason: 'unclear' }],
+    })
 
     expect(server.requests[0]).toMatchObject({
       method: 'POST',
       url: `${gatewayUrl}/api/v1/plots/preview`,
       authorization: null,
-      body: { points: [{ lat: 50.45, lon: 30.52 }] },
+      body: { points: [{ lat: 50.45, lon: 30.52 }], obstructions: [{ side: 2, reason: 'unclear' }] },
     })
-    expect(preview).toEqual({ valid: true, measurement, problems: [] })
+    expect(server.requests[0]?.body).not.toHaveProperty('capture')
+    expect(preview).toEqual({
+      valid: true,
+      measurement,
+      accuracy: {
+        marginSquareMeters: 520,
+        marginHectares: 0.052,
+        percent: 2.1,
+        confidence: 0.95,
+        scaleShare: 0.3,
+        obstructionShare: 0.7,
+        worstSide: 2,
+        groundShiftMeters: 4,
+        basis: 'capture',
+      },
+      problems: [],
+    })
   })
 
   it('previews an invalid polygon with problems and their details', async () => {
@@ -174,11 +219,12 @@ describe('PlotsClient', () => {
       },
     })
 
-    const preview = await plots(server).preview([])
+    const preview = await plots(server).preview([], { capture: null, obstructions: [] })
 
     expect(preview).toEqual({
       valid: false,
       measurement: null,
+      accuracy: null,
       problems: [
         { code: 'invalid_coordinate', message: 'latitude out of range', details: { kind: 'invalid_coordinate', index: 1 } },
         { code: 'duplicate_point', message: 'duplicate point', details: { kind: 'duplicate_point', indices: [0, 2] } },
@@ -190,6 +236,6 @@ describe('PlotsClient', () => {
   it('reports 429 from the preview rate limit', async () => {
     const server = new FakeServer().reply({ status: 429, body: { code: 'rate_limited', message: 'too many requests' } })
 
-    await expect(plots(server).preview([])).rejects.toMatchObject({ kind: 'rate_limited', code: ErrorCode.RateLimited })
+    await expect(plots(server).preview([], { capture: null, obstructions: [] })).rejects.toMatchObject({ kind: 'rate_limited', code: ErrorCode.RateLimited })
   })
 })

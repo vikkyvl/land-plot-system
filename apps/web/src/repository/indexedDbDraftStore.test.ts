@@ -2,6 +2,9 @@ import 'fake-indexeddb/auto'
 import { createStore, set } from 'idb-keyval'
 import { describe, expect, it } from 'vitest'
 
+import type { PlotDraft } from '../domain/draft'
+import { emptySurvey } from '../domain/survey'
+
 import { IndexedDbDraftStore } from './indexedDbDraftStore'
 
 let databaseNumber = 0
@@ -18,8 +21,14 @@ const draft = {
     { latitude: 50.45021, longitude: 30.52011 },
     { latitude: 50.45048, longitude: 30.52342 },
   ],
+  survey: {
+    zooms: [18, 17],
+    layer: 'satellite',
+    pointer: 'touch',
+    obstructions: [{ side: 1, reason: 'trees' }],
+  },
   saveAfterSignIn: true,
-}
+} satisfies PlotDraft
 
 describe('IndexedDbDraftStore', () => {
   it('keeps the draft between page loads', async () => {
@@ -37,6 +46,18 @@ describe('IndexedDbDraftStore', () => {
     await drafts.save(draft)
     await drafts.clear()
     expect(await drafts.load()).toBeNull()
+  })
+
+  it('reads a draft saved before the survey as one without known zooms', async () => {
+    const store = freshStore()
+    await set('calculator', { name: 'Поле', points: draft.points, saveAfterSignIn: false }, store)
+
+    expect(await new IndexedDbDraftStore(store).load()).toEqual({
+      name: 'Поле',
+      points: draft.points,
+      survey: { ...emptySurvey, zooms: [null, null] },
+      saveAfterSignIn: false,
+    })
   })
 
   it('ignores a damaged draft', async () => {

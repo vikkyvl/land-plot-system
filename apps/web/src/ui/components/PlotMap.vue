@@ -7,6 +7,7 @@ import type { Coordinate } from '../../domain/coordinate'
 import type { MapLayer } from '../../domain/mapLayer'
 import type { Place } from '../../domain/place'
 import type { SelfIntersectionDetails } from '../../domain/problem'
+import type { MapGesture, PointerKind } from '../../domain/survey'
 import { t } from '../i18n'
 
 const props = defineProps<{
@@ -19,9 +20,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  add: [point: Coordinate]
-  move: [index: number, point: Coordinate]
-  insert: [afterIndex: number, point: Coordinate]
+  add: [point: Coordinate, gesture: MapGesture]
+  move: [index: number, point: Coordinate, gesture: MapGesture]
+  insert: [afterIndex: number, point: Coordinate, gesture: MapGesture]
 }>()
 
 const kyiv: L.LatLngTuple = [50.4501, 30.5234]
@@ -37,6 +38,15 @@ const map = shallowRef<L.Map | null>(null)
 let tiles: L.TileLayer | null = null
 const shapes = L.layerGroup()
 const handles = L.layerGroup()
+let lastPointer: PointerKind = 'mouse'
+
+function rememberPointer(event: PointerEvent): void {
+  lastPointer = event.pointerType === 'touch' || event.pointerType === 'pen' ? event.pointerType : 'mouse'
+}
+
+function gesture(): MapGesture {
+  return { zoom: map.value?.getZoom() ?? startZoom, pointer: lastPointer }
+}
 
 function css(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -164,7 +174,7 @@ function draw(): void {
         keyboard: false,
         title: t('map.insertBetween', { from: index + 1, to: ((index + 1) % latLngs.length) + 1 }),
       })
-        .on('click', () => emit('insert', index, { latitude: middle[0], longitude: middle[1] }))
+        .on('click', () => emit('insert', index, { latitude: middle[0], longitude: middle[1] }, gesture()))
         .addTo(handles)
     })
   }
@@ -183,7 +193,7 @@ function draw(): void {
       moved[index] = [position.lat, position.lng]
       drawShapes(moved)
     })
-    vertex.on('dragend', () => emit('move', index, toCoordinate(vertex.getLatLng())))
+    vertex.on('dragend', () => emit('move', index, toCoordinate(vertex.getLatLng()), gesture()))
     vertex.addTo(handles)
   })
 }
@@ -233,12 +243,14 @@ onMounted(() => {
   showLayer(props.layer)
   shapes.addTo(map.value)
   handles.addTo(map.value)
-  map.value.on('click', (event: L.LeafletMouseEvent) => emit('add', toCoordinate(event.latlng)))
+  container.value.addEventListener('pointerdown', rememberPointer, { capture: true })
+  map.value.on('click', (event: L.LeafletMouseEvent) => emit('add', toCoordinate(event.latlng), gesture()))
   draw()
   fitPoints()
 })
 
 onBeforeUnmount(() => {
+  container.value?.removeEventListener('pointerdown', rememberPointer, { capture: true })
   map.value?.remove()
   map.value = null
 })

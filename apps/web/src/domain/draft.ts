@@ -1,12 +1,14 @@
 import type { Coordinate } from './coordinate'
+import { emptySurvey, type Survey } from './survey'
 
 export interface PlotDraft {
   readonly name: string
   readonly points: readonly Coordinate[]
+  readonly survey: Survey
   readonly saveAfterSignIn: boolean
 }
 
-export const emptyDraft: PlotDraft = { name: '', points: [], saveAfterSignIn: false }
+export const emptyDraft: PlotDraft = { name: '', points: [], survey: emptySurvey, saveAfterSignIn: false }
 
 export function addPoint(points: readonly Coordinate[], point: Coordinate): Coordinate[] {
   return [...points, point]
