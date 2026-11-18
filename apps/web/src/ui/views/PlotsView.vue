@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import PlotStatusBadge from '../components/PlotStatusBadge.vue'
 import PlotThumbnail from '../components/PlotThumbnail.vue'
 import { formatDate, formatHectares, formatPlotCount, initials } from '../composables/format'
 import { useFailure, type Failure } from '../composables/useFailure'
+import { useFollowedPlots } from '../composables/useFollowedPlots'
+import { useConfirmationsStore } from '../stores/confirmations'
 import { usePlotsStore } from '../stores/plots'
 import { useSessionStore } from '../stores/session'
 
@@ -18,6 +20,34 @@ const route = useRoute()
 const handle = useFailure()
 const failure = ref<Failure | null>(null)
 const menuOpen = ref(false)
+
+const confirmations = useConfirmationsStore()
+const followed = useFollowedPlots()
+
+watch(plots, (list) => {
+  for (const plot of list) {
+    if (plot.status === 'PENDING') {
+      followed.follow(plot.id)
+    }
+  }
+})
+
+watch(
+  () => confirmations.entries,
+  (entries) => {
+    for (const [id, entry] of Object.entries(entries)) {
+      const current = plots.value.find((plot) => plot.id === id)
+      if (current === undefined) {
+        continue
+      }
+      if ((entry.phase === 'confirmed' || entry.phase === 'reverted') && entry.plot !== null && entry.plot !== current) {
+        store.replace(entry.plot)
+      } else if (entry.phase === 'cancelled') {
+        store.forget(id)
+      }
+    }
+  },
+)
 
 const selectedId = computed(() => (typeof route.params['id'] === 'string' ? route.params['id'] : null))
 

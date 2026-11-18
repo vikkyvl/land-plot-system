@@ -8,6 +8,7 @@ import { hasScope, Scope } from '../../domain/profile'
 import DeletePlotDialog from '../components/DeletePlotDialog.vue'
 import PlotStatusBadge from '../components/PlotStatusBadge.vue'
 import PlotViewMap from '../components/PlotViewMap.vue'
+import StalledNotice from '../components/StalledNotice.vue'
 import RenamePlotDialog from '../components/RenamePlotDialog.vue'
 import {
   formatAres,
@@ -19,6 +20,8 @@ import {
 } from '../composables/format'
 import { useMapLayers, useMapPreferencesService, usePlotService } from '../composables/services'
 import { useFailure, type Failure } from '../composables/useFailure'
+import { useFollowedPlots } from '../composables/useFollowedPlots'
+import { useConfirmationsStore } from '../stores/confirmations'
 import { usePlotsStore } from '../stores/plots'
 import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toast'
@@ -48,8 +51,45 @@ const pending = computed(() => plot.value !== null && isPending(plot.value))
 const canWrite = computed(() => profile.value === null || hasScope(profile.value, Scope.PlotsWrite))
 const canReport = computed(() => profile.value === null || hasScope(profile.value, Scope.ReportsWrite))
 const pendingHint = 'Ділянка ще обробляється'
+const confirmations = useConfirmationsStore()
+const followed = useFollowedPlots()
+const phase = computed(() => confirmations.entries[props.id]?.phase ?? null)
+const cancelled = ref(false)
+
+function followIfPending(current: Plot): void {
+  if (isPending(current)) {
+    followed.follow(current.id)
+  }
+}
+
+async function reloadVersions(id: string): Promise<void> {
+  try {
+    versions.value = await service.versions(id)
+  } catch (error) {
+    await handle(error)
+  }
+}
+
+watch(
+  () => confirmations.entries[props.id],
+  (entry) => {
+    if (entry === undefined) {
+      return
+    }
+    if ((entry.phase === 'confirmed' || entry.phase === 'reverted') && entry.plot !== null) {
+      plot.value = entry.plot
+      plotsStore.replace(entry.plot)
+      void reloadVersions(entry.plot.id)
+    } else if (entry.phase === 'cancelled') {
+      cancelled.value = true
+      plotsStore.forget(props.id)
+    }
+  },
+)
 
 async function load(id: string): Promise<void> {
+  followed.releaseAll()
+  cancelled.value = false
   loading.value = true
   failure.value = null
   plot.value = null
@@ -58,6 +98,7 @@ async function load(id: string): Promise<void> {
     const [loadedPlot, loadedVersions] = await Promise.all([service.get(id), service.versions(id)])
     plot.value = loadedPlot
     versions.value = loadedVersions
+    followIfPending(loadedPlot)
   } catch (error) {
     failure.value = await handle(error)
   } finally {
@@ -78,11 +119,14 @@ async function rename(name: string): Promise<void> {
   }
   busy.value = true
   try {
+    const previousName = plot.value.name
     const renamed = await service.rename(plot.value.id, name)
+    confirmations.expect(renamed.id, { intent: 'update', name: previousName, expected: { name } })
     plot.value = renamed
     plotsStore.replace(renamed)
+    followIfPending(renamed)
     dialog.value = null
-    toasts.show('Назву змінено. Сервер підтверджує зміни.')
+    toasts.show('Назву надіслано. Сервер підтверджує зміни.')
   } catch (error) {
     dialogFailure.value = await handle(error)
   } finally {
@@ -147,6 +191,19 @@ async function createReport(): Promise<void> {
     >
       <p>{{ failure.text }}</p>
       <small v-if="failure.requestId">Код запиту: {{ failure.requestId }}</small>
+      <RouterLink to="/plots">
+        До списку ділянок
+      </RouterLink>
+    </div>
+
+    <div
+      v-else-if="cancelled"
+      class="detail__failure"
+      role="alert"
+    >
+      <p>
+        Збереження скасовано: сервіс звітів не зміг сформувати проєкцію ділянки, тому ділянку не збережено.
+      </p>
       <RouterLink to="/plots">
         До списку ділянок
       </RouterLink>
@@ -260,8 +317,13 @@ async function createReport(): Promise<void> {
             {{ reporting ? 'Формуємо…' : 'Сформувати звіт' }}
           </button>
         </div>
+        <StalledNotice
+          v-if="pending && phase === 'stalled'"
+          class="detail__pending"
+          @retry="confirmations.retry(plot.id)"
+        />
         <p
-          v-if="pending"
+          v-else-if="pending"
           class="detail__pending"
         >
           {{ pendingHint }}. Зміни і звіт стануть доступні після підтвердження.

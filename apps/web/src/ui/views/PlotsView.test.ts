@@ -7,7 +7,11 @@ import { DomainError } from '../../domain/error'
 import type { Plot } from '../../domain/plot'
 import type { PlotService } from '../../service/plotService'
 import type { SessionService } from '../../service/sessionService'
-import { plotServiceKey, sessionServiceKey } from '../composables/services'
+import {
+  confirmationServiceKey,
+  plotServiceKey,
+  sessionServiceKey,
+} from '../composables/services'
 
 import PlotsView from './PlotsView.vue'
 
@@ -51,6 +55,7 @@ async function mountPlots(list: () => Promise<Plot[]>, path = '/plots') {
     global: {
       plugins: [createPinia(), router],
       provide: {
+          [confirmationServiceKey as symbol]: { check: vi.fn(async () => ({ state: 'gone' })) },
         [plotServiceKey as symbol]: service as unknown as PlotService,
         [sessionServiceKey as symbol]: {} as SessionService,
       },

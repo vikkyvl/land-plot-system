@@ -2,6 +2,7 @@ import { inject, type InjectionKey } from 'vue'
 
 import type { MapLayers } from '../../domain/mapLayer'
 import type { CalculatorService } from '../../service/calculatorService'
+import type { ConfirmationService } from '../../service/confirmationService'
 import type { MapPreferencesService } from '../../service/mapPreferencesService'
 import type { PlaceSearchService } from '../../service/placeSearchService'
 import type { PlotService } from '../../service/plotService'
@@ -14,6 +15,7 @@ export const placeSearchServiceKey: InjectionKey<PlaceSearchService> = Symbol('P
 export const mapPreferencesServiceKey: InjectionKey<MapPreferencesService> = Symbol('MapPreferencesService')
 export const plotServiceKey: InjectionKey<PlotService> = Symbol('PlotService')
 export const reportServiceKey: InjectionKey<ReportService> = Symbol('ReportService')
+export const confirmationServiceKey: InjectionKey<ConfirmationService> = Symbol('ConfirmationService')
 export const mapLayersKey: InjectionKey<MapLayers> = Symbol('MapLayers')
 
 function required<T>(key: InjectionKey<T>): T {
@@ -31,4 +33,5 @@ export const usePlaceSearchService = (): PlaceSearchService => required(placeSea
 export const useMapPreferencesService = (): MapPreferencesService => required(mapPreferencesServiceKey)
 export const usePlotService = (): PlotService => required(plotServiceKey)
 export const useReportService = (): ReportService => required(reportServiceKey)
+export const useConfirmationService = (): ConfirmationService => required(confirmationServiceKey)
 export const useMapLayers = (): MapLayers => required(mapLayersKey)

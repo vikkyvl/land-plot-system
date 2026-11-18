@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { pollInterval } from '../stores/confirmations'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { DomainError } from '../../domain/error'
@@ -10,6 +12,7 @@ import type { MapPreferencesService } from '../../service/mapPreferencesService'
 import type { PlotService } from '../../service/plotService'
 import type { SessionService } from '../../service/sessionService'
 import {
+  confirmationServiceKey,
   mapLayersKey,
   mapPreferencesServiceKey,
   plotServiceKey,
@@ -64,7 +67,10 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-async function mountDetail(overrides: Partial<Record<keyof PlotService, unknown>> = {}) {
+async function mountDetail(
+  overrides: Partial<Record<keyof PlotService, unknown>> = {},
+  check: () => Promise<unknown> = async () => ({ state: 'gone' }),
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -90,6 +96,7 @@ async function mountDetail(overrides: Partial<Record<keyof PlotService, unknown>
     global: {
       plugins: [createPinia(), router],
       provide: {
+          [confirmationServiceKey as symbol]: { check: vi.fn(check) },
         [plotServiceKey as symbol]: service as unknown as PlotService,
         [sessionServiceKey as symbol]: {} as SessionService,
         [mapLayersKey as symbol]: layers,
@@ -190,5 +197,26 @@ describe('PlotDetailView', () => {
 
     expect(service.createReport).toHaveBeenCalledWith('plot-1')
     expect(router.currentRoute.value.path).toBe('/reports/report-1')
+  })
+
+  it('follows a pending plot until it is confirmed and refreshes the history', async () => {
+    vi.useFakeTimers()
+    try {
+      const { wrapper, service } = await mountDetail({ get: vi.fn(async () => plot('PENDING')) }, async () => ({
+        state: 'confirmed',
+        plot: plot('CONFIRMED'),
+      }))
+      expect(wrapper.text()).toContain('Обробляється…')
+
+      await vi.advanceTimersByTimeAsync(pollInterval)
+      await flushPromises()
+
+      expect(wrapper.text()).not.toContain('Обробляється…')
+      expect(button(wrapper, 'Змінити межу')).toBeUndefined()
+      expect(wrapper.get('.detail__edit').attributes('href')).toBe('/plots/plot-1/edit')
+      expect(service.versions).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

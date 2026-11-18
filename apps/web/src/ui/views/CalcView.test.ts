@@ -12,6 +12,7 @@ import type { PlaceSearchService } from '../../service/placeSearchService'
 import type { SessionService } from '../../service/sessionService'
 import {
   calculatorServiceKey,
+  confirmationServiceKey,
   mapLayersKey,
   mapPreferencesServiceKey,
   placeSearchServiceKey,
@@ -74,6 +75,7 @@ async function mountCalc(preview: () => Promise<PlotPreview>) {
     global: {
       plugins: [createPinia(), router],
       provide: {
+          [confirmationServiceKey as symbol]: { check: vi.fn(async () => ({ state: 'gone' })) },
         [calculatorServiceKey as symbol]: calculator as unknown as CalculatorService,
         [sessionServiceKey as symbol]: session as unknown as SessionService,
         [placeSearchServiceKey as symbol]: { search: vi.fn(async () => []) } as unknown as PlaceSearchService,

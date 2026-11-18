@@ -14,6 +14,7 @@ import OutagePanel from '../components/OutagePanel.vue'
 import PlaceSearch from '../components/PlaceSearch.vue'
 import PlotMap from '../components/PlotMap.vue'
 import PointsCard from '../components/PointsCard.vue'
+import StalledNotice from '../components/StalledNotice.vue'
 import { errorText } from '../composables/errorText'
 import {
   formatAres,
@@ -23,8 +24,10 @@ import {
   formatSquareMeters,
 } from '../composables/format'
 import { useMapLayers, useMapPreferencesService } from '../composables/services'
+import { useFollowedPlots } from '../composables/useFollowedPlots'
 import { useSignInRedirect } from '../composables/useSignInRedirect'
 import { useCalculatorStore } from '../stores/calculator'
+import { useConfirmationsStore } from '../stores/confirmations'
 import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toast'
 
@@ -33,6 +36,8 @@ const props = defineProps<{ plotId?: string }>()
 const calculator = useCalculatorStore()
 const router = useRouter()
 const toasts = useToastStore()
+const confirmations = useConfirmationsStore()
+const followed = useFollowedPlots()
 const session = useSessionStore()
 const signIn = useSignInRedirect()
 const layers = useMapLayers()
@@ -90,10 +95,32 @@ async function save(): Promise<void> {
   if (outcome === 'sign-in') {
     await signIn(editingId.value === null ? '/' : undefined)
   } else if (outcome === 'updated' && editingId.value !== null) {
-    toasts.show('Межу збережено. Сервер підтверджує зміни.')
+    confirmations.expect(editingId.value, {
+      intent: 'update',
+      name: name.value.trim(),
+      expected: { name: name.value, points: points.value },
+    })
+    toasts.show('Межу надіслано. Сервер підтверджує зміни.')
     await router.push(`/plots/${editingId.value}`)
   }
 }
+
+const savedPhase = computed(() =>
+  savedPlot.value === null ? null : (confirmations.entries[savedPlot.value.id]?.phase ?? 'pending'),
+)
+
+watch(
+  savedPlot,
+  (plot) => {
+    followed.releaseAll()
+    const phase = plot === null ? null : confirmations.entries[plot.id]?.phase
+    if (plot !== null && editingId.value === null && (phase === undefined || phase === 'pending')) {
+      confirmations.expect(plot.id, { intent: 'create', name: plot.name })
+      followed.follow(plot.id)
+    }
+  },
+  { immediate: true },
+)
 
 watch(
   () => props.plotId,
@@ -295,13 +322,35 @@ onBeforeUnmount(() => calculator.stop())
           {{ errorText(saveError) }}
           <small v-if="saveError.requestId">Код запиту: {{ saveError.requestId }}</small>
         </div>
-        <p
-          v-if="savedPlot && !editingId"
-          class="calc__saved"
-          role="status"
-        >
-          Ділянку «{{ savedPlot.name }}» збережено. Сервер підтверджує розрахунок.
-        </p>
+        <template v-if="savedPlot && !editingId">
+          <p
+            v-if="savedPhase === 'cancelled'"
+            class="calc__save-error"
+            role="alert"
+          >
+            Збереження «{{ savedPlot.name }}» скасовано: сервіс звітів не зміг сформувати проєкцію ділянки, тому ділянку
+            не збережено. Спробуйте зберегти ще раз.
+          </p>
+          <StalledNotice
+            v-else-if="savedPhase === 'stalled'"
+            @retry="confirmations.retry(savedPlot.id)"
+          />
+          <p
+            v-else
+            class="calc__saved"
+            role="status"
+          >
+            <template v-if="savedPhase === 'confirmed'">
+              Ділянку «{{ savedPlot.name }}» збережено і підтверджено.
+            </template>
+            <template v-else>
+              Ділянку «{{ savedPlot.name }}» збережено. Сервер підтверджує розрахунок…
+            </template>
+            <RouterLink :to="`/plots/${savedPlot.id}`">
+              Відкрити ділянку
+            </RouterLink>
+          </p>
+        </template>
       </section>
 
       <ChecksCard
@@ -596,6 +645,9 @@ onBeforeUnmount(() => calculator.stop())
 }
 
 .calc__saved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
   margin: 0;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);

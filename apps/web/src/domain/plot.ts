@@ -49,3 +49,16 @@ export interface PlotPreview {
 export function isPending(plot: Plot): boolean {
   return plot.status === PlotStatus.Pending
 }
+
+export function reflectsChanges(plot: Plot, changes: PlotChanges): boolean {
+  const nameMatches = changes.name === undefined || plot.name === changes.name.trim()
+  const pointsMatch =
+    changes.points === undefined ||
+    (plot.points.length === changes.points.length &&
+      plot.points.every(
+        (point, index) =>
+          point.latitude === changes.points?.[index]?.latitude && point.longitude === changes.points[index]?.longitude,
+      ))
+
+  return nameMatches && pointsMatch
+}

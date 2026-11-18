@@ -11,6 +11,7 @@ import { readConfig } from '../config/env'
 import { IndexedDbDraftStore } from '../repository/indexedDbDraftStore'
 import { LocalPreferencesStore } from '../repository/localPreferencesStore'
 import { CalculatorService } from '../service/calculatorService'
+import { ConfirmationService } from '../service/confirmationService'
 import { MapPreferencesService } from '../service/mapPreferencesService'
 import { PlaceSearchService } from '../service/placeSearchService'
 import { PlotService } from '../service/plotService'
@@ -19,6 +20,7 @@ import { SessionService } from '../service/sessionService'
 import App from '../ui/App.vue'
 import {
   calculatorServiceKey,
+  confirmationServiceKey,
   mapLayersKey,
   mapPreferencesServiceKey,
   placeSearchServiceKey,
@@ -53,6 +55,7 @@ const mapPreferencesService = new MapPreferencesService(new LocalPreferencesStor
 createApp(App)
   .provide(sessionServiceKey, sessionService)
   .provide(calculatorServiceKey, calculatorService)
+  .provide(confirmationServiceKey, new ConfirmationService(plots))
   .provide(placeSearchServiceKey, placeSearchService)
   .provide(plotServiceKey, plotService)
   .provide(reportServiceKey, reportService)
