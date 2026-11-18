@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { DomainError } from '../domain/error'
 import { ErrorCode } from '../domain/errorCode'
@@ -120,4 +120,78 @@ describe('HttpClient', () => {
 
     expect(error).toMatchObject({ kind: 'unavailable', requestId: 'req-4' })
   })
+
+  it('exposes the Retry-After seconds of a 429 response', async () => {
+    const server = new FakeServer().reply({
+      status: 429,
+      body: { code: 'rate_limited', message: 'too many requests' },
+      headers: { 'Retry-After': '3' },
+    })
+
+    const error = await failure(server.client().request('POST', '/plots/preview', { body: {}, authenticated: false }))
+
+    expect(error).toMatchObject({ kind: 'rate_limited', retryAfterSeconds: 3 })
+  })
+
+  it('renews the token once for parallel requests rejected with 401', async () => {
+    const session = new GatedSession(firstToken, renewedToken)
+    const server = new FakeServer().reply(
+      ...Array.from({ length: 3 }, () => ({ status: 401, body: { code: 'unauthorized' } })),
+      ...Array.from({ length: 3 }, () => ({ status: 200, body: { ok: true } })),
+    )
+    const http = server.client(session)
+
+    const results = Promise.all(['/a', '/b', '/c'].map((path) => http.request('GET', path)))
+    await session.renewalStarted
+    session.finishRenewal()
+
+    await expect(results).resolves.toEqual([{ ok: true }, { ok: true }, { ok: true }])
+    expect(session.renewals).toBe(1)
+    expect(server.requests.map((request) => request.authorization)).toEqual([
+      ...Array.from({ length: 3 }, () => `Bearer ${firstToken}`),
+      ...Array.from({ length: 3 }, () => `Bearer ${renewedToken}`),
+    ])
+  })
+
+  it('repeats a request rejected with an old token using the already renewed one', async () => {
+    const session = new FakeSession(renewedToken, fakeToken('unused'))
+    const server = new FakeServer().reply({ status: 401, body: { code: 'unauthorized' } }, { status: 200, body: [] })
+    const http = server.client(session)
+    const staleRequest = vi.spyOn(session, 'accessToken').mockResolvedValueOnce(firstToken)
+
+    await expect(http.request('GET', '/plots')).resolves.toEqual([])
+
+    expect(staleRequest).toHaveBeenCalledTimes(2)
+    expect(session.renewals).toBe(0)
+    expect(server.requests.map((request) => request.authorization)).toEqual([
+      `Bearer ${firstToken}`,
+      `Bearer ${renewedToken}`,
+    ])
+  })
 })
+
+class GatedSession extends FakeSession {
+  readonly renewalStarted: Promise<void>
+  private markStarted: () => void = () => undefined
+  private release: () => void = () => undefined
+
+  constructor(token: string, renewedToken: string) {
+    super(token, renewedToken)
+    this.renewalStarted = new Promise((resolve) => {
+      this.markStarted = resolve
+    })
+  }
+
+  override async renewAccessToken(): Promise<string | null> {
+    this.markStarted()
+    await new Promise<void>((resolve) => {
+      this.release = resolve
+    })
+
+    return super.renewAccessToken()
+  }
+
+  finishRenewal(): void {
+    this.release()
+  }
+}

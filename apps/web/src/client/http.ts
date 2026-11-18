@@ -20,6 +20,7 @@ export interface HttpClientOptions {
 
 const apiPrefix = '/api/v1'
 const requestIdHeader = 'X-Request-ID'
+const retryAfterHeader = 'Retry-After'
 const statusNoContent = 204
 const statusUnauthorized = 401
 
@@ -27,6 +28,7 @@ export class HttpClient {
   private readonly baseUrl: string
   private readonly session: AuthSession
   private readonly fetch: typeof fetch
+  private renewal: Promise<string | null> | null = null
 
   constructor(options: HttpClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
@@ -41,14 +43,17 @@ export class HttpClient {
     let response = await this.send(method, url, options.body, token)
 
     if (response.status === statusUnauthorized && authenticated) {
-      const renewedToken = await this.session.renewAccessToken()
-      if (renewedToken !== null) {
-        response = await this.send(method, url, options.body, renewedToken)
+      const freshToken = await this.freshToken(token)
+      if (freshToken !== null) {
+        response = await this.send(method, url, options.body, freshToken)
       }
     }
 
     if (!response.ok) {
-      throw toDomainError(response.status, await readJson(response), response.headers.get(requestIdHeader))
+      throw toDomainError(response.status, await readJson(response), {
+        requestId: response.headers.get(requestIdHeader),
+        retryAfter: response.headers.get(retryAfterHeader),
+      })
     }
 
     if (response.status === statusNoContent) {
@@ -56,6 +61,25 @@ export class HttpClient {
     }
 
     return (await response.json()) as T
+  }
+
+  private async freshToken(rejectedToken: string | null): Promise<string | null> {
+    if (this.renewal !== null) {
+      return this.renewal
+    }
+
+    const currentToken = await this.session.accessToken()
+    if (currentToken !== null && currentToken !== rejectedToken) {
+      return currentToken
+    }
+
+    if (this.renewal === null) {
+      this.renewal = this.session.renewAccessToken().finally(() => {
+        this.renewal = null
+      })
+    }
+
+    return this.renewal
   }
 
   private url(path: string, query: RequestOptions['query']): string {

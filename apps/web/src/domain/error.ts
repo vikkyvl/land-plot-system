@@ -19,6 +19,7 @@ export interface DomainErrorOptions {
   readonly message: string
   readonly details?: ProblemDetails | null
   readonly requestId?: string | null
+  readonly retryAfterSeconds?: number | null
 }
 
 export class DomainError extends Error {
@@ -26,6 +27,7 @@ export class DomainError extends Error {
   readonly code: string
   readonly details: ProblemDetails | null
   readonly requestId: string | null
+  readonly retryAfterSeconds: number | null
 
   constructor(options: DomainErrorOptions) {
     super(options.message)
@@ -34,6 +36,7 @@ export class DomainError extends Error {
     this.code = options.code
     this.details = options.details ?? null
     this.requestId = options.requestId ?? null
+    this.retryAfterSeconds = options.retryAfterSeconds ?? null
   }
 
   is(code: string): boolean {

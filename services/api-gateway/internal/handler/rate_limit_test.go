@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -69,6 +70,24 @@ func TestPreviewOverTheLimitGetsTooManyRequests(t *testing.T) {
 
 	if len(limiter.keys) != 1 || limiter.keys[0] != "192.0.2.10" {
 		t.Fatalf("limiter keys = %v, want the client IP without port", limiter.keys)
+	}
+}
+
+func TestBrowserCanReadRetryAfterOfALimitedPreview(t *testing.T) {
+	upstream := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("upstream called") })
+	request := previewRequest()
+	request.Header.Set("Origin", allowedOrigin)
+
+	response := serve(
+		newTestRouterWithLimiter(upstream, verifierStub{}, &limiterStub{retryAfter: 3 * time.Second}),
+		request,
+	)
+
+	exposed := strings.Split(response.Header().Get("Access-Control-Expose-Headers"), ", ")
+	if response.Code != http.StatusTooManyRequests ||
+		response.Header().Get("Access-Control-Allow-Origin") != allowedOrigin ||
+		response.Header().Get(headerRetryAfter) != "3" || !slices.Contains(exposed, headerRetryAfter) {
+		t.Fatalf("status = %d, headers = %#v", response.Code, response.Header())
 	}
 }
 

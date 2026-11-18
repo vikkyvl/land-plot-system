@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ErrorCode } from '../domain/errorCode'
 
-import { kindOfStatus, toDomainError, toProblemDetails } from './errors'
+import { kindOfStatus, parseRetryAfter, toDomainError, toProblemDetails } from './errors'
 
 describe('error map', () => {
   it.each([
@@ -30,17 +30,18 @@ describe('error map', () => {
     [400, ErrorCode.InvalidQuery, 'invalid_request'],
     [403, ErrorCode.InsufficientScope, 'forbidden'],
   ])('keeps the server code for %i %s', (status, code, kind) => {
-    const error = toDomainError(status, { code, message: 'server text', request_id: 'req-1' }, null)
+    const error = toDomainError(status, { code, message: 'server text', request_id: 'req-1' })
 
     expect(error).toMatchObject({ kind, code, message: 'server text', requestId: 'req-1', details: null })
   })
 
   it('falls back to a code by status when the body is not an error body', () => {
-    expect(toDomainError(503, null, null)).toMatchObject({
+    expect(toDomainError(503, null)).toMatchObject({
       kind: 'unavailable',
       code: ErrorCode.ServiceUnavailable,
       message: 'HTTP 503',
       requestId: null,
+      retryAfterSeconds: null,
     })
   })
 
@@ -51,7 +52,7 @@ describe('error map', () => {
       details: { segments: [[1, 2], [3, 0]], swap: [2, 3] },
     }
 
-    expect(toDomainError(422, body, null).details).toEqual({
+    expect(toDomainError(422, body).details).toEqual({
       kind: 'self_intersection',
       segments: [[1, 2], [3, 0]],
       swap: [2, 3],
@@ -78,5 +79,23 @@ describe('error map', () => {
     [ErrorCode.SelfIntersection, null],
   ])('ignores malformed or unexpected details for %s', (code, details) => {
     expect(toProblemDetails(code, details)).toBeNull()
+  })
+
+  it('takes the retry delay of a rate-limited request from Retry-After', () => {
+    const error = toDomainError(429, { code: ErrorCode.RateLimited }, { requestId: 'req-5', retryAfter: '3' })
+
+    expect(error).toMatchObject({ kind: 'rate_limited', retryAfterSeconds: 3, requestId: 'req-5' })
+  })
+
+  it.each([
+    ['7', 7],
+    [' 0 ', 0],
+    ['Wed, 18 Nov 2026 10:00:05 GMT', 5],
+    ['Wed, 18 Nov 2026 09:59:00 GMT', 0],
+    ['soon', null],
+    ['', null],
+    [null, null],
+  ])('reads Retry-After %j as %j seconds', (value, seconds) => {
+    expect(parseRetryAfter(value, new Date('2026-11-18T10:00:00Z'))).toBe(seconds)
   })
 })

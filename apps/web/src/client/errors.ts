@@ -42,7 +42,20 @@ export function kindOfStatus(status: number): ErrorKind {
   return kindByStatus[status] ?? 'internal'
 }
 
-export function toDomainError(status: number, body: unknown, requestIdHeader: string | null): DomainError {
+export interface ErrorHeaders {
+  readonly requestId: string | null
+  readonly retryAfter: string | null
+}
+
+const noHeaders: ErrorHeaders = { requestId: null, retryAfter: null }
+const millisecondsPerSecond = 1000
+
+export function toDomainError(
+  status: number,
+  body: unknown,
+  headers: ErrorHeaders = noHeaders,
+  now: Date = new Date(),
+): DomainError {
   const kind = kindOfStatus(status)
   const fields = isRecord(body) ? body : {}
   const code = stringOr(fields['code'], codeByKind[kind])
@@ -52,8 +65,26 @@ export function toDomainError(status: number, body: unknown, requestIdHeader: st
     code,
     message: stringOr(fields['message'], `HTTP ${status}`),
     details: toProblemDetails(code, fields['details']),
-    requestId: stringOr(fields['request_id'], requestIdHeader ?? '') || null,
+    requestId: stringOr(fields['request_id'], headers.requestId ?? '') || null,
+    retryAfterSeconds: parseRetryAfter(headers.retryAfter, now),
   })
+}
+
+export function parseRetryAfter(value: string | null, now: Date): number | null {
+  if (value === null || value.trim() === '') {
+    return null
+  }
+
+  if (/^\d+$/.test(value.trim())) {
+    return Number(value.trim())
+  }
+
+  const date = Date.parse(value)
+  if (Number.isNaN(date)) {
+    return null
+  }
+
+  return Math.max(0, Math.ceil((date - now.getTime()) / millisecondsPerSecond))
 }
 
 export function networkError(): DomainError {
