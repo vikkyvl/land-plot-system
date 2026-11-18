@@ -1,0 +1,663 @@
+<script setup lang="ts">
+import { storeToRefs } from 'pinia'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+
+import type { Coordinate } from '../../domain/coordinate'
+import type { MapLayerId } from '../../domain/mapLayer'
+import type { Place } from '../../domain/place'
+import { hasScope, Scope } from '../../domain/profile'
+import ChecksCard from '../components/ChecksCard.vue'
+import ErrorPanel from '../components/ErrorPanel.vue'
+import LayerSwitch from '../components/LayerSwitch.vue'
+import OutagePanel from '../components/OutagePanel.vue'
+import PlaceSearch from '../components/PlaceSearch.vue'
+import PlotMap from '../components/PlotMap.vue'
+import PointsCard from '../components/PointsCard.vue'
+import { errorText } from '../composables/errorText'
+import {
+  formatAres,
+  formatHectares,
+  formatMeters,
+  formatPointCount,
+  formatSquareMeters,
+} from '../composables/format'
+import { useMapLayers, useMapPreferencesService } from '../composables/services'
+import { useSignInRedirect } from '../composables/useSignInRedirect'
+import { useCalculatorStore } from '../stores/calculator'
+import { useSessionStore } from '../stores/session'
+
+const calculator = useCalculatorStore()
+const session = useSessionStore()
+const signIn = useSignInRedirect()
+const layers = useMapLayers()
+const preferences = useMapPreferencesService()
+
+const {
+  points,
+  name,
+  preview,
+  outage,
+  errorDismissed,
+  saving,
+  saveError,
+  savedPlot,
+  enoughPoints,
+  problems,
+  measurement,
+  updating,
+  selfIntersection,
+  flaggedVertices,
+  canSave,
+} = storeToRefs(calculator)
+const { signedIn, profile } = storeToRefs(session)
+
+const layerId = ref<MapLayerId>(preferences.layer())
+const place = shallowRef<Place | null>(null)
+const nameId = 'plot-name'
+
+const layer = computed(() => layers[layerId.value])
+const mainProblem = computed(() => problems.value[0] ?? null)
+const showProblem = computed(() => mainProblem.value !== null && !errorDismissed.value && outage.value === null)
+const canWrite = computed(() => profile.value === null || hasScope(profile.value, Scope.PlotsWrite))
+const lastArea = computed(() => (preview.value?.valid ? preview.value.measurement : null))
+const chip = computed(() =>
+  updating.value && lastArea.value !== null ? `Оновлюється… · ${formatHectares(lastArea.value.area.hectares)}` : null,
+)
+const status = computed(() => {
+  if (updating.value) {
+    return 'Оновлюється…'
+  }
+
+  return measurement.value !== null ? 'Розрахунок сервера' : formatPointCount(points.value.length)
+})
+
+watch(layerId, (value) => preferences.chooseLayer(value))
+
+function add(point: Coordinate): void {
+  calculator.addPoint(point)
+}
+
+async function save(): Promise<void> {
+  if ((await calculator.save(signedIn.value)) === 'sign-in') {
+    await signIn('/')
+  }
+}
+
+onMounted(() => calculator.start())
+onBeforeUnmount(() => calculator.stop())
+</script>
+
+<template>
+  <main class="calc">
+    <section
+      class="calc__map-column"
+      aria-label="Карта"
+    >
+      <div class="calc__toolbar">
+        <PlaceSearch
+          class="calc__search"
+          placeholder="Знайти місце на карті"
+          @select="place = $event"
+        />
+        <LayerSwitch
+          v-model="layerId"
+          class="calc__layers"
+        />
+      </div>
+      <PlotMap
+        class="calc__map"
+        :points="points"
+        :layer="layer"
+        :self-intersection="showProblem ? selfIntersection : null"
+        :flagged-vertices="flaggedVertices"
+        :show-numbers="selfIntersection !== null"
+        :place="place"
+        @add="add"
+        @move="calculator.movePoint"
+        @insert="calculator.insertPoint"
+      >
+        <p
+          v-if="chip"
+          class="calc__chip"
+          role="status"
+        >
+          {{ chip }}
+        </p>
+        <p
+          v-else
+          class="calc__hint"
+        >
+          <span class="calc__hint-web">Клацніть на карті, щоб додати точку. Перетягніть точку, щоб змінити межу.</span>
+          <span class="calc__hint-mobile">Торкніться карти, щоб додати точку межі. Точок: <b>{{ points.length }}</b></span>
+        </p>
+      </PlotMap>
+    </section>
+
+    <aside
+      class="calc__panel"
+      aria-label="Розрахунок"
+    >
+      <OutagePanel
+        v-if="outage"
+        :outage="outage"
+        @retry="calculator.retryPreview"
+      />
+      <ErrorPanel
+        v-else-if="showProblem && mainProblem"
+        :problem="mainProblem"
+        @swap="calculator.swap"
+        @dismiss="calculator.dismissError"
+      />
+
+      <section class="calc__card">
+        <div class="calc__area">
+          <div class="calc__area-head">
+            <h1 class="calc__label">
+              Площа ділянки
+            </h1>
+            <span
+              class="calc__status"
+              aria-live="polite"
+            >{{ status }}</span>
+          </div>
+          <p
+            class="calc__value"
+            :class="{ 'calc__value--empty': measurement === null }"
+          >
+            {{ measurement ? formatHectares(measurement.area.hectares) : '— га' }}
+          </p>
+        </div>
+
+        <dl
+          v-if="measurement"
+          class="calc__tiles"
+        >
+          <div class="calc__tile">
+            <dt>м²</dt>
+            <dd>{{ formatSquareMeters(measurement.area.squareMeters) }}</dd>
+          </div>
+          <div class="calc__tile">
+            <dt>ари</dt>
+            <dd>{{ formatAres(measurement.area.ares) }}</dd>
+          </div>
+          <div class="calc__tile">
+            <dt>периметр</dt>
+            <dd>{{ formatMeters(measurement.perimeterMeters) }}</dd>
+          </div>
+        </dl>
+        <p
+          v-else-if="!enoughPoints"
+          class="calc__muted"
+        >
+          Додайте щонайменше 3 точки, щоб побачити площу.
+        </p>
+
+        <div
+          v-if="!problems.length && points.length"
+          class="calc__field"
+        >
+          <label
+            class="calc__field-label"
+            :for="nameId"
+          >Назва ділянки</label>
+          <input
+            :id="nameId"
+            class="calc__input"
+            type="text"
+            maxlength="200"
+            placeholder="Наприклад, Поле біля ставка"
+            :value="name"
+            @input="calculator.rename(($event.target as HTMLInputElement).value)"
+          >
+        </div>
+
+        <div class="calc__actions">
+          <button
+            v-if="canWrite"
+            type="button"
+            class="calc__button calc__button--primary calc__save"
+            :disabled="!canSave"
+            :aria-busy="saving"
+            @click="save"
+          >
+            {{ saving ? 'Зберігаємо…' : 'Зберегти ділянку' }}
+          </button>
+          <button
+            type="button"
+            class="calc__button calc__undo"
+            :disabled="points.length === 0"
+            @click="calculator.undo"
+          >
+            Скасувати точку
+          </button>
+          <button
+            type="button"
+            class="calc__button calc__clear"
+            :disabled="points.length === 0"
+            @click="calculator.clear"
+          >
+            Очистити
+          </button>
+        </div>
+
+        <p
+          v-if="problems.length"
+          class="calc__muted"
+        >
+          Збереження стане доступним після виправлення контуру.
+        </p>
+        <p
+          v-if="!canWrite"
+          class="calc__muted"
+        >
+          Недостатньо прав для збереження ділянок.
+        </p>
+        <div
+          v-if="saveError"
+          class="calc__save-error"
+          role="alert"
+        >
+          {{ errorText(saveError) }}
+          <small v-if="saveError.requestId">Код запиту: {{ saveError.requestId }}</small>
+        </div>
+        <p
+          v-if="savedPlot"
+          class="calc__saved"
+          role="status"
+        >
+          Ділянку «{{ savedPlot.name }}» збережено. Сервер підтверджує розрахунок.
+        </p>
+      </section>
+
+      <ChecksCard
+        v-if="problems.length"
+        :problems="problems"
+      />
+      <PointsCard
+        v-else-if="points.length"
+        class="calc__points"
+        :points="points"
+        :flagged="flaggedVertices"
+      />
+
+      <p class="calc__note">
+        Розрахунок наближений і не замінює кадастрову зйомку.
+      </p>
+    </aside>
+  </main>
+</template>
+
+<style scoped>
+.calc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+.calc__map-column {
+  display: flex;
+  flex: 999 1 560px;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.calc__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.calc__map {
+  height: 640px;
+  border: 1px solid var(--color-map-border);
+  border-radius: var(--radius-2xl);
+}
+
+.calc__hint,
+.calc__chip {
+  position: absolute;
+  z-index: 500;
+  margin: 0;
+  pointer-events: none;
+}
+
+.calc__hint {
+  top: var(--space-4);
+  left: var(--space-4);
+  max-width: calc(100% - 96px);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-float);
+  color: var(--color-ink-2);
+  font-size: var(--fs-control);
+}
+
+.calc__hint-mobile {
+  display: none;
+}
+
+.calc__chip {
+  bottom: 34px;
+  left: var(--space-4);
+  padding: 7px 11px;
+  border-radius: var(--radius-xs);
+  background: var(--color-chip-dark);
+  color: var(--color-on-primary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.calc__panel {
+  display: flex;
+  flex: 1 1 340px;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.calc__card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface);
+}
+
+.calc__area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.calc__area-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.calc__label {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.calc__status {
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+}
+
+.calc__value {
+  margin: 0;
+  font-size: var(--fs-metric-2xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.calc__value--empty {
+  color: var(--color-ink-disabled);
+}
+
+.calc__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.calc__tile {
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.calc__tile dt {
+  color: var(--color-muted);
+  font-size: var(--fs-xs);
+}
+
+.calc__tile dd {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.calc__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calc__field-label {
+  font-size: var(--fs-control);
+  font-weight: 600;
+}
+
+.calc__input {
+  height: var(--control-h);
+  padding: 0 14px;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--fs-base);
+}
+
+.calc__input:focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.calc__actions {
+  display: grid;
+  grid-template-areas:
+    'save save'
+    'undo clear';
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.calc__button {
+  min-height: var(--touch-min);
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--fs-control);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.calc__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.calc__button--primary {
+  height: var(--control-h-md);
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.calc__button--primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.calc__button--primary:disabled {
+  background: var(--color-divider);
+  color: var(--color-muted);
+  opacity: 1;
+}
+
+.calc__save {
+  grid-area: save;
+}
+
+.calc__undo {
+  grid-area: undo;
+}
+
+.calc__clear {
+  grid-area: clear;
+}
+
+.calc__muted,
+.calc__note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.calc__save-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-ink);
+  font-size: var(--fs-control);
+}
+
+.calc__save-error small {
+  font-size: var(--fs-2xs);
+}
+
+.calc__saved {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-hover);
+  font-size: var(--fs-control);
+  font-weight: 600;
+}
+
+@media (max-width: 767.98px) {
+  .calc {
+    gap: 0;
+    padding: 0;
+  }
+
+  .calc__map-column {
+    position: relative;
+    flex-basis: 100%;
+    gap: 0;
+  }
+
+  .calc__toolbar {
+    position: absolute;
+    z-index: 600;
+    top: 14px;
+    right: 14px;
+    left: 14px;
+    gap: var(--space-2);
+  }
+
+  .calc__search {
+    flex-basis: 100%;
+  }
+
+  .calc__search :deep(.place-search__input) {
+    border: none;
+    box-shadow: var(--shadow-on-imagery);
+  }
+
+  .calc__layers {
+    box-shadow: var(--shadow-on-imagery);
+  }
+
+  .calc__layers :deep(.layer-switch__option) {
+    height: var(--control-h-segment-sm);
+    padding: 0 var(--space-3);
+    font-size: var(--fs-sm);
+  }
+
+  .calc__map {
+    --map-controls-top: 72px;
+
+    height: min(60dvh, 520px);
+    border: none;
+    border-radius: 0;
+  }
+
+  .calc__hint {
+    top: auto;
+    right: 72px;
+    bottom: 34px;
+    max-width: none;
+  }
+
+  .calc__hint-web {
+    display: none;
+  }
+
+  .calc__hint-mobile {
+    display: inline;
+  }
+
+  .calc__panel {
+    position: relative;
+    z-index: 700;
+    flex-basis: 100%;
+    gap: 14px;
+    margin-top: -18px;
+    padding: 22px 20px calc(var(--space-5) + env(safe-area-inset-bottom));
+    border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sheet);
+  }
+
+  .calc__card {
+    gap: var(--space-4);
+    padding: 0;
+    border: none;
+    border-radius: 0;
+  }
+
+  .calc__value {
+    font-size: var(--fs-metric-xl);
+  }
+
+  .calc__actions {
+    grid-template-areas: 'undo save';
+    grid-template-columns: 1fr 1.15fr;
+  }
+
+  .calc__undo,
+  .calc__save {
+    height: var(--control-h-md);
+    border-radius: var(--radius-lg);
+    font-size: var(--fs-base);
+    font-weight: 700;
+  }
+
+  .calc__clear,
+  .calc__points {
+    display: none;
+  }
+}
+</style>

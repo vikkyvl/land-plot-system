@@ -95,4 +95,13 @@
   --fs-tile: 19px;
   --fs-2xs: 11px;
   --fs-3xs: 10px;
+  --fs-control: 14px;
+  --fs-panel-title: 18px;
+  --fs-metric-2xl: 48px;
+
+  --control-h-search: 46px;
+  --control-h-segment: 38px;
+  --control-h-segment-sm: 36px;
+
+  --shadow-on-imagery: 0 2px 8px rgba(0, 0, 0, 0.25);
 }

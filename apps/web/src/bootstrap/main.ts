@@ -3,13 +3,28 @@ import { createApp } from 'vue'
 
 import { createUserManager, OidcSession } from '../auth/oidcSession'
 import { HttpClient } from '../client/http'
+import { NominatimClient } from '../client/nominatimClient'
+import { PlotsClient } from '../client/plotsClient'
 import { ProfileClient } from '../client/profileClient'
 import { readConfig } from '../config/env'
+import { IndexedDbDraftStore } from '../repository/indexedDbDraftStore'
+import { LocalPreferencesStore } from '../repository/localPreferencesStore'
+import { CalculatorService } from '../service/calculatorService'
+import { MapPreferencesService } from '../service/mapPreferencesService'
+import { PlaceSearchService } from '../service/placeSearchService'
 import { SessionService } from '../service/sessionService'
 import App from '../ui/App.vue'
-import { sessionServiceKey } from '../ui/composables/services'
+import {
+  calculatorServiceKey,
+  mapLayersKey,
+  mapPreferencesServiceKey,
+  placeSearchServiceKey,
+  sessionServiceKey,
+} from '../ui/composables/services'
 import { createAppRouter } from '../ui/router'
 import '../ui/styles/index.css'
+
+import { mapLayersFrom } from './mapLayers'
 
 const config = readConfig(import.meta.env)
 const auth = new OidcSession(
@@ -21,10 +36,18 @@ const auth = new OidcSession(
   }),
 )
 const http = new HttpClient({ baseUrl: config.gatewayUrl, session: auth })
+const plots = new PlotsClient(http)
 const sessionService = new SessionService(auth, new ProfileClient(http))
+const calculatorService = new CalculatorService(plots, new IndexedDbDraftStore(), auth)
+const placeSearchService = new PlaceSearchService(new NominatimClient({ baseUrl: config.geocodingUrl }))
+const mapPreferencesService = new MapPreferencesService(new LocalPreferencesStore(window.localStorage))
 
 createApp(App)
   .provide(sessionServiceKey, sessionService)
+  .provide(calculatorServiceKey, calculatorService)
+  .provide(placeSearchServiceKey, placeSearchService)
+  .provide(mapPreferencesServiceKey, mapPreferencesService)
+  .provide(mapLayersKey, mapLayersFrom(config))
   .use(createPinia())
   .use(createAppRouter(sessionService))
   .mount('#app')

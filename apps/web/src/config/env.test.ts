@@ -8,6 +8,10 @@ describe('readConfig', () => {
       gatewayUrl: 'http://localhost:8080',
       oidcAuthority: 'http://localhost:8180/realms/land-plot',
       oidcClientId: 'land-plot-web',
+      geocodingUrl: 'https://nominatim.openstreetmap.org',
+      mapTilesUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      satelliteTilesUrl:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     })
   })
 
@@ -18,7 +22,7 @@ describe('readConfig', () => {
         VITE_OIDC_AUTHORITY: 'https://id.example.test/realms/land-plot',
         VITE_OIDC_CLIENT_ID: 'web',
       }),
-    ).toEqual({
+    ).toMatchObject({
       gatewayUrl: 'https://api.example.test',
       oidcAuthority: 'https://id.example.test/realms/land-plot',
       oidcClientId: 'web',
