@@ -1,4 +1,5 @@
 import type { Profile } from '../domain/profile'
+import type { Locale } from '../domain/locale'
 import type { SignInMethod } from '../domain/session'
 import type { AuthSession } from '../port/authSession'
 import type { ProfileGateway } from '../port/profileGateway'
@@ -18,8 +19,8 @@ export class SessionService {
     return this.auth.isSignedIn()
   }
 
-  signIn(method: SignInMethod, returnTo?: string | null): Promise<void> {
-    return this.auth.signIn(method, safeReturnPath(returnTo))
+  signIn(method: SignInMethod, returnTo: string | null | undefined, locale: Locale): Promise<void> {
+    return this.auth.signIn(method, safeReturnPath(returnTo), locale)
   }
 
   async completeSignIn(): Promise<string> {

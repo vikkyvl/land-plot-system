@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import LocaleSwitch from '../components/LocaleSwitch.vue'
 import PlotStatusBadge from '../components/PlotStatusBadge.vue'
 import PlotThumbnail from '../components/PlotThumbnail.vue'
 import { formatDate, formatHectares, formatPlotCount, initials } from '../composables/format'
@@ -77,19 +78,19 @@ onMounted(load)
           id="plots-title"
           class="plots__title"
         >
-          Мої ділянки
+          {{ $t('plots.title') }}
         </h1>
         <RouterLink
           class="plots__new plots__new--web"
           to="/"
         >
-          Нова ділянка
+          {{ $t('plots.new') }}
         </RouterLink>
         <div class="plots__profile">
           <button
             type="button"
             class="plots__avatar"
-            :aria-label="`${initials(userName ?? '')} — профіль і вихід`"
+            :aria-label="$t('plots.profileMenu', { initials: initials(userName ?? '') })"
             :aria-expanded="menuOpen"
             @click="menuOpen = !menuOpen"
           >
@@ -100,12 +101,13 @@ onMounted(load)
             class="plots__menu"
           >
             <span>{{ userName }}</span>
+            <LocaleSwitch />
             <button
               type="button"
               class="plots__menu-action"
               @click="session.signOut()"
             >
-              Вийти
+              {{ $t('app.signOut') }}
             </button>
           </div>
         </div>
@@ -114,20 +116,20 @@ onMounted(load)
       <label
         class="visually-hidden"
         for="plot-search"
-      >Пошук ділянки</label>
+      >{{ $t('plots.searchLabel') }}</label>
       <input
         id="plot-search"
         v-model="query"
         class="plots__search"
         type="search"
-        placeholder="Пошук за назвою"
+        :placeholder="$t('plots.searchPlaceholder')"
       >
 
       <div
         v-if="loading && !loaded"
         class="plots__items"
         aria-busy="true"
-        aria-label="Завантаження ділянок"
+        :aria-label="$t('plots.loading')"
       >
         <div
           v-for="index in 3"
@@ -141,25 +143,25 @@ onMounted(load)
         role="alert"
       >
         <p>{{ failure.text }}</p>
-        <small v-if="failure.requestId">Код запиту: {{ failure.requestId }}</small>
+        <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
         <button
           type="button"
           class="plots__retry"
           @click="load"
         >
-          Спробувати ще раз
+          {{ $t('app.retry') }}
         </button>
       </div>
       <div
         v-else-if="loaded && plots.length === 0"
         class="plots__empty"
       >
-        <p>Ще немає жодної ділянки.</p>
+        <p>{{ $t('plots.empty') }}</p>
         <RouterLink
           class="plots__new"
           to="/"
         >
-          Нова ділянка
+          {{ $t('plots.new') }}
         </RouterLink>
       </div>
       <template v-else>
@@ -178,8 +180,8 @@ onMounted(load)
               <span class="plots__card-text">
                 <span class="plots__card-name">{{ plot.name }}</span>
                 <span class="plots__card-meta">
-                  <span class="plots__card-updated">Оновлено </span>{{ formatDate(plot.updatedAt) }} · версія
-                  {{ plot.version }}
+                  <span class="plots__card-updated">{{ $t('plots.updated') }} </span>{{ formatDate(plot.updatedAt) }} ·
+                  {{ $t('plots.versionShort', { n: plot.version }) }}
                 </span>
                 <PlotStatusBadge :status="plot.status" />
               </span>
@@ -191,10 +193,10 @@ onMounted(load)
           v-if="visible.length === 0"
           class="plots__nothing"
         >
-          Нічого не знайдено за запитом «{{ query }}».
+          {{ $t('plots.nothingFound', { query }) }}
         </p>
         <p class="plots__summary">
-          <span>Усього {{ formatPlotCount(plots.length) }}</span>
+          <span>{{ $t('plots.total', { count: formatPlotCount(plots.length) }) }}</span>
           <b>{{ formatHectares(totalHectares) }}</b>
         </p>
       </template>
@@ -216,7 +218,7 @@ onMounted(load)
             stroke-linecap="round"
           />
         </svg>
-        Нова ділянка
+        {{ $t('plots.new') }}
       </RouterLink>
     </section>
 

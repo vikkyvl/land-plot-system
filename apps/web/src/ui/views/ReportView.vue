@@ -9,8 +9,9 @@ import { isOutdated, isPlotDeleted, reportNumber, type ReportDetails } from '../
 import PlotViewMap from '../components/PlotViewMap.vue'
 import { copyText, downloadJson, safeFileName } from '../composables/fileExport'
 import { formatAres, formatDate, formatHectareNumber, formatMeters, formatSquareMeters } from '../composables/format'
-import { useMapLayers, useMapPreferencesService, useReportService } from '../composables/services'
+import { useMapLayers, useReportService, useSettingsService } from '../composables/services'
 import { useFailure, type Failure } from '../composables/useFailure'
+import { t } from '../i18n'
 import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toast'
 
@@ -18,7 +19,7 @@ const props = defineProps<{ id: string }>()
 
 const service = useReportService()
 const layers = useMapLayers()
-const preferences = useMapPreferencesService()
+const preferences = useSettingsService()
 const toasts = useToastStore()
 const router = useRouter()
 const handle = useFailure()
@@ -38,8 +39,8 @@ const canReport = computed(() => profile.value === null || hasScope(profile.valu
 const owner = computed(() => profile.value?.email ?? profile.value?.name ?? null)
 const backLink = computed(() =>
   report.value !== null && !deleted.value
-    ? { to: `/plots/${report.value.plotId}`, label: 'До ділянки' }
-    : { to: '/reports', label: 'До звітів' },
+    ? { to: `/plots/${report.value.plotId}`, label: t('report.toPlot') }
+    : { to: '/reports', label: t('app.toReports') },
 )
 
 async function load(id: string): Promise<void> {
@@ -64,7 +65,7 @@ async function refresh(): Promise<void> {
   refreshing.value = true
   try {
     const created = await service.create(report.value.plotId)
-    toasts.show('Сформовано новий звіт для поточної версії')
+    toasts.show(t('report.refreshed'))
     await router.push(`/reports/${created.id}`)
   } catch (error) {
     await handle(error, { toast: true })
@@ -82,7 +83,7 @@ function download(): void {
 
 async function share(): Promise<void> {
   toasts.show(
-    (await copyText(window.location.href)) ? 'Посилання на звіт скопійовано' : 'Не вдалося скопіювати посилання',
+    (await copyText(window.location.href)) ? t('report.copied') : t('report.copyFailed'),
   )
 }
 </script>
@@ -95,7 +96,7 @@ async function share(): Promise<void> {
     <div
       v-if="loading"
       class="report__skeleton"
-      aria-label="Завантаження звіту"
+      :aria-label="$t('report.loading')"
     >
       <div class="report__skeleton-line" />
       <div class="report__skeleton-block" />
@@ -107,9 +108,9 @@ async function share(): Promise<void> {
       role="alert"
     >
       <p>{{ failure.text }}</p>
-      <small v-if="failure.requestId">Код запиту: {{ failure.requestId }}</small>
+      <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
       <RouterLink to="/reports">
-        До звітів
+        {{ $t('app.toReports') }}
       </RouterLink>
     </div>
 
@@ -136,7 +137,7 @@ async function share(): Promise<void> {
             />
           </svg>
         </RouterLink>
-        <span class="report__bar-title">Звіт № {{ reportNumber(report) }}</span>
+        <span class="report__bar-title">{{ $t('report.number', { number: reportNumber(report) }) }}</span>
       </div>
 
       <header class="report__head">
@@ -148,7 +149,7 @@ async function share(): Promise<void> {
             ← {{ backLink.label }}
           </RouterLink>
           <h1 class="report__title">
-            Звіт · {{ report.plotName }}
+            {{ $t('report.title', { name: report.plotName }) }}
           </h1>
         </div>
         <div class="report__actions">
@@ -156,18 +157,18 @@ async function share(): Promise<void> {
             type="button"
             class="report__button report__download"
             :disabled="points === null"
-            :title="points === null ? 'Контур ділянки недоступний' : undefined"
+            :title="points === null ? $t('report.noBoundary') : undefined"
             @click="download"
           >
-            Завантажити GeoJSON
+            {{ $t('report.geojson') }}
           </button>
           <button
             type="button"
             class="report__button report__button--primary report__share"
             @click="share"
           >
-            <span class="report__share-web">Поділитися посиланням</span>
-            <span class="report__share-mobile">Поділитися звітом</span>
+            <span class="report__share-web">{{ $t('report.shareLink') }}</span>
+            <span class="report__share-mobile">{{ $t('report.shareReport') }}</span>
           </button>
         </div>
       </header>
@@ -206,8 +207,10 @@ async function share(): Promise<void> {
           />
         </svg>
         <div class="report__banner-text">
-          <b>Ділянку змінено після формування звіту.</b>
-          <span>Звіт побудовано для версії {{ report.plotVersion }}. Поточна версія {{ details.plot.version }}.</span>
+          <b>{{ $t('report.outdated') }}</b>
+          <span>{{
+            $t('report.outdatedDetails', { reportVersion: report.plotVersion, plotVersion: details.plot.version })
+          }}</span>
         </div>
         <button
           v-if="canReport"
@@ -216,7 +219,7 @@ async function share(): Promise<void> {
           :disabled="refreshing"
           @click="refresh"
         >
-          {{ refreshing ? 'Формуємо…' : 'Оновити звіт' }}
+          {{ refreshing ? $t('report.refreshing') : $t('report.refresh') }}
         </button>
       </div>
 
@@ -225,21 +228,23 @@ async function share(): Promise<void> {
         class="report__deleted"
         role="status"
       >
-        <span class="report__badge">Ділянку видалено</span>
-        <span>Звіт збережено з даними на момент формування. Контур і координати більше недоступні.</span>
+        <span class="report__badge">{{ $t('reports.plotDeleted') }}</span>
+        <span>{{ $t('report.deletedDetails') }}</span>
       </div>
 
       <article class="report__card">
         <div class="report__meta">
-          <span class="report__meta-number">Звіт № {{ reportNumber(report) }} · сформовано {{ formatDate(report.createdAt) }}</span>
+          <span class="report__meta-number">{{
+            $t('report.meta', { number: reportNumber(report), date: formatDate(report.createdAt) })
+          }}</span>
           <span
             v-if="owner"
             class="report__meta-owner"
-          >Власник · {{ owner }}</span>
+          >{{ $t('report.owner', { owner }) }}</span>
         </div>
         <div class="report__card-heading">
           <span class="report__card-name">{{ report.plotName }}</span>
-          <span class="report__card-date">Сформовано {{ formatDate(report.createdAt) }}</span>
+          <span class="report__card-date">{{ $t('report.created', { date: formatDate(report.createdAt) }) }}</span>
         </div>
 
         <PlotViewMap
@@ -251,19 +256,19 @@ async function share(): Promise<void> {
 
         <dl class="report__tiles">
           <div class="report__tile">
-            <dt>Гектари</dt>
+            <dt>{{ $t('report.hectares') }}</dt>
             <dd>{{ formatHectareNumber(report.measurement.area.hectares) }}</dd>
           </div>
           <div class="report__tile">
-            <dt>Ари</dt>
+            <dt>{{ $t('report.ares') }}</dt>
             <dd>{{ formatAres(report.measurement.area.ares) }}</dd>
           </div>
           <div class="report__tile">
-            <dt>м²</dt>
+            <dt>{{ $t('units.squareMeters') }}</dt>
             <dd>{{ formatSquareMeters(report.measurement.area.squareMeters) }}</dd>
           </div>
           <div class="report__tile">
-            <dt>Периметр</dt>
+            <dt>{{ $t('report.perimeter') }}</dt>
             <dd>{{ formatMeters(report.measurement.perimeterMeters) }}</dd>
           </div>
         </dl>
@@ -277,7 +282,7 @@ async function share(): Promise<void> {
             id="coordinates-title"
             class="report__coordinates-title"
           >
-            Координати точок межі (WGS 84)
+            {{ $t('report.coordinates') }}
           </h2>
           <div class="report__table-wrap">
             <table class="report__table">
@@ -287,10 +292,10 @@ async function share(): Promise<void> {
                     №
                   </th>
                   <th scope="col">
-                    Широта
+                    {{ $t('report.latitude') }}
                   </th>
                   <th scope="col">
-                    Довгота
+                    {{ $t('report.longitude') }}
                   </th>
                 </tr>
               </thead>
@@ -309,9 +314,8 @@ async function share(): Promise<void> {
         </section>
 
         <p class="report__note">
-          <span class="report__note-web">Площу розраховано за координатами, переведеними в метри, за формулою Гаусса. Результат
-            наближений і не є кадастровим вимірюванням.</span>
-          <span class="report__note-mobile">Розрахунок наближений і не є кадастровим вимірюванням.</span>
+          <span class="report__note-web">{{ $t('report.noteWeb') }}</span>
+          <span class="report__note-mobile">{{ $t('report.noteMobile') }}</span>
         </p>
       </article>
     </template>

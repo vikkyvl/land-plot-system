@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import type { SessionService } from '../../service/sessionService'
 import { sessionServiceKey } from '../composables/services'
+import { applyLocale } from '../i18n'
 
 import LoginView from './LoginView.vue'
 
@@ -33,7 +34,7 @@ describe('LoginView', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === label)?.trigger('click')
 
-    expect(signIn).toHaveBeenCalledWith(method, '/plots/1')
+    expect(signIn).toHaveBeenCalledWith(method, '/plots/1', 'uk')
     expect(wrapper.findAll('button').every((button) => button.attributes('disabled') !== undefined)).toBe(true)
   })
 
@@ -53,5 +54,15 @@ describe('LoginView', () => {
     const { wrapper } = await mountLogin(async () => undefined)
 
     expect(wrapper.findAll('input')).toHaveLength(0)
+  })
+
+  it('asks Keycloak for the English pages when the app is in English', async () => {
+    applyLocale('en')
+    const { wrapper, signIn } = await mountLogin(async () => undefined)
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Continue with Google')?.trigger('click')
+
+    expect(wrapper.get('h1').text()).toBe('Sign in to save your plot')
+    expect(signIn).toHaveBeenCalledWith('google', '/plots/1', 'en')
   })
 })

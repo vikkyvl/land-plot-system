@@ -8,7 +8,7 @@ const isPlots = () => route.path.startsWith('/plots') && !route.path.endsWith('/
 <template>
   <nav
     class="bottom-nav"
-    aria-label="Основна навігація"
+    :aria-label="$t('app.mainNavigation')"
   >
     <RouterLink
       class="bottom-nav__item"
@@ -29,7 +29,7 @@ const isPlots = () => route.path.startsWith('/plots') && !route.path.endsWith('/
           stroke-linejoin="round"
         />
       </svg>
-      Розрахунок
+      {{ $t('app.calculator') }}
     </RouterLink>
     <RouterLink
       class="bottom-nav__item"
@@ -58,7 +58,7 @@ const isPlots = () => route.path.startsWith('/plots') && !route.path.endsWith('/
           stroke-width="2"
         />
       </svg>
-      Ділянки
+      {{ $t('app.plots') }}
     </RouterLink>
     <RouterLink
       class="bottom-nav__item"
@@ -84,7 +84,7 @@ const isPlots = () => route.path.startsWith('/plots') && !route.path.endsWith('/
           stroke-width="2"
         />
       </svg>
-      Звіти
+      {{ $t('app.reports') }}
     </RouterLink>
   </nav>
 </template>

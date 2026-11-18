@@ -24,7 +24,7 @@ const online = useOnline()
         stroke-linecap="round"
       />
     </svg>
-    <span><b>Немає з'єднання.</b> Розрахунок, ділянки і звіти недоступні, доки мережа не повернеться.</span>
+    <span><b>{{ $t('app.offline') }}</b> {{ $t('app.offlineDetails') }}</span>
   </div>
 </template>
 

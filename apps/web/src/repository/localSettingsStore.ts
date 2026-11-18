@@ -1,10 +1,12 @@
+import { isLocale, type Locale } from '../domain/locale'
 import type { MapLayerId } from '../domain/mapLayer'
-import type { PreferencesStore } from '../port/preferencesStore'
+import type { SettingsStore } from '../port/settingsStore'
 
 const mapLayerKey = 'arqetra.mapLayer'
+const localeKey = 'arqetra.locale'
 const mapLayers: readonly MapLayerId[] = ['map', 'satellite']
 
-export class LocalPreferencesStore implements PreferencesStore {
+export class LocalSettingsStore implements SettingsStore {
   private readonly storage: Storage
 
   constructor(storage: Storage) {
@@ -18,11 +20,17 @@ export class LocalPreferencesStore implements PreferencesStore {
   }
 
   saveMapLayer(layer: MapLayerId): void {
-    try {
-      this.storage.setItem(mapLayerKey, layer)
-    } catch {
-      return
-    }
+    this.write(mapLayerKey, layer)
+  }
+
+  locale(): Locale | null {
+    const value = this.read(localeKey)
+
+    return isLocale(value) ? value : null
+  }
+
+  saveLocale(locale: Locale): void {
+    this.write(localeKey, locale)
   }
 
   private read(key: string): string | null {
@@ -30,6 +38,14 @@ export class LocalPreferencesStore implements PreferencesStore {
       return this.storage.getItem(key)
     } catch {
       return null
+    }
+  }
+
+  private write(key: string, value: string): void {
+    try {
+      this.storage.setItem(key, value)
+    } catch {
+      return
     }
   }
 }

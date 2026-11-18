@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { isDomainError } from '../../domain/error'
 import type { Plot, PlotChanges } from '../../domain/plot'
 import { useConfirmationService } from '../composables/services'
+import { t } from '../i18n'
 
 import { useToastStore } from './toast'
 
@@ -99,15 +100,12 @@ export const useConfirmationsStore = defineStore('confirmations', () => {
           break
         case 'confirmed':
           finish(id, poller, { phase: 'confirmed', plot: result.plot })
-          toasts.show(`Ділянку «${result.plot.name}» збережено`)
+          toasts.show(t('confirmations.saved', { name: result.plot.name }))
           contexts.delete(id)
           break
         case 'reverted':
           finish(id, poller, { phase: 'reverted', plot: result.plot })
-          toasts.show(
-            `Зміну відкочено: сервіс звітів не підтвердив дані. Відновлено версію ${result.plot.version} «${result.plot.name}».`,
-            'error',
-          )
+          toasts.show(t('confirmations.reverted', { version: result.plot.version, name: result.plot.name }), 'error')
           contexts.delete(id)
           break
         case 'cancelled':
@@ -194,9 +192,10 @@ export const useConfirmationsStore = defineStore('confirmations', () => {
 })
 
 function cancelledText(context: ConfirmationContext | undefined): string {
-  const name = context?.name ? `«${context.name}» ` : ''
+  const update = context?.intent === 'update'
+  if (!context?.name) {
+    return t(update ? 'confirmations.updateCancelledUnnamed' : 'confirmations.createCancelledUnnamed')
+  }
 
-  return context?.intent === 'update'
-    ? `Зміну ${name}скасовано: сервіс звітів не підтвердив дані.`
-    : `Збереження ${name}скасовано: сервіс звітів не зміг сформувати проєкцію ділянки, тому ділянку не збережено.`
+  return t(update ? 'confirmations.updateCancelled' : 'confirmations.createCancelled', { name: context.name })
 }

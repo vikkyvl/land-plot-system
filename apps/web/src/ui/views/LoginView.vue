@@ -32,16 +32,16 @@ async function signIn(method: SignInMethod): Promise<void> {
     >
       <div class="login__intro">
         <p class="login__eyebrow">
-          Обліковий запис
+          {{ $t('login.eyebrow') }}
         </p>
         <h1
           id="login-title"
           class="login__title"
         >
-          Увійдіть, щоб зберегти ділянку
+          {{ $t('login.title') }}
         </h1>
         <p class="login__text">
-          Збережені ділянки та звіти будуть доступні у вашому кабінеті.
+          {{ $t('login.text') }}
         </p>
       </div>
 
@@ -52,7 +52,7 @@ async function signIn(method: SignInMethod): Promise<void> {
           :disabled="pending !== null"
           @click="signIn('password')"
         >
-          Увійти
+          {{ $t('login.signIn') }}
         </button>
         <button
           type="button"
@@ -60,14 +60,14 @@ async function signIn(method: SignInMethod): Promise<void> {
           :disabled="pending !== null"
           @click="signIn('registration')"
         >
-          Зареєструватися
+          {{ $t('login.register') }}
         </button>
 
         <div
           class="login__divider"
           aria-hidden="true"
         >
-          або
+          {{ $t('login.or') }}
         </div>
 
         <button
@@ -96,7 +96,7 @@ async function signIn(method: SignInMethod): Promise<void> {
               stroke-width="1.8"
             />
           </svg>
-          Продовжити з Google
+          {{ $t('login.google') }}
         </button>
       </div>
 
@@ -105,11 +105,11 @@ async function signIn(method: SignInMethod): Promise<void> {
         class="login__error"
         role="alert"
       >
-        Сервіс входу зараз недоступний. Спробуйте ще раз за хвилину.
+        {{ $t('login.unavailable') }}
       </p>
 
       <p class="login__note">
-        Розрахувати площу можна і без входу.
+        {{ $t('login.guestNote') }}
       </p>
     </section>
   </main>

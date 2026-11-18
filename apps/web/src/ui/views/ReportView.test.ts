@@ -7,12 +7,12 @@ import type { MapLayers } from '../../domain/mapLayer'
 import type { Plot } from '../../domain/plot'
 import type { Report } from '../../domain/report'
 import type { ReportDetails } from '../../domain/reportDetails'
-import type { MapPreferencesService } from '../../service/mapPreferencesService'
+import type { SettingsService } from '../../service/settingsService'
 import type { ReportService } from '../../service/reportService'
 import type { SessionService } from '../../service/sessionService'
 import {
   mapLayersKey,
-  mapPreferencesServiceKey,
+  settingsServiceKey,
   reportServiceKey,
   sessionServiceKey,
 } from '../composables/services'
@@ -68,7 +68,7 @@ async function mountReport(details: ReportDetails) {
           [reportServiceKey as symbol]: service as unknown as ReportService,
           [sessionServiceKey as symbol]: {} as SessionService,
           [mapLayersKey as symbol]: layers,
-          [mapPreferencesServiceKey as symbol]: { layer: () => 'map' } as unknown as MapPreferencesService,
+          [settingsServiceKey as symbol]: { layer: () => 'map' } as unknown as SettingsService,
         },
         stubs: { PlotViewMap: true },
       },

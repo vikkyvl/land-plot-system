@@ -91,13 +91,13 @@ describe('OidcSession', () => {
   })
 
   it.each([
-    ['password', { prompt: undefined, extraQueryParams: undefined }],
-    ['registration', { prompt: 'create', extraQueryParams: undefined }],
-    ['google', { prompt: undefined, extraQueryParams: { kc_idp_hint: 'google' } }],
-  ] as const)('redirects to Keycloak for %s sign-in', async (method, expected) => {
+    ['password', { prompt: undefined, extraQueryParams: { ui_locales: 'en' } }],
+    ['registration', { prompt: 'create', extraQueryParams: { ui_locales: 'en' } }],
+    ['google', { prompt: undefined, extraQueryParams: { ui_locales: 'en', kc_idp_hint: 'google' } }],
+  ] as const)('redirects to Keycloak for %s sign-in in the chosen language', async (method, expected) => {
     const manager = fakeManager(null)
 
-    await new OidcSession(manager).signIn(method, '/plots/1')
+    await new OidcSession(manager).signIn(method, '/plots/1', 'en')
 
     expect(manager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: '/plots/1' }, ...expected })
   })

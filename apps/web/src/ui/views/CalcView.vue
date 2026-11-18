@@ -23,9 +23,10 @@ import {
   formatPointCount,
   formatSquareMeters,
 } from '../composables/format'
-import { useMapLayers, useMapPreferencesService } from '../composables/services'
+import { useMapLayers, useSettingsService } from '../composables/services'
 import { useFollowedPlots } from '../composables/useFollowedPlots'
 import { useSignInRedirect } from '../composables/useSignInRedirect'
+import { t } from '../i18n'
 import { useCalculatorStore } from '../stores/calculator'
 import { useConfirmationsStore } from '../stores/confirmations'
 import { useSessionStore } from '../stores/session'
@@ -41,7 +42,7 @@ const followed = useFollowedPlots()
 const session = useSessionStore()
 const signIn = useSignInRedirect()
 const layers = useMapLayers()
-const preferences = useMapPreferencesService()
+const preferences = useSettingsService()
 
 const {
   points,
@@ -74,14 +75,16 @@ const showProblem = computed(() => mainProblem.value !== null && !errorDismissed
 const canWrite = computed(() => profile.value === null || hasScope(profile.value, Scope.PlotsWrite))
 const lastArea = computed(() => (preview.value?.valid ? preview.value.measurement : null))
 const chip = computed(() =>
-  updating.value && lastArea.value !== null ? `Оновлюється… · ${formatHectares(lastArea.value.area.hectares)}` : null,
+  updating.value && lastArea.value !== null
+    ? t('calc.updatingChip', { value: formatHectares(lastArea.value.area.hectares) })
+    : null,
 )
 const status = computed(() => {
   if (updating.value) {
-    return 'Оновлюється…'
+    return t('calc.updating')
   }
 
-  return measurement.value !== null ? 'Розрахунок сервера' : formatPointCount(points.value.length)
+  return measurement.value !== null ? t('calc.serverResult') : formatPointCount(points.value.length)
 })
 
 watch(layerId, (value) => preferences.chooseLayer(value))
@@ -100,7 +103,7 @@ async function save(): Promise<void> {
       name: name.value.trim(),
       expected: { name: name.value, points: points.value },
     })
-    toasts.show('Межу надіслано. Сервер підтверджує зміни.')
+    toasts.show(t('calc.boundarySent'))
     await router.push(`/plots/${editingId.value}`)
   }
 }
@@ -134,12 +137,12 @@ onBeforeUnmount(() => calculator.stop())
   <main class="calc">
     <section
       class="calc__map-column"
-      aria-label="Карта"
+      :aria-label="$t('calc.mapRegion')"
     >
       <div class="calc__toolbar">
         <PlaceSearch
           class="calc__search"
-          placeholder="Знайти місце на карті"
+          :placeholder="$t('calc.searchPlaceholder')"
           @select="place = $event"
         />
         <LayerSwitch
@@ -170,22 +173,22 @@ onBeforeUnmount(() => calculator.stop())
           v-else
           class="calc__hint"
         >
-          Клацніть на карті, щоб додати точку. Перетягніть точку, щоб змінити межу.
+          {{ $t('calc.hint') }}
         </p>
       </PlotMap>
     </section>
 
     <aside
       class="calc__panel"
-      aria-label="Розрахунок"
+      :aria-label="$t('calc.panelRegion')"
     >
       <div
         v-if="editingId"
         class="calc__editing"
       >
-        <span>Зміна межі ділянки<template v-if="name"> «{{ name }}»</template></span>
+        <span>{{ name ? $t('calc.editingNamed', { name }) : $t('calc.editing') }}</span>
         <RouterLink :to="`/plots/${editingId}`">
-          Скасувати зміни
+          {{ $t('calc.cancelEditing') }}
         </RouterLink>
       </div>
       <div
@@ -195,7 +198,7 @@ onBeforeUnmount(() => calculator.stop())
       >
         {{ errorText(loadError) }}
         <RouterLink to="/plots">
-          До списку ділянок
+          {{ $t('app.toPlots') }}
         </RouterLink>
       </div>
       <OutagePanel
@@ -214,7 +217,7 @@ onBeforeUnmount(() => calculator.stop())
         <div class="calc__area">
           <div class="calc__area-head">
             <h1 class="calc__label">
-              Площа ділянки
+              {{ $t('calc.area') }}
             </h1>
             <span
               class="calc__status"
@@ -225,7 +228,7 @@ onBeforeUnmount(() => calculator.stop())
             class="calc__value"
             :class="{ 'calc__value--empty': measurement === null }"
           >
-            {{ measurement ? formatHectares(measurement.area.hectares) : '— га' }}
+            {{ measurement ? formatHectares(measurement.area.hectares) : $t('units.noHectares') }}
           </p>
         </div>
 
@@ -234,15 +237,15 @@ onBeforeUnmount(() => calculator.stop())
           class="calc__tiles"
         >
           <div class="calc__tile">
-            <dt>м²</dt>
+            <dt>{{ $t('units.squareMeters') }}</dt>
             <dd>{{ formatSquareMeters(measurement.area.squareMeters) }}</dd>
           </div>
           <div class="calc__tile">
-            <dt>ари</dt>
+            <dt>{{ $t('units.ares') }}</dt>
             <dd>{{ formatAres(measurement.area.ares) }}</dd>
           </div>
           <div class="calc__tile">
-            <dt>периметр</dt>
+            <dt>{{ $t('units.perimeter') }}</dt>
             <dd>{{ formatMeters(measurement.perimeterMeters) }}</dd>
           </div>
         </dl>
@@ -250,8 +253,8 @@ onBeforeUnmount(() => calculator.stop())
           v-else-if="!enoughPoints"
           class="calc__muted"
         >
-          <span class="calc__empty-web">Додайте щонайменше 3 точки, щоб побачити площу.</span>
-          <span class="calc__empty-mobile">Торкніться карти, щоб додати точку межі. Потрібно щонайменше 3.</span>
+          <span class="calc__empty-web">{{ $t('calc.addPointsWeb') }}</span>
+          <span class="calc__empty-mobile">{{ $t('calc.addPointsMobile') }}</span>
         </p>
 
         <div
@@ -261,13 +264,13 @@ onBeforeUnmount(() => calculator.stop())
           <label
             class="calc__field-label"
             :for="nameId"
-          >Назва ділянки</label>
+          >{{ $t('calc.name') }}</label>
           <input
             :id="nameId"
             class="calc__input"
             type="text"
             maxlength="200"
-            placeholder="Наприклад, Поле біля ставка"
+            :placeholder="$t('calc.namePlaceholder')"
             :value="name"
             @input="calculator.rename(($event.target as HTMLInputElement).value)"
           >
@@ -282,7 +285,7 @@ onBeforeUnmount(() => calculator.stop())
             :aria-busy="saving"
             @click="save"
           >
-            {{ saving ? 'Зберігаємо…' : 'Зберегти ділянку' }}
+            {{ saving ? $t('calc.saving') : $t('calc.save') }}
           </button>
           <button
             type="button"
@@ -290,7 +293,7 @@ onBeforeUnmount(() => calculator.stop())
             :disabled="points.length === 0"
             @click="calculator.undo"
           >
-            Скасувати точку
+            {{ $t('calc.undo') }}
           </button>
           <button
             type="button"
@@ -298,7 +301,7 @@ onBeforeUnmount(() => calculator.stop())
             :disabled="points.length === 0"
             @click="calculator.clear"
           >
-            Очистити
+            {{ $t('calc.clear') }}
           </button>
         </div>
 
@@ -306,13 +309,13 @@ onBeforeUnmount(() => calculator.stop())
           v-if="problems.length"
           class="calc__muted"
         >
-          Збереження стане доступним після виправлення контуру.
+          {{ $t('calc.fixFirst') }}
         </p>
         <p
           v-if="!canWrite"
           class="calc__muted"
         >
-          Недостатньо прав для збереження ділянок.
+          {{ $t('calc.noWriteScope') }}
         </p>
         <div
           v-if="saveError"
@@ -320,7 +323,7 @@ onBeforeUnmount(() => calculator.stop())
           role="alert"
         >
           {{ errorText(saveError) }}
-          <small v-if="saveError.requestId">Код запиту: {{ saveError.requestId }}</small>
+          <small v-if="saveError.requestId">{{ $t('app.requestId', { id: saveError.requestId }) }}</small>
         </div>
         <template v-if="savedPlot && !editingId">
           <p
@@ -328,8 +331,7 @@ onBeforeUnmount(() => calculator.stop())
             class="calc__save-error"
             role="alert"
           >
-            Збереження «{{ savedPlot.name }}» скасовано: сервіс звітів не зміг сформувати проєкцію ділянки, тому ділянку
-            не збережено. Спробуйте зберегти ще раз.
+            {{ $t('calc.savedCancelled', { name: savedPlot.name }) }}
           </p>
           <StalledNotice
             v-else-if="savedPhase === 'stalled'"
@@ -341,13 +343,13 @@ onBeforeUnmount(() => calculator.stop())
             role="status"
           >
             <template v-if="savedPhase === 'confirmed'">
-              Ділянку «{{ savedPlot.name }}» збережено і підтверджено.
+              {{ $t('calc.savedConfirmed', { name: savedPlot.name }) }}
             </template>
             <template v-else>
-              Ділянку «{{ savedPlot.name }}» збережено. Сервер підтверджує розрахунок…
+              {{ $t('calc.savedPending', { name: savedPlot.name }) }}
             </template>
             <RouterLink :to="`/plots/${savedPlot.id}`">
-              Відкрити ділянку
+              {{ $t('calc.openPlot') }}
             </RouterLink>
           </p>
         </template>
@@ -365,7 +367,7 @@ onBeforeUnmount(() => calculator.stop())
       />
 
       <p class="calc__note">
-        Розрахунок наближений і не замінює кадастрову зйомку.
+        {{ $t('calc.note') }}
       </p>
     </aside>
   </main>

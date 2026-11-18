@@ -7,13 +7,13 @@ const emit = defineEmits<{ retry: [] }>()
     class="stalled"
     role="status"
   >
-    <span>Обробка триває довше, ніж зазвичай. Сервер ще не підтвердив ділянку.</span>
+    <span>{{ $t('plots.stalled') }}</span>
     <button
       type="button"
       class="stalled__button"
       @click="emit('retry')"
     >
-      Перевірити ще раз
+      {{ $t('plots.checkAgain') }}
     </button>
   </div>
 </template>

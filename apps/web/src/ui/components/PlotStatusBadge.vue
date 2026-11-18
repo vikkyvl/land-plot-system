@@ -13,7 +13,7 @@ defineProps<{ status: PlotStatus }>()
       class="status-badge__spinner"
       aria-hidden="true"
     />
-    Обробляється…
+    {{ $t('plots.processing') }}
   </span>
 </template>
 

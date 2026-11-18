@@ -18,9 +18,10 @@ import {
   formatPointCount,
   formatSquareMeters,
 } from '../composables/format'
-import { useMapLayers, useMapPreferencesService, usePlotService } from '../composables/services'
+import { useMapLayers, usePlotService, useSettingsService } from '../composables/services'
 import { useFailure, type Failure } from '../composables/useFailure'
 import { useFollowedPlots } from '../composables/useFollowedPlots'
+import { t } from '../i18n'
 import { useConfirmationsStore } from '../stores/confirmations'
 import { usePlotsStore } from '../stores/plots'
 import { useSessionStore } from '../stores/session'
@@ -30,7 +31,7 @@ const props = defineProps<{ id: string }>()
 
 const service = usePlotService()
 const layers = useMapLayers()
-const preferences = useMapPreferencesService()
+const preferences = useSettingsService()
 const plotsStore = usePlotsStore()
 const toasts = useToastStore()
 const router = useRouter()
@@ -50,7 +51,7 @@ const layer = computed(() => layers[preferences.layer()])
 const pending = computed(() => plot.value !== null && isPending(plot.value))
 const canWrite = computed(() => profile.value === null || hasScope(profile.value, Scope.PlotsWrite))
 const canReport = computed(() => profile.value === null || hasScope(profile.value, Scope.ReportsWrite))
-const pendingHint = 'Ділянка ще обробляється'
+const pendingHint = computed(() => t('plot.pending'))
 const confirmations = useConfirmationsStore()
 const followed = useFollowedPlots()
 const phase = computed(() => confirmations.entries[props.id]?.phase ?? null)
@@ -126,7 +127,7 @@ async function rename(name: string): Promise<void> {
     plotsStore.replace(renamed)
     followIfPending(renamed)
     dialog.value = null
-    toasts.show('Назву надіслано. Сервер підтверджує зміни.')
+    toasts.show(t('plot.renameSent'))
   } catch (error) {
     dialogFailure.value = await handle(error)
   } finally {
@@ -144,7 +145,7 @@ async function remove(): Promise<void> {
     await service.remove(id)
     plotsStore.forget(id)
     dialog.value = null
-    toasts.show(`Ділянку «${name}» видалено`)
+    toasts.show(t('plot.deleted', { name }))
     await router.push('/plots')
   } catch (error) {
     dialogFailure.value = await handle(error)
@@ -177,7 +178,7 @@ async function createReport(): Promise<void> {
     <div
       v-if="loading"
       class="detail__skeleton"
-      aria-label="Завантаження ділянки"
+      :aria-label="$t('plot.loading')"
     >
       <div class="detail__skeleton-line" />
       <div class="detail__skeleton-map" />
@@ -190,9 +191,9 @@ async function createReport(): Promise<void> {
       role="alert"
     >
       <p>{{ failure.text }}</p>
-      <small v-if="failure.requestId">Код запиту: {{ failure.requestId }}</small>
+      <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
       <RouterLink to="/plots">
-        До списку ділянок
+        {{ $t('app.toPlots') }}
       </RouterLink>
     </div>
 
@@ -202,10 +203,10 @@ async function createReport(): Promise<void> {
       role="alert"
     >
       <p>
-        Збереження скасовано: сервіс звітів не зміг сформувати проєкцію ділянки, тому ділянку не збережено.
+        {{ $t('plot.cancelled') }}
       </p>
       <RouterLink to="/plots">
-        До списку ділянок
+        {{ $t('app.toPlots') }}
       </RouterLink>
     </div>
 
@@ -214,7 +215,7 @@ async function createReport(): Promise<void> {
         <RouterLink
           class="detail__back"
           to="/plots"
-          aria-label="Назад до списку"
+          :aria-label="$t('plot.back')"
         >
           <svg
             width="22"
@@ -237,7 +238,7 @@ async function createReport(): Promise<void> {
           v-if="canWrite"
           type="button"
           class="detail__trash"
-          aria-label="Видалити ділянку"
+          :aria-label="$t('plot.delete')"
           :disabled="pending"
           :title="pending ? pendingHint : undefined"
           @click="open('delete')"
@@ -265,7 +266,7 @@ async function createReport(): Promise<void> {
             {{ plot.name }}
           </h2>
           <span class="detail__meta">
-            Створено {{ formatDate(plot.createdAt) }} · {{ formatPointCount(plot.points.length) }}
+            {{ $t('plot.created', { date: formatDate(plot.createdAt), points: formatPointCount(plot.points.length) }) }}
             <PlotStatusBadge :status="plot.status" />
           </span>
         </div>
@@ -276,7 +277,7 @@ async function createReport(): Promise<void> {
               class="detail__button detail__edit"
               :to="`/plots/${plot.id}/edit`"
             >
-              Змінити межу
+              {{ $t('plot.editBoundary') }}
             </RouterLink>
             <button
               v-else
@@ -285,7 +286,7 @@ async function createReport(): Promise<void> {
               disabled
               :title="pendingHint"
             >
-              Змінити межу
+              {{ $t('plot.editBoundary') }}
             </button>
             <button
               type="button"
@@ -294,7 +295,7 @@ async function createReport(): Promise<void> {
               :title="pending ? pendingHint : undefined"
               @click="open('rename')"
             >
-              Перейменувати
+              {{ $t('plot.rename') }}
             </button>
             <button
               type="button"
@@ -303,7 +304,7 @@ async function createReport(): Promise<void> {
               :title="pending ? pendingHint : undefined"
               @click="open('delete')"
             >
-              Видалити
+              {{ $t('plot.remove') }}
             </button>
           </template>
           <button
@@ -314,7 +315,7 @@ async function createReport(): Promise<void> {
             :title="pending ? pendingHint : undefined"
             @click="createReport"
           >
-            {{ reporting ? 'Формуємо…' : 'Сформувати звіт' }}
+            {{ reporting ? $t('plot.creatingReport') : $t('plot.createReport') }}
           </button>
         </div>
         <StalledNotice
@@ -326,7 +327,7 @@ async function createReport(): Promise<void> {
           v-else-if="pending"
           class="detail__pending"
         >
-          {{ pendingHint }}. Зміни і звіт стануть доступні після підтвердження.
+          {{ $t('plot.pendingDetails') }}
         </p>
       </header>
 
@@ -341,22 +342,27 @@ async function createReport(): Promise<void> {
           {{ formatHectares(plot.measurement.area.hectares) }}
         </p>
         <p class="detail__line">
-          {{ formatSquareMeters(plot.measurement.area.squareMeters) }} м² ·
-          {{ formatAres(plot.measurement.area.ares) }} ари · периметр {{ formatMeters(plot.measurement.perimeterMeters) }}
+          {{
+            $t('plot.summaryLine', {
+              squareMeters: formatSquareMeters(plot.measurement.area.squareMeters),
+              ares: formatAres(plot.measurement.area.ares),
+              perimeter: formatMeters(plot.measurement.perimeterMeters),
+            })
+          }}
         </p>
       </div>
 
       <dl class="detail__tiles">
         <div class="detail__tile">
-          <dt>Площа</dt>
+          <dt>{{ $t('plot.area') }}</dt>
           <dd>{{ formatHectares(plot.measurement.area.hectares) }}</dd>
         </div>
         <div class="detail__tile">
-          <dt>у м²</dt>
+          <dt>{{ $t('plot.inSquareMeters') }}</dt>
           <dd>{{ formatSquareMeters(plot.measurement.area.squareMeters) }}</dd>
         </div>
         <div class="detail__tile">
-          <dt>Периметр</dt>
+          <dt>{{ $t('plot.perimeter') }}</dt>
           <dd>{{ formatMeters(plot.measurement.perimeterMeters) }}</dd>
         </div>
       </dl>
@@ -369,13 +375,13 @@ async function createReport(): Promise<void> {
           id="history-title"
           class="detail__history-title"
         >
-          Історія вимірювань
+          {{ $t('plot.history') }}
         </h3>
         <p
           v-if="versions && versions.length === 0"
           class="detail__muted"
         >
-          Підтверджених версій ще немає.
+          {{ $t('plot.noVersions') }}
         </p>
         <template v-else-if="versions">
           <div class="detail__table-wrap">
@@ -383,16 +389,16 @@ async function createReport(): Promise<void> {
               <thead>
                 <tr>
                   <th scope="col">
-                    Версія
+                    {{ $t('plot.version') }}
                   </th>
                   <th scope="col">
-                    Дата
+                    {{ $t('plot.date') }}
                   </th>
                   <th scope="col">
-                    Площа
+                    {{ $t('plot.area') }}
                   </th>
                   <th scope="col">
-                    Периметр
+                    {{ $t('plot.perimeter') }}
                   </th>
                 </tr>
               </thead>
@@ -417,8 +423,8 @@ async function createReport(): Promise<void> {
               :class="{ 'detail__version--current': version.version === plot.version }"
             >
               <span class="detail__version-text">
-                <span class="detail__version-name">Версія {{ version.version
-                }}<template v-if="version.version === plot.version"> · поточна</template></span>
+                <span class="detail__version-name">{{ $t('plot.versionNumber', { n: version.version })
+                }}<template v-if="version.version === plot.version"> · {{ $t('plot.current') }}</template></span>
                 <span class="detail__version-meta">{{ formatDate(version.createdAt) }},
                   {{ formatPointCount(version.points.length) }}</span>
               </span>
@@ -435,7 +441,7 @@ async function createReport(): Promise<void> {
         :disabled="pending || reporting"
         @click="createReport"
       >
-        {{ reporting ? 'Формуємо…' : 'Сформувати звіт' }}
+        {{ reporting ? $t('plot.creatingReport') : $t('plot.createReport') }}
       </button>
     </template>
 

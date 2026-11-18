@@ -56,13 +56,28 @@ src/
 ├── service/     use cases: calculator, sessions, plots, reports, place search, saga confirmation
 ├── client/      HTTP adapters for the gateway and Nominatim, error mapping to DomainError
 ├── auth/        Keycloak sign-in with oidc-client-ts
-├── repository/  guest draft in IndexedDB, map layer choice in localStorage
+├── repository/  guest draft in IndexedDB, settings (map layer, language) in localStorage
 ├── config/      checked VITE_* settings
-├── ui/          router, views, components, Pinia stores, composables, styles and design tokens
+├── ui/          router, views, components, Pinia stores, composables, styles, design tokens,
+│                i18n setup and texts (locales/uk.json, locales/en.json)
 └── bootstrap/   composition root: builds the adapters and services and provides them to the UI
 ```
 
 `ui → service → port ← client / repository / auth`, and `domain` depends on nothing. `eslint-plugin-boundaries` enforces these rules, so a forbidden import fails `npm run lint`; `tests/boundaries.test.ts` checks that it does. `domain`, `port` and `service` may only use relative imports, so no Vue, HTTP or browser library gets into them.
+
+## Languages
+
+The app speaks Ukrainian and English through `vue-i18n`. Every text lives in `src/ui/locales/uk.json` and `src/ui/locales/en.json`; components use keys only, and the ESLint rule `vue/no-bare-strings-in-template` fails `npm run lint` on raw text or a raw `aria-label`, `title`, `placeholder` or `alt` in a template.
+
+- The first language comes from `navigator.language`: Ukrainian for `uk*`, English otherwise. The **УК / EN** switch in the header (and in the avatar menu on phones) changes it, and `SettingsService` keeps the choice in `localStorage` through the `SettingsStore` port.
+- Switching also sets `lang` on `<html>` and the number and date formats (`Intl` with `uk-UA` or `en-GB`): `2,48 га` and `27.10.2026`, `2.48 ha` and `27/10/2026`. Ukrainian counts have three plural forms.
+- Sign-in, registration and Google sign-in pass `ui_locales` with the current language, so Keycloak shows its pages in the same language.
+- Server error codes have texts in both languages; the code itself is shown unchanged.
+- Plot and report names are user data and are not translated. The PWA manifest stays Ukrainian.
+
+Tests check that both files have the same keys and parameters, that the lint rule fails on raw text, and that switching the language changes the texts, the number and date formats and `lang`.
+
+To add a text, add the same key to both files and use `$t('key')` in a template or `t('key')` from `ui/i18n.ts` in code.
 
 ## Behaviour worth knowing
 

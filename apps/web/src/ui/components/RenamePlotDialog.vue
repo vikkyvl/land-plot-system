@@ -14,7 +14,7 @@ const inputId = `rename-${Math.random().toString(36).slice(2)}`
 
 <template>
   <BaseDialog
-    title="Перейменувати ділянку"
+    :title="$t('dialogs.renameTitle')"
     @close="emit('close')"
   >
     <form
@@ -25,7 +25,7 @@ const inputId = `rename-${Math.random().toString(36).slice(2)}`
         <label
           class="rename-dialog__label"
           :for="inputId"
-        >Нова назва</label>
+        >{{ $t('dialogs.newName') }}</label>
         <input
           :id="inputId"
           v-model="value"
@@ -41,7 +41,7 @@ const inputId = `rename-${Math.random().toString(36).slice(2)}`
         role="alert"
       >
         {{ failure.text }}
-        <small v-if="failure.requestId">Код запиту: {{ failure.requestId }}</small>
+        <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
       </p>
       <div class="rename-dialog__actions">
         <button
@@ -49,14 +49,14 @@ const inputId = `rename-${Math.random().toString(36).slice(2)}`
           class="rename-dialog__button"
           @click="emit('close')"
         >
-          Скасувати
+          {{ $t('app.cancel') }}
         </button>
         <button
           type="submit"
           class="rename-dialog__button rename-dialog__button--primary"
           :disabled="busy"
         >
-          {{ busy ? 'Зберігаємо…' : 'Зберегти' }}
+          {{ busy ? $t('dialogs.saving') : $t('dialogs.save') }}
         </button>
       </div>
     </form>

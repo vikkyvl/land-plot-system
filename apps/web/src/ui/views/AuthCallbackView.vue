@@ -32,16 +32,16 @@ onMounted(async () => {
         class="callback__spinner"
         aria-hidden="true"
       />
-      Завершуємо вхід…
+      {{ $t('login.finishing') }}
     </div>
     <div
       v-else
       class="callback__error"
       role="alert"
     >
-      <p>Не вдалося завершити вхід.</p>
+      <p>{{ $t('login.failed') }}</p>
       <RouterLink to="/login">
-        Спробувати ще раз
+        {{ $t('app.retry') }}
       </RouterLink>
     </div>
   </main>

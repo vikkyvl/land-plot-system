@@ -26,5 +26,8 @@
     "pwa.config.ts",
     "src/config/env.ts",
     "tests/**/*.ts"
+  ],
+  "exclude": [
+    "tests/setup.ts"
   ]
 }

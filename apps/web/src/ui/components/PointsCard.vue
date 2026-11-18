@@ -8,7 +8,7 @@ defineProps<{ points: readonly Coordinate[]; flagged: readonly number[] }>()
 <template>
   <section class="points-card">
     <h2 class="points-card__title">
-      Точки межі · {{ points.length }}
+      {{ $t('problems.boundaryPoints', { n: points.length }) }}
     </h2>
     <ol class="points-card__list">
       <li

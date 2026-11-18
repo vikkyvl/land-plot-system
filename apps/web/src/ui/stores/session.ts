@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { displayName, type Profile } from '../../domain/profile'
 import type { SignInMethod } from '../../domain/session'
 import { useSessionService } from '../composables/services'
+import { currentLocale } from '../i18n'
 
 export const useSessionStore = defineStore('session', () => {
   const service = useSessionService()
@@ -20,7 +21,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   function signIn(method: SignInMethod, returnTo?: string | null): Promise<void> {
-    return service.signIn(method, returnTo)
+    return service.signIn(method, returnTo, currentLocale())
   }
 
   async function signOut(): Promise<void> {

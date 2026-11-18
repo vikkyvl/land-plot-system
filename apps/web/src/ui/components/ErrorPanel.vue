@@ -52,7 +52,7 @@ const swap = computed(() => (props.problem.details?.kind === 'self_intersection'
       {{ text.text }}
     </p>
     <p class="error-panel__code">
-      Код помилки: {{ problem.code }}
+      {{ $t('problems.code', { code: problem.code }) }}
     </p>
     <div class="error-panel__actions">
       <button
@@ -68,7 +68,7 @@ const swap = computed(() => (props.problem.details?.kind === 'self_intersection'
         class="error-panel__button"
         @click="emit('dismiss')"
       >
-        Виправлю сам
+        {{ $t('problems.fixMyself') }}
       </button>
     </div>
   </section>

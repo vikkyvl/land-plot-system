@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 
 import { formatVersionCount } from '../composables/format'
+import { t } from '../i18n'
 import type { Failure } from '../composables/useFailure'
 
 import BaseDialog from './BaseDialog.vue'
@@ -13,18 +14,19 @@ const typed = ref('')
 const inputId = `confirm-name-${Math.random().toString(36).slice(2)}`
 const matches = computed(() => typed.value.trim() === props.name.trim())
 const history = computed(() =>
-  props.versionCount === null ? 'історію вимірювань' : `історію вимірювань (${formatVersionCount(props.versionCount)})`,
+  props.versionCount === null
+    ? t('dialogs.history')
+    : t('dialogs.historyCounted', { versions: formatVersionCount(props.versionCount) }),
 )
 </script>
 
 <template>
   <BaseDialog
-    :title="`Видалити «${name}»?`"
+    :title="$t('dialogs.deleteTitle', { name })"
     @close="emit('close')"
   >
     <p class="delete-dialog__text">
-      Ділянку і {{ history }} буде видалено. Звіти по ній залишаться з позначкою «Ділянку видалено». Цю дію не можна
-      скасувати.
+      {{ $t('dialogs.deleteText', { history }) }}
     </p>
     <form
       class="delete-dialog__form"
@@ -34,7 +36,7 @@ const history = computed(() =>
         <label
           class="delete-dialog__label"
           :for="inputId"
-        >Введіть назву ділянки для підтвердження</label>
+        >{{ $t('dialogs.confirmName') }}</label>
         <input
           :id="inputId"
           v-model="typed"
@@ -49,7 +51,7 @@ const history = computed(() =>
         role="alert"
       >
         {{ failure.text }}
-        <small v-if="failure.requestId">Код запиту: {{ failure.requestId }}</small>
+        <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
       </p>
       <div class="delete-dialog__actions">
         <button
@@ -57,14 +59,14 @@ const history = computed(() =>
           class="delete-dialog__button"
           @click="emit('close')"
         >
-          Скасувати
+          {{ $t('app.cancel') }}
         </button>
         <button
           type="submit"
           class="delete-dialog__button delete-dialog__button--danger"
           :disabled="!matches || busy"
         >
-          {{ busy ? 'Видаляємо…' : 'Видалити назавжди' }}
+          {{ busy ? $t('dialogs.deleting') : $t('dialogs.deleteForever') }}
         </button>
       </div>
     </form>

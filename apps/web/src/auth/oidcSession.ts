@@ -1,5 +1,6 @@
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
 
+import type { Locale } from '../domain/locale'
 import type { SignInMethod } from '../domain/session'
 import type { AuthSession } from '../port/authSession'
 
@@ -77,13 +78,17 @@ export class OidcSession implements AuthSession {
     return user !== null && (user.expired !== true || Boolean(user.refresh_token))
   }
 
-  signIn(method: SignInMethod, returnTo: string): Promise<void> {
+  signIn(method: SignInMethod, returnTo: string, locale: Locale): Promise<void> {
     const state: SignInState = { returnTo }
+    const extraQueryParams: Record<string, string> = { ui_locales: locale }
+    if (method === 'google') {
+      extraQueryParams['kc_idp_hint'] = googleIdentityProvider
+    }
 
     return this.manager.signinRedirect({
       state,
       prompt: method === 'registration' ? 'create' : undefined,
-      extraQueryParams: method === 'google' ? { kc_idp_hint: googleIdentityProvider } : undefined,
+      extraQueryParams,
     })
   }
 

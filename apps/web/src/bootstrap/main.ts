@@ -9,25 +9,26 @@ import { ProfileClient } from '../client/profileClient'
 import { ReportsClient } from '../client/reportsClient'
 import { readConfig } from '../config/env'
 import { IndexedDbDraftStore } from '../repository/indexedDbDraftStore'
-import { LocalPreferencesStore } from '../repository/localPreferencesStore'
+import { LocalSettingsStore } from '../repository/localSettingsStore'
 import { CalculatorService } from '../service/calculatorService'
 import { ConfirmationService } from '../service/confirmationService'
-import { MapPreferencesService } from '../service/mapPreferencesService'
 import { PlaceSearchService } from '../service/placeSearchService'
 import { PlotService } from '../service/plotService'
 import { ReportService } from '../service/reportService'
 import { SessionService } from '../service/sessionService'
+import { SettingsService } from '../service/settingsService'
 import App from '../ui/App.vue'
 import {
   calculatorServiceKey,
   confirmationServiceKey,
   mapLayersKey,
-  mapPreferencesServiceKey,
   placeSearchServiceKey,
   plotServiceKey,
   reportServiceKey,
   sessionServiceKey,
+  settingsServiceKey,
 } from '../ui/composables/services'
+import { applyLocale, i18n } from '../ui/i18n'
 import { createAppRouter } from '../ui/router'
 import '../ui/styles/index.css'
 
@@ -50,7 +51,8 @@ const placeSearchService = new PlaceSearchService(new NominatimClient({ baseUrl:
 const reports = new ReportsClient(http)
 const plotService = new PlotService(plots, reports)
 const reportService = new ReportService(reports, plots)
-const mapPreferencesService = new MapPreferencesService(new LocalPreferencesStore(window.localStorage))
+const settingsService = new SettingsService(new LocalSettingsStore(window.localStorage), navigator.language)
+applyLocale(settingsService.locale())
 
 createApp(App)
   .provide(sessionServiceKey, sessionService)
@@ -59,8 +61,9 @@ createApp(App)
   .provide(placeSearchServiceKey, placeSearchService)
   .provide(plotServiceKey, plotService)
   .provide(reportServiceKey, reportService)
-  .provide(mapPreferencesServiceKey, mapPreferencesService)
+  .provide(settingsServiceKey, settingsService)
   .provide(mapLayersKey, mapLayersFrom(config))
+  .use(i18n)
   .use(createPinia())
   .use(createAppRouter(sessionService))
   .mount('#app')

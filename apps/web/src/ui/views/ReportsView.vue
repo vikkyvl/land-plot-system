@@ -45,40 +45,40 @@ watch(plotId, load)
   <main class="reports">
     <div class="reports__head">
       <h1 class="reports__title">
-        Звіти
+        {{ $t('reports.title') }}
       </h1>
       <RouterLink
         v-if="plotId"
         class="reports__all"
         to="/reports"
       >
-        Усі звіти
+        {{ $t('reports.all') }}
       </RouterLink>
     </div>
     <p
       v-if="plotId && reports[0]"
       class="reports__filter"
     >
-      Звіти ділянки «{{ reports[0].plotName }}»
+      {{ $t('reports.ofPlot', { name: reports[0].plotName }) }}
     </p>
 
     <label
       class="visually-hidden"
       for="report-search"
-    >Пошук звіту</label>
+    >{{ $t('reports.searchLabel') }}</label>
     <input
       id="report-search"
       v-model="query"
       class="reports__search"
       type="search"
-      placeholder="Пошук за назвою ділянки"
+      :placeholder="$t('reports.searchPlaceholder')"
     >
 
     <div
       v-if="loading"
       class="reports__items"
       aria-busy="true"
-      aria-label="Завантаження звітів"
+      :aria-label="$t('reports.loading')"
     >
       <div
         v-for="index in 3"
@@ -92,25 +92,25 @@ watch(plotId, load)
       role="alert"
     >
       <p>{{ failure.text }}</p>
-      <small v-if="failure.requestId">Код запиту: {{ failure.requestId }}</small>
+      <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
       <button
         type="button"
         class="reports__retry"
         @click="load"
       >
-        Спробувати ще раз
+        {{ $t('app.retry') }}
       </button>
     </div>
     <div
       v-else-if="reports.length === 0"
       class="reports__empty"
     >
-      <p>Звітів ще немає. Сформуйте звіт на сторінці ділянки.</p>
+      <p>{{ $t('reports.empty') }}</p>
       <RouterLink
         class="reports__link"
         to="/plots"
       >
-        До ділянок
+        {{ $t('reports.toPlots') }}
       </RouterLink>
     </div>
     <template v-else>
@@ -148,12 +148,17 @@ watch(plotId, load)
             </span>
             <span class="reports__card-text">
               <span class="reports__card-name">{{ report.plotName }}</span>
-              <span class="reports__card-meta">№ {{ reportNumber(report) }} · {{ formatDate(report.createdAt) }} · версія
-                {{ report.plotVersion }}</span>
+              <span class="reports__card-meta">{{
+                $t('reports.cardMeta', {
+                  number: reportNumber(report),
+                  date: formatDate(report.createdAt),
+                  version: report.plotVersion,
+                })
+              }}</span>
               <span
                 v-if="report.plotDeleted"
                 class="reports__badge"
-              >Ділянку видалено</span>
+              >{{ $t('reports.plotDeleted') }}</span>
             </span>
             <span class="reports__card-area">{{ formatHectares(report.measurement.area.hectares) }}</span>
           </RouterLink>
@@ -163,7 +168,7 @@ watch(plotId, load)
         v-if="visible.length === 0"
         class="reports__nothing"
       >
-        Нічого не знайдено за запитом «{{ query }}».
+        {{ $t('reports.nothingFound', { query }) }}
       </p>
     </template>
   </main>

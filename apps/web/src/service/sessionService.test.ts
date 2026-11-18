@@ -33,12 +33,12 @@ describe('SessionService', () => {
   it('passes only a safe return path to the sign-in', async () => {
     const { auth, service } = fakes(false)
 
-    await service.signIn('google', '//evil.example')
-    await service.signIn('registration', '/plots/1')
+    await service.signIn('google', '//evil.example', 'uk')
+    await service.signIn('registration', '/plots/1', 'en')
 
     expect(auth.signIn.mock.calls).toEqual([
-      ['google', '/'],
-      ['registration', '/plots/1'],
+      ['google', '/', 'uk'],
+      ['registration', '/plots/1', 'en'],
     ])
   })
 

@@ -5,6 +5,8 @@ import { useRoute } from 'vue-router'
 
 import { useSessionStore } from '../stores/session'
 
+import LocaleSwitch from './LocaleSwitch.vue'
+
 const session = useSessionStore()
 const { signedIn, userName } = storeToRefs(session)
 const route = useRoute()
@@ -42,30 +44,31 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
       </RouterLink>
       <nav
         class="app-header__nav"
-        aria-label="Розділи"
+        :aria-label="$t('app.sections')"
       >
         <RouterLink
           class="app-header__tab"
           to="/"
           :aria-current="route.name === 'home' || route.name === 'plot-edit' ? 'page' : undefined"
         >
-          Розрахунок
+          {{ $t('app.calculator') }}
         </RouterLink>
         <RouterLink
           class="app-header__tab"
           to="/plots"
           :aria-current="route.path.startsWith('/plots') && route.name !== 'plot-edit' ? 'page' : undefined"
         >
-          Мої ділянки
+          {{ $t('app.myPlots') }}
         </RouterLink>
         <RouterLink
           class="app-header__tab"
           to="/reports"
           :aria-current="route.path.startsWith('/reports') ? 'page' : undefined"
         >
-          Звіти
+          {{ $t('app.reports') }}
         </RouterLink>
       </nav>
+      <LocaleSwitch class="app-header__locale" />
       <div
         v-if="signedIn"
         class="app-header__account"
@@ -79,7 +82,7 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
           class="app-header__button"
           @click="session.signOut()"
         >
-          Вийти
+          {{ $t('app.signOut') }}
         </button>
       </div>
       <RouterLink
@@ -87,7 +90,7 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
         class="app-header__button app-header__button--primary"
         :to="loginTarget"
       >
-        Увійти
+        {{ $t('app.signIn') }}
       </RouterLink>
     </div>
   </header>

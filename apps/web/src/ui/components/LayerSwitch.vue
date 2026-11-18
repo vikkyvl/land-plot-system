@@ -5,8 +5,8 @@ defineProps<{ modelValue: MapLayerId }>()
 const emit = defineEmits<{ 'update:modelValue': [layer: MapLayerId] }>()
 
 const options: readonly { id: MapLayerId; label: string }[] = [
-  { id: 'map', label: 'Карта' },
-  { id: 'satellite', label: 'Супутник' },
+  { id: 'map', label: 'map.layerMap' },
+  { id: 'satellite', label: 'map.layerSatellite' },
 ]
 </script>
 
@@ -14,7 +14,7 @@ const options: readonly { id: MapLayerId; label: string }[] = [
   <div
     class="layer-switch"
     role="group"
-    aria-label="Шар карти"
+    :aria-label="$t('map.layers')"
   >
     <button
       v-for="option in options"
@@ -24,7 +24,7 @@ const options: readonly { id: MapLayerId; label: string }[] = [
       :aria-pressed="modelValue === option.id"
       @click="emit('update:modelValue', option.id)"
     >
-      {{ option.label }}
+      {{ $t(option.label) }}
     </button>
   </div>
 </template>

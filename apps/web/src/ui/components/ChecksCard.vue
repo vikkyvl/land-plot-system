@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import { ErrorCode } from '../../domain/errorCode'
 import type { Problem } from '../../domain/problem'
+import { t } from '../i18n'
 
 const props = defineProps<{ problems: readonly Problem[] }>()
 
@@ -22,15 +23,15 @@ const checks = computed(() => {
   const state = (broken: boolean, known = true): CheckState => (broken ? 'failed' : known ? 'passed' : 'unknown')
 
   const rows: { label: string; state: CheckState }[] = [
-    { label: 'Щонайменше 3 різні точки', state: state(failed(ErrorCode.InsufficientPoints, ErrorCode.DuplicatePoint)) },
-    { label: 'Координати в допустимих межах', state: state(failed(ErrorCode.InvalidCoordinate)) },
-    { label: 'Без самоперетину', state: state(failed(ErrorCode.SelfIntersection), !pointsBroken) },
+    { label: t('problems.checkDistinct'), state: state(failed(ErrorCode.InsufficientPoints, ErrorCode.DuplicatePoint)) },
+    { label: t('problems.checkCoordinates'), state: state(failed(ErrorCode.InvalidCoordinate)) },
+    { label: t('problems.checkSelfIntersection'), state: state(failed(ErrorCode.SelfIntersection), !pointsBroken) },
   ]
   if (codes.has(ErrorCode.TooManyPoints)) {
-    rows.push({ label: 'Не більше 1000 точок', state: 'failed' })
+    rows.push({ label: t('problems.checkTooMany'), state: 'failed' })
   }
   if (codes.has(ErrorCode.ZeroArea)) {
-    rows.push({ label: 'Площа більша за нуль', state: 'failed' })
+    rows.push({ label: t('problems.checkArea'), state: 'failed' })
   }
 
   return rows
@@ -38,16 +39,16 @@ const checks = computed(() => {
 
 const marks: Readonly<Record<CheckState, string>> = { passed: '✓', failed: '✕', unknown: '–' }
 const hints: Readonly<Record<CheckState, string>> = {
-  passed: 'виконано',
-  failed: 'не виконано',
-  unknown: 'не перевірено',
+  passed: 'problems.passed',
+  failed: 'problems.failed',
+  unknown: 'problems.unknown',
 }
 </script>
 
 <template>
   <section class="checks-card">
     <h2 class="checks-card__title">
-      Інші перевірки
+      {{ $t('problems.checks') }}
     </h2>
     <ul class="checks-card__list">
       <li
@@ -57,7 +58,7 @@ const hints: Readonly<Record<CheckState, string>> = {
       >
         <span aria-hidden="true">{{ marks[check.state] }}</span>
         {{ check.label }}
-        <span class="visually-hidden">: {{ hints[check.state] }}</span>
+        <span class="visually-hidden">: {{ $t(hints[check.state]) }}</span>
       </li>
     </ul>
   </section>

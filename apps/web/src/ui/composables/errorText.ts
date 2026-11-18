@@ -1,47 +1,26 @@
-import { ErrorCode } from '../../domain/errorCode'
 import type { DomainError } from '../../domain/error'
+import { ErrorCode } from '../../domain/errorCode'
 import type { Problem, SelfIntersectionDetails } from '../../domain/problem'
+import { i18n, t } from '../i18n'
 
 export interface ProblemText {
   readonly title: string
   readonly text: string
 }
 
-const fallbackMessage = 'Щось пішло не так. Спробуйте ще раз.'
-
-const messages: Readonly<Record<string, string>> = {
-  [ErrorCode.InvalidRequest]: 'Запит не вдалося обробити. Оновіть сторінку і спробуйте ще раз.',
-  [ErrorCode.InvalidName]: 'Вкажіть назву ділянки.',
-  [ErrorCode.InsufficientPoints]: 'Для ділянки потрібно щонайменше 3 різні точки.',
-  [ErrorCode.InvalidCoordinate]: 'Одна з точок має неможливі координати.',
-  [ErrorCode.DuplicatePoint]: 'Дві точки межі збігаються.',
-  [ErrorCode.SelfIntersection]: 'Сторони контуру перетинаються.',
-  [ErrorCode.ZeroArea]: 'Точки лежать на одній лінії, тому площа дорівнює нулю.',
-  [ErrorCode.TooManyPoints]: 'Забагато точок для однієї ділянки. Максимум 1000.',
-  [ErrorCode.NoChanges]: 'Змін немає.',
-  [ErrorCode.InvalidPlotId]: 'Ділянку не знайдено.',
-  [ErrorCode.InvalidReportId]: 'Звіт не знайдено.',
-  [ErrorCode.InvalidQuery]: 'Неправильний запит.',
-  [ErrorCode.Unauthorized]: 'Сесія завершилася. Увійдіть ще раз.',
-  [ErrorCode.Forbidden]: 'Ця ділянка належить іншому користувачу.',
-  [ErrorCode.InsufficientScope]: 'Недостатньо прав для цієї дії.',
-  [ErrorCode.OriginNotAllowed]: 'Цей сайт не має доступу до сервера.',
-  [ErrorCode.PlotNotFound]: 'Ділянку не знайдено.',
-  [ErrorCode.ReportNotFound]: 'Звіт не знайдено.',
-  [ErrorCode.RouteNotFound]: 'Сервер не знає такої дії.',
-  [ErrorCode.VersionConflict]: 'Ділянку щойно змінили. Оновіть сторінку.',
-  [ErrorCode.PlotNotConfirmed]: 'Ділянка ще обробляється.',
-  [ErrorCode.PlotDeleted]: 'Ділянку видалено.',
-  [ErrorCode.RateLimited]: 'Забагато запитів. Спробуйте трохи пізніше.',
-  [ErrorCode.ServiceUnavailable]: 'Сервіс тимчасово недоступний. Спробуйте пізніше.',
-  [ErrorCode.PlotServiceUnavailable]: 'Сервіс ділянок тимчасово недоступний. Спробуйте пізніше.',
-  [ErrorCode.BadGateway]: 'Сервіс тимчасово недоступний. Спробуйте пізніше.',
-  [ErrorCode.InternalError]: fallbackMessage,
-  [ErrorCode.NetworkError]: "Немає з'єднання з сервером. Перевірте інтернет.",
+const problemTitles: Readonly<Record<string, string>> = {
+  [ErrorCode.InsufficientPoints]: 'problems.insufficientTitle',
+  [ErrorCode.ZeroArea]: 'problems.zeroAreaTitle',
+  [ErrorCode.TooManyPoints]: 'problems.tooManyTitle',
+  [ErrorCode.SelfIntersection]: 'problems.selfIntersectionTitle',
+  [ErrorCode.DuplicatePoint]: 'problems.duplicateTitle',
+  [ErrorCode.InvalidCoordinate]: 'problems.coordinateTitle',
 }
 
 export function errorText(error: Pick<DomainError, 'code'>): string {
-  return messages[error.code] ?? fallbackMessage
+  const key = `errors.${error.code}`
+
+  return i18n.global.te(key) ? t(key) : t('errors.fallback')
 }
 
 function oneBased(index: number): number {
@@ -51,11 +30,16 @@ function oneBased(index: number): number {
 export function sidesText(details: SelfIntersectionDetails): string {
   const [first, second] = details.segments
 
-  return `${oneBased(first[0])}–${oneBased(first[1])} і ${oneBased(second[0])}–${oneBased(second[1])}`
+  return t('problems.sides', {
+    a: oneBased(first[0]),
+    b: oneBased(first[1]),
+    c: oneBased(second[0]),
+    d: oneBased(second[1]),
+  })
 }
 
 export function swapText(details: SelfIntersectionDetails): string {
-  return `Поміняти точки ${oneBased(details.swap[0])} і ${oneBased(details.swap[1])}`
+  return t('problems.swap', { first: oneBased(details.swap[0]), second: oneBased(details.swap[1]) })
 }
 
 export function problemText(problem: Problem): ProblemText {
@@ -63,29 +47,23 @@ export function problemText(problem: Problem): ProblemText {
   switch (details?.kind) {
     case 'self_intersection':
       return {
-        title: 'Сторони контуру перетинаються',
-        text: `Сторони ${sidesText(details)} перетинаються. Площу такої фігури порахувати неможливо. Найчастіше точки поставлено не по порядку обходу.`,
+        title: t('problems.selfIntersectionTitle'),
+        text: t('problems.selfIntersectionText', { sides: sidesText(details) }),
       }
     case 'duplicate_point':
       return {
-        title: 'Точки повторюються',
-        text: `Точки ${oneBased(details.indices[0])} і ${oneBased(details.indices[1])} збігаються. Перемістіть або видаліть одну з них.`,
+        title: t('problems.duplicateTitle'),
+        text: t('problems.duplicateText', {
+          first: oneBased(details.indices[0]),
+          second: oneBased(details.indices[1]),
+        }),
       }
     case 'invalid_coordinate':
       return {
-        title: 'Координати поза межами',
-        text: `Точка ${oneBased(details.index)} має неможливі координати. Широта від −90 до 90, довгота від −180 до 180.`,
+        title: t('problems.coordinateTitle'),
+        text: t('problems.coordinateText', { index: oneBased(details.index) }),
       }
     default:
-      return { title: problemTitles[problem.code] ?? 'Контур не можна порахувати', text: errorText(problem) }
+      return { title: t(problemTitles[problem.code] ?? 'problems.genericTitle'), text: errorText(problem) }
   }
-}
-
-const problemTitles: Readonly<Record<string, string>> = {
-  [ErrorCode.InsufficientPoints]: 'Замало точок',
-  [ErrorCode.ZeroArea]: 'Ділянка без площі',
-  [ErrorCode.TooManyPoints]: 'Забагато точок',
-  [ErrorCode.SelfIntersection]: 'Сторони контуру перетинаються',
-  [ErrorCode.DuplicatePoint]: 'Точки повторюються',
-  [ErrorCode.InvalidCoordinate]: 'Координати поза межами',
 }

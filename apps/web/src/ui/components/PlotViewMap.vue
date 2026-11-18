@@ -67,7 +67,7 @@ watch(() => props.points, draw)
     ref="container"
     class="plot-view-map"
     role="img"
-    aria-label="Межа ділянки на карті"
+    :aria-label="$t('map.viewLabel')"
   />
 </template>
 

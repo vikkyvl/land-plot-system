@@ -1,3 +1,4 @@
+import type { Locale } from '../domain/locale'
 import type { SignInMethod } from '../domain/session'
 
 export interface AccessTokenProvider {
@@ -7,7 +8,7 @@ export interface AccessTokenProvider {
 
 export interface AuthSession extends AccessTokenProvider {
   isSignedIn(): Promise<boolean>
-  signIn(method: SignInMethod, returnTo: string): Promise<void>
+  signIn(method: SignInMethod, returnTo: string, locale: Locale): Promise<void>
   completeSignIn(): Promise<string>
   signOut(): Promise<void>
 }

@@ -7,6 +7,7 @@ import type { Coordinate } from '../../domain/coordinate'
 import type { MapLayer } from '../../domain/mapLayer'
 import type { Place } from '../../domain/place'
 import type { SelfIntersectionDetails } from '../../domain/problem'
+import { t } from '../i18n'
 
 const props = defineProps<{
   points: readonly Coordinate[]
@@ -161,7 +162,7 @@ function draw(): void {
           iconAnchor: [midpointSize / 2, midpointSize / 2],
         }),
         keyboard: false,
-        title: `Додати точку між ${index + 1} і ${((index + 1) % latLngs.length) + 1}`,
+        title: t('map.insertBetween', { from: index + 1, to: ((index + 1) % latLngs.length) + 1 }),
       })
         .on('click', () => emit('insert', index, { latitude: middle[0], longitude: middle[1] }))
         .addTo(handles)
@@ -173,8 +174,8 @@ function draw(): void {
       icon: vertexIcon(index),
       draggable: true,
       autoPan: true,
-      title: `Точка ${index + 1}`,
-      alt: `Точка ${index + 1}`,
+      title: t('map.point', { n: index + 1 }),
+      alt: t('map.point', { n: index + 1 }),
     })
     vertex.on('drag', () => {
       const moved = [...latLngs]
@@ -284,13 +285,13 @@ defineExpose({ fitPoints })
       ref="container"
       class="plot-map__canvas"
       role="application"
-      aria-label="Карта ділянки. Клацніть, щоб додати точку межі."
+      :aria-label="$t('map.label')"
     />
     <div class="plot-map__controls">
       <button
         type="button"
         class="plot-map__control"
-        aria-label="Наблизити"
+        :aria-label="$t('map.zoomIn')"
         @click="zoomIn"
       >
         +
@@ -298,7 +299,7 @@ defineExpose({ fitPoints })
       <button
         type="button"
         class="plot-map__control"
-        aria-label="Віддалити"
+        :aria-label="$t('map.zoomOut')"
         @click="zoomOut"
       >
         −
@@ -306,7 +307,7 @@ defineExpose({ fitPoints })
       <button
         type="button"
         class="plot-map__control"
-        aria-label="Моє місцезнаходження"
+        :aria-label="$t('map.locate')"
         :aria-busy="locating"
         @click="locate"
       >

@@ -46,6 +46,15 @@ export default defineConfigWithVueTs(
     },
   },
   {
+    files: ['src/**/*.vue'],
+    rules: {
+      'vue/no-bare-strings-in-template': [
+        'error',
+        { allowlist: ['Arqetra', '·', '—', '−', '+', '←', '«', '»', '(', ')', ',', '.', ':', '*', '№', '%', '/'] },
+      ],
+    },
+  },
+  {
     files: ['src/domain/**/*.ts', 'src/port/**/*.ts', 'src/service/**/*.ts'],
     ignores: ['**/*.test.ts'],
     rules: {

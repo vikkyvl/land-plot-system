@@ -11,22 +11,22 @@ const emit = defineEmits<{ retry: [] }>()
     role="alert"
   >
     <h2 class="outage-panel__title">
-      Розрахунок тимчасово недоступний
+      {{ $t('outage.title') }}
     </h2>
     <p
       v-if="outage.rateLimited"
       class="outage-panel__text"
     >
-      Сервер отримав забагато запитів.
+      {{ $t('outage.rateLimited') }}
       <template v-if="outage.secondsLeft !== null">
-        Спробуйте через {{ outage.secondsLeft }} с.
+        {{ $t('outage.retryIn', { seconds: outage.secondsLeft }) }}
       </template>
     </p>
     <p
       v-else
       class="outage-panel__text"
     >
-      Сервер розрахунку не відповідає. Перевірте з'єднання.
+      {{ $t('outage.noAnswer') }}
     </p>
     <button
       v-if="!outage.rateLimited"
@@ -34,7 +34,7 @@ const emit = defineEmits<{ retry: [] }>()
       class="outage-panel__button"
       @click="emit('retry')"
     >
-      Спробувати ще раз
+      {{ $t('app.retry') }}
     </button>
   </section>
 </template>

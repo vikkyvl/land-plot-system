@@ -8,13 +8,13 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { DomainError } from '../../domain/error'
 import type { MapLayers } from '../../domain/mapLayer'
 import type { Plot, PlotVersion } from '../../domain/plot'
-import type { MapPreferencesService } from '../../service/mapPreferencesService'
+import type { SettingsService } from '../../service/settingsService'
 import type { PlotService } from '../../service/plotService'
 import type { SessionService } from '../../service/sessionService'
 import {
   confirmationServiceKey,
   mapLayersKey,
-  mapPreferencesServiceKey,
+  settingsServiceKey,
   plotServiceKey,
   sessionServiceKey,
 } from '../composables/services'
@@ -100,7 +100,7 @@ async function mountDetail(
         [plotServiceKey as symbol]: service as unknown as PlotService,
         [sessionServiceKey as symbol]: {} as SessionService,
         [mapLayersKey as symbol]: layers,
-        [mapPreferencesServiceKey as symbol]: { layer: () => 'map' } as unknown as MapPreferencesService,
+        [settingsServiceKey as symbol]: { layer: () => 'map' } as unknown as SettingsService,
       },
       stubs: { PlotViewMap: true, Teleport: true },
     },

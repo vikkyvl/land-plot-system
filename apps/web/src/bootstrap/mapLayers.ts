@@ -2,7 +2,7 @@ import type { AppConfig } from '../config/env'
 import type { MapLayers } from '../domain/mapLayer'
 
 const mapAttribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-const satelliteAttribution = 'Знімки © Esri, Maxar, Earthstar Geographics'
+const satelliteAttribution = '© Esri, Maxar, Earthstar Geographics'
 const mapMaxZoom = 19
 const satelliteMaxZoom = 19
 

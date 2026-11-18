@@ -1,6 +1,6 @@
 <template>
   <div class="plots-empty">
-    <p>Оберіть ділянку зі списку, щоб побачити карту, площу та історію вимірювань.</p>
+    <p>{{ $t('plots.pick') }}</p>
   </div>
 </template>
 

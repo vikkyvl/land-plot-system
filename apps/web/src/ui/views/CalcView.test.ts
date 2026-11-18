@@ -7,14 +7,14 @@ import { DomainError } from '../../domain/error'
 import type { MapLayers } from '../../domain/mapLayer'
 import type { PlotPreview } from '../../domain/plot'
 import type { CalculatorService } from '../../service/calculatorService'
-import type { MapPreferencesService } from '../../service/mapPreferencesService'
+import type { SettingsService } from '../../service/settingsService'
 import type { PlaceSearchService } from '../../service/placeSearchService'
 import type { SessionService } from '../../service/sessionService'
 import {
   calculatorServiceKey,
   confirmationServiceKey,
   mapLayersKey,
-  mapPreferencesServiceKey,
+  settingsServiceKey,
   placeSearchServiceKey,
   sessionServiceKey,
 } from '../composables/services'
@@ -79,10 +79,10 @@ async function mountCalc(preview: () => Promise<PlotPreview>) {
         [calculatorServiceKey as symbol]: calculator as unknown as CalculatorService,
         [sessionServiceKey as symbol]: session as unknown as SessionService,
         [placeSearchServiceKey as symbol]: { search: vi.fn(async () => []) } as unknown as PlaceSearchService,
-        [mapPreferencesServiceKey as symbol]: {
+        [settingsServiceKey as symbol]: {
           layer: () => 'map',
           chooseLayer: vi.fn(),
-        } as unknown as MapPreferencesService,
+        } as unknown as SettingsService,
         [mapLayersKey as symbol]: layers,
       },
       stubs: { PlotMap: { template: '<div class="plot-map-stub"><slot /></div>' } },

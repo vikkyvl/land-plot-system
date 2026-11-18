@@ -85,7 +85,7 @@ onBeforeUnmount(cancel)
     <label
       class="visually-hidden"
       :for="`${listId}-input`"
-    >Пошук місця</label>
+    >{{ $t('search.label') }}</label>
     <input
       :id="`${listId}-input`"
       v-model="query"
@@ -110,7 +110,7 @@ onBeforeUnmount(cancel)
         :id="listId"
         class="place-search__list"
         role="listbox"
-        aria-label="Знайдені місця"
+        :aria-label="$t('search.results')"
       >
         <li
           v-for="(place, index) in places"
@@ -130,10 +130,10 @@ onBeforeUnmount(cancel)
         class="place-search__note"
         role="alert"
       >
-        Пошук зараз недоступний.
+        {{ $t('search.unavailable') }}
       </p>
       <p class="place-search__note">
-        Пошук: © OpenStreetMap, Nominatim
+        {{ $t('search.credit') }}
       </p>
     </div>
   </div>
