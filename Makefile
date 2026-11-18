@@ -1,5 +1,6 @@
 SERVICES := api-gateway identity-service land-plot-service report-service
 MODULES := $(addprefix services/,$(SERVICES)) ai tools/stripcomments
+WEB_DIR := apps/web
 STRIP_COMMENTS := go -C tools/stripcomments run . $(abspath services) $(abspath ai) $(abspath tools)
 
 # Runs a command in every Go module and stops at the first failure.
@@ -15,7 +16,7 @@ PLOT_TEST_DATABASE_URL ?= postgres://plot_user:plot_dev_password@localhost:$(POS
 REPORT_TEST_DATABASE_URL ?= postgres://report_user:report_dev_password@localhost:$(POSTGRES_PORT)/report_db?sslmode=disable
 INTEGRATION_TEST := go test -count=1 -tags=integration ./internal/repository/postgres/...
 
-.PHONY: fmt lint lint-fix strip-comments test test-integration vet check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector
+.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector
 
 # Formats code: gofumpt, import groups (gci) and long lines (golines).
 fmt:
@@ -49,6 +50,17 @@ vet:
 	$(call for_each_module,Vetting,go vet ./...)
 
 check: lint test vet compose-config
+
+# Installs the web app dependencies from package-lock.json when they are missing or outdated.
+$(WEB_DIR)/node_modules: $(WEB_DIR)/package.json $(WEB_DIR)/package-lock.json
+	cd $(WEB_DIR) && npm ci
+	@touch $@
+
+# Lints (including layer boundaries), tests and builds the web app.
+web-check: $(WEB_DIR)/node_modules
+	cd $(WEB_DIR) && npm run lint && npm run test && npm run build
+
+check-all: check web-check
 
 compose-config:
 	docker compose config --quiet
