@@ -47,6 +47,7 @@ export default defineConfigWithVueTs(
   },
   {
     files: ['src/domain/**/*.ts', 'src/port/**/*.ts', 'src/service/**/*.ts'],
+    ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
