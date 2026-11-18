@@ -74,3 +74,24 @@ func toCoordinates(records []pointRecord) []domain.Coordinate {
 
 	return points
 }
+
+func scanPlotVersion(row rowScanner) (domain.PlotVersion, error) {
+	var (
+		version domain.PlotVersion
+		points  []byte
+	)
+
+	err := row.Scan(
+		&version.PlotID, &version.Version, &version.Name, &points,
+		&version.AreaM2, &version.PerimeterM, &version.CreatedAt,
+	)
+	if err != nil {
+		return domain.PlotVersion{}, err
+	}
+
+	if version.Points, err = decodePoints(points); err != nil {
+		return domain.PlotVersion{}, err
+	}
+
+	return version, nil
+}

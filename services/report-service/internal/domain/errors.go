@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrRejectedEvent   = errors.New("event rejected by the consumer")
@@ -13,6 +16,9 @@ var (
 
 	ErrInvalidReportID = NewError(KindInvalidRequest, "invalid_report_id",
 		"report ID must be a valid UUID")
+
+	ErrInvalidQuery = NewError(KindInvalidRequest, "invalid_query",
+		fmt.Sprintf("plot_id must be a valid UUID and limit an integer between 1 and %d", MaximumReportLimit))
 
 	ErrPlotNotFound = NewError(KindNotFound, "plot_not_found",
 		"plot not found")

@@ -10,6 +10,7 @@ import (
 type PlotRepository interface {
 	GetByID(requestContext context.Context, id string) (domain.Plot, error)
 	ListByOwner(requestContext context.Context, ownerID string) ([]domain.Plot, error)
+	ListVersions(requestContext context.Context, plotID string) ([]domain.PlotVersion, error)
 	ExpiredSagaIDs(requestContext context.Context, limit int) ([]string, error)
 	InTransaction(requestContext context.Context, work func(store PlotStore) error) error
 }
@@ -21,6 +22,7 @@ type PlotStore interface {
 	StartSaga(requestContext context.Context, saga domain.Saga, timeout time.Duration) error
 	FinishSaga(requestContext context.Context, finish SagaFinish) (domain.Saga, bool, error)
 	AppendEvent(requestContext context.Context, event domain.PlotEvent) error
+	RecordVersion(requestContext context.Context, version domain.PlotVersion) error
 }
 
 type SagaFinish struct {

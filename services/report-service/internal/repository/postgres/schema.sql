@@ -43,6 +43,8 @@ ALTER TABLE reports ADD COLUMN IF NOT EXISTS plot_deleted_at TIMESTAMPTZ NULL;
 
 CREATE INDEX IF NOT EXISTS reports_plot_id_idx ON reports (plot_id);
 
+CREATE INDEX IF NOT EXISTS reports_owner_created_idx ON reports (owner_id, created_at DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS outbox_events (
     id UUID PRIMARY KEY,
     position BIGSERIAL NOT NULL,

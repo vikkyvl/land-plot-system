@@ -23,18 +23,20 @@ func discardLogger() *slog.Logger {
 }
 
 type storeState struct {
-	plots   map[string]domain.Plot
-	sagas   map[string]domain.Saga
-	reasons map[string]domain.CompensationReason
-	events  []domain.PlotEvent
+	plots    map[string]domain.Plot
+	sagas    map[string]domain.Saga
+	reasons  map[string]domain.CompensationReason
+	events   []domain.PlotEvent
+	versions []domain.PlotVersion
 }
 
 func (state storeState) clone() storeState {
 	return storeState{
-		plots:   maps.Clone(state.plots),
-		sagas:   maps.Clone(state.sagas),
-		reasons: maps.Clone(state.reasons),
-		events:  slices.Clone(state.events),
+		plots:    maps.Clone(state.plots),
+		sagas:    maps.Clone(state.sagas),
+		reasons:  maps.Clone(state.reasons),
+		events:   slices.Clone(state.events),
+		versions: slices.Clone(state.versions),
 	}
 }
 
@@ -75,6 +77,18 @@ func (repository *fakeRepository) GetByID(_ context.Context, id string) (domain.
 
 func (repository *fakeRepository) ListByOwner(context.Context, string) ([]domain.Plot, error) {
 	return slices.Collect(maps.Values(repository.committed.plots)), repository.err
+}
+
+func (repository *fakeRepository) ListVersions(_ context.Context, plotID string) ([]domain.PlotVersion, error) {
+	var versions []domain.PlotVersion
+
+	for _, version := range slices.Backward(repository.committed.versions) {
+		if version.PlotID == plotID {
+			versions = append(versions, version)
+		}
+	}
+
+	return versions, repository.err
 }
 
 func (repository *fakeRepository) ExpiredSagaIDs(context.Context, int) ([]string, error) {
@@ -151,6 +165,12 @@ func (store *fakeStore) AppendEvent(_ context.Context, event domain.PlotEvent) e
 	}
 
 	store.state.events = append(store.state.events, event)
+
+	return nil
+}
+
+func (store *fakeStore) RecordVersion(_ context.Context, version domain.PlotVersion) error {
+	store.state.versions = append(store.state.versions, version)
 
 	return nil
 }

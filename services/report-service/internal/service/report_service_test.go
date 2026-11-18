@@ -18,6 +18,8 @@ var testCaller = Caller{UserID: "owner-1", AccessToken: "token", RequestID: "req
 type reportRepositoryStub struct {
 	created domain.Report
 	report  domain.Report
+	filter  domain.ReportFilter
+	listed  bool
 	err     error
 }
 
@@ -28,6 +30,12 @@ func (stub *reportRepositoryStub) Create(_ context.Context, report domain.Report
 
 func (stub *reportRepositoryStub) GetByID(context.Context, string) (domain.Report, error) {
 	return stub.report, stub.err
+}
+
+func (stub *reportRepositoryStub) List(_ context.Context, filter domain.ReportFilter) ([]domain.Report, error) {
+	stub.filter, stub.listed = filter, true
+
+	return []domain.Report{stub.report}, stub.err
 }
 
 type plotClientStub struct {

@@ -134,3 +134,22 @@ func (store *plotStore) AppendEvent(requestContext context.Context, event domain
 
 	return nil
 }
+
+func (store *plotStore) RecordVersion(requestContext context.Context, version domain.PlotVersion) error {
+	points, err := encodePoints(version.Points)
+	if err != nil {
+		return err
+	}
+
+	_, err = store.transaction.Exec(requestContext, `
+		INSERT INTO plot_versions (plot_id, version, name, points, area_m2, perimeter_m, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (plot_id, version) DO NOTHING`,
+		version.PlotID, version.Version, version.Name, points, version.AreaM2, version.PerimeterM, version.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf(wrapInsertPlotVersion, err)
+	}
+
+	return nil
+}

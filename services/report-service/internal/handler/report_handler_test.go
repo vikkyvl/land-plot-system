@@ -83,3 +83,34 @@ func TestReportForDeletedPlotIsGone(t *testing.T) {
 		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
 	}
 }
+
+func TestListReportsPassesQueryAndOwner(t *testing.T) {
+	reports := &reportServiceStub{reports: []domain.Report{{ID: "report-2"}, {ID: "report-1"}}}
+
+	response := serve(newTestRouter(reports),
+		authorizedRequest(http.MethodGet, "/api/v1/reports?plot_id=plot-9&limit=5", ""))
+
+	body := decodeBody[[]reportResponse](t, response)
+	if response.Code != http.StatusOK || len(body) != 2 || body[0].ID != "report-2" ||
+		reports.ownerID != testOwnerID || reports.query != (service.ReportQuery{PlotID: "plot-9", Limit: "5"}) {
+		t.Fatalf("status = %d body = %#v query = %#v", response.Code, body, reports.query)
+	}
+}
+
+func TestListReportsWithoutReportsReturnsEmptyArray(t *testing.T) {
+	response := serve(newTestRouter(&reportServiceStub{}), authorizedRequest(http.MethodGet, "/api/v1/reports", ""))
+
+	if response.Code != http.StatusOK || response.Body.String() != "[]\n" {
+		t.Fatalf("status = %d body = %q", response.Code, response.Body.String())
+	}
+}
+
+func TestListReportsMapsInvalidQuery(t *testing.T) {
+	response := serve(newTestRouter(&reportServiceStub{err: domain.ErrInvalidQuery}),
+		authorizedRequest(http.MethodGet, "/api/v1/reports?limit=500", ""))
+
+	if response.Code != http.StatusBadRequest ||
+		decodeBody[respond.ErrorResponse](t, response).Code != "invalid_query" {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+}

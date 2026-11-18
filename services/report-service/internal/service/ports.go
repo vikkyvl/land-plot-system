@@ -16,6 +16,7 @@ type Caller struct {
 type ReportRepository interface {
 	Create(requestContext context.Context, report domain.Report) error
 	GetByID(requestContext context.Context, id string) (domain.Report, error)
+	List(requestContext context.Context, filter domain.ReportFilter) ([]domain.Report, error)
 }
 
 type PlotClient interface {

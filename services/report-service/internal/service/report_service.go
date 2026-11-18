@@ -77,6 +77,24 @@ func (reportService *ReportService) Get(
 	return report, nil
 }
 
+func (reportService *ReportService) List(
+	requestContext context.Context,
+	ownerID string,
+	query ReportQuery,
+) ([]domain.Report, error) {
+	filter, err := newReportFilter(ownerID, query)
+	if err != nil {
+		return nil, err
+	}
+
+	reports, err := reportService.repository.List(requestContext, filter)
+	if err != nil {
+		return nil, fmt.Errorf(wrapListReports, err)
+	}
+
+	return reports, nil
+}
+
 func (reportService *ReportService) Trace(
 	requestContext context.Context,
 	caller Caller,

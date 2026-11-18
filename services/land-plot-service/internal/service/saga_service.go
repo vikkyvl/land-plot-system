@@ -40,7 +40,12 @@ func (sagaService *SagaService) Confirm(processingContext context.Context, sagaI
 			return err
 		}
 
-		if err := store.UpdatePlot(processingContext, plot.Confirmed(), plot.Version); err != nil {
+		confirmed := plot.Confirmed()
+		if err := store.UpdatePlot(processingContext, confirmed, plot.Version); err != nil {
+			return err
+		}
+
+		if err := store.RecordVersion(processingContext, confirmed.ConfirmedVersion()); err != nil {
 			return err
 		}
 
@@ -141,6 +146,12 @@ func (sagaService *SagaService) compensate(
 	compensated, eventType := saga.Compensate(plot, sagaService.now())
 	if err := store.UpdatePlot(processingContext, compensated, plot.Version); err != nil {
 		return false, err
+	}
+
+	if compensated.Status == domain.StatusConfirmed {
+		if err := store.RecordVersion(processingContext, compensated.ConfirmedVersion()); err != nil {
+			return false, err
+		}
 	}
 
 	if err := store.AppendEvent(

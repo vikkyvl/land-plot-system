@@ -25,6 +25,7 @@ func TestEveryRouteRequiresItsScopes(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/v1/reports", createBody, []string{domain.ScopeReportsWrite, domain.ScopePlotsRead}},
 		{http.MethodGet, "/api/v1/reports/report-1", "", []string{domain.ScopeReportsRead}},
+		{http.MethodGet, "/api/v1/reports", "", []string{domain.ScopeReportsRead}},
 	}
 	for _, test := range tests {
 		for _, missing := range test.scopes {

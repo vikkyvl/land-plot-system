@@ -15,6 +15,7 @@ const (
 	wrapMarkReportsPlotDeleted      = "mark reports of a deleted plot: %w"
 	wrapPublishOutboxEvent          = "publish outbox event: %w"
 	wrapQueryReportByID             = "query report by ID: %w"
+	wrapQueryReports                = "query reports: %w"
 	wrapRecordOutboxFailure         = "record outbox failure: %w"
 	wrapRecordProcessedEvent        = "record processed event: %w"
 	wrapSimulatedWriteFailure       = "%w for plot %q"

@@ -117,3 +117,40 @@ func TestDeletePlotNeedsWriteScope(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
 }
+
+func TestPlotVersionsReturnsNewestFirstWithUnits(t *testing.T) {
+	createdAt := time.Date(2026, time.October, 27, 10, 0, 0, 0, time.UTC)
+	plots := &plotServiceStub{versions: []domain.PlotVersion{
+		{
+			Version: 2, Name: "Plot", AreaM2: 24_810, PerimeterM: 612, CreatedAt: createdAt,
+			Points: []domain.Coordinate{{Latitude: 50.45, Longitude: 30.52}},
+		},
+		{Version: 1, Name: "Plot", AreaM2: 24_100, PerimeterM: 598, CreatedAt: createdAt.Add(-48 * time.Hour)},
+	}}
+
+	response := serve(newTestRouter(plots), authorizedRequest(http.MethodGet, "/api/v1/plots/plot-1/versions", ""))
+
+	body := decodeBody[[]plotVersionResponse](t, response)
+	if response.Code != http.StatusOK || len(body) != 2 || body[0].Version != 2 || body[0].AreaHectares != 2.481 ||
+		body[0].AreaAres != 248.1 || len(body[0].Points) != 1 || body[1].Points == nil || plots.ownerID != testOwnerID {
+		t.Fatalf("status = %d body = %#v", response.Code, body)
+	}
+}
+
+func TestPlotVersionsOfUnknownPlotReturnEmptyArrayNotNull(t *testing.T) {
+	response := serve(newTestRouter(&plotServiceStub{}),
+		authorizedRequest(http.MethodGet, "/api/v1/plots/plot-1/versions", ""))
+
+	if response.Code != http.StatusOK || response.Body.String() != "[]\n" {
+		t.Fatalf("status = %d body = %q", response.Code, response.Body.String())
+	}
+}
+
+func TestPlotVersionsNeedReadScope(t *testing.T) {
+	response := serve(newTestRouterWithScopes(&plotServiceStub{}, domain.ScopePlotsWrite),
+		authorizedRequest(http.MethodGet, "/api/v1/plots/plot-1/versions", ""))
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}

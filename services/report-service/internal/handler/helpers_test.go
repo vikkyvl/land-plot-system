@@ -21,6 +21,8 @@ const (
 )
 
 type reportServiceStub struct {
+	query   service.ReportQuery
+	reports []domain.Report
 	caller  service.Caller
 	plotID  string
 	ownerID string
@@ -32,6 +34,16 @@ type reportServiceStub struct {
 func (stub *reportServiceStub) Create(_ context.Context, caller service.Caller, plotID string) (domain.Report, error) {
 	stub.caller, stub.plotID = caller, plotID
 	return stub.report, stub.err
+}
+
+func (stub *reportServiceStub) List(
+	_ context.Context,
+	ownerID string,
+	query service.ReportQuery,
+) ([]domain.Report, error) {
+	stub.ownerID, stub.query = ownerID, query
+
+	return stub.reports, stub.err
 }
 
 func (stub *reportServiceStub) Get(_ context.Context, ownerID, _ string) (domain.Report, error) {

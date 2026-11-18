@@ -23,6 +23,7 @@ type plotServiceStub struct {
 	ownerID   string
 	changes   domain.PlotChanges
 	deletedID string
+	versions  []domain.PlotVersion
 	plot      domain.Plot
 	err       error
 }
@@ -58,6 +59,12 @@ func (stub *plotServiceStub) Delete(_ context.Context, ownerID, plotID string) e
 	stub.deletedID = plotID
 
 	return stub.err
+}
+
+func (stub *plotServiceStub) Versions(_ context.Context, ownerID, _ string) ([]domain.PlotVersion, error) {
+	stub.ownerID = ownerID
+
+	return stub.versions, stub.err
 }
 
 func (stub *plotServiceStub) Preview(points []domain.Coordinate) domain.PolygonInspection {

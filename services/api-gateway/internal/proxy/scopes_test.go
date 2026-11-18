@@ -27,7 +27,10 @@ func TestRequiredScopes(t *testing.T) {
 		{http.MethodDelete, "/api/v1/plots", nil, false},
 		{http.MethodGet, "/api/v1/plots/plot-1/history", nil, false},
 		{http.MethodGet, "/api/v1/plots/", nil, false},
-		{http.MethodGet, "/api/v1/reports", nil, false},
+		{http.MethodGet, "/api/v1/reports", []string{ScopeReportsRead}, true},
+		{http.MethodGet, "/api/v1/plots/plot-1/versions", []string{ScopePlotsRead}, true},
+		{http.MethodGet, "/api/v1/plots/plot-1/versions/1", nil, false},
+		{http.MethodPost, "/api/v1/plots/plot-1/versions", nil, false},
 	}
 	for _, test := range tests {
 		t.Run(test.method+" "+test.path, func(t *testing.T) {

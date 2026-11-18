@@ -41,6 +41,17 @@ type plotResponse struct {
 	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
+type plotVersionResponse struct {
+	Version      int64           `json:"version"`
+	Name         string          `json:"name"`
+	AreaM2       float64         `json:"area_m2"`
+	AreaAres     float64         `json:"area_ares"`
+	AreaHectares float64         `json:"area_hectares"`
+	PerimeterM   float64         `json:"perimeter_m"`
+	Points       []coordinateDTO `json:"points"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
 type previewPlotResponse struct {
 	AreaM2       *float64                  `json:"area_m2"`
 	AreaAres     *float64                  `json:"area_ares"`
@@ -69,11 +80,35 @@ func toCoordinates(points []coordinateDTO) []domain.Coordinate {
 	return coordinates
 }
 
-func newPlotResponse(plot domain.Plot) plotResponse {
-	points := make([]coordinateDTO, len(plot.Points))
-	for i, point := range plot.Points {
+func toCoordinateDTOs(coordinates []domain.Coordinate) []coordinateDTO {
+	points := make([]coordinateDTO, len(coordinates))
+	for i, point := range coordinates {
 		points[i] = coordinateDTO{Latitude: point.Latitude, Longitude: point.Longitude}
 	}
+
+	return points
+}
+
+func newPlotVersionResponses(versions []domain.PlotVersion) []plotVersionResponse {
+	responses := make([]plotVersionResponse, 0, len(versions))
+	for _, version := range versions {
+		responses = append(responses, plotVersionResponse{
+			Version:      version.Version,
+			Name:         version.Name,
+			AreaM2:       version.AreaM2,
+			AreaAres:     domain.SquareMetersToAres(version.AreaM2),
+			AreaHectares: domain.SquareMetersToHectares(version.AreaM2),
+			PerimeterM:   version.PerimeterM,
+			Points:       toCoordinateDTOs(version.Points),
+			CreatedAt:    version.CreatedAt,
+		})
+	}
+
+	return responses
+}
+
+func newPlotResponse(plot domain.Plot) plotResponse {
+	points := toCoordinateDTOs(plot.Points)
 
 	return plotResponse{
 		ID:           plot.ID,

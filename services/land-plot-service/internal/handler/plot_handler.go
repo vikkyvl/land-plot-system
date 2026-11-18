@@ -99,3 +99,17 @@ func (handler *plotHandler) remove(response http.ResponseWriter, request *http.R
 
 	response.WriteHeader(http.StatusNoContent)
 }
+
+func (handler *plotHandler) versions(response http.ResponseWriter, request *http.Request) {
+	versions, err := handler.plots.Versions(
+		request.Context(),
+		middleware.UserID(request.Context()),
+		request.PathValue("id"),
+	)
+	if err != nil {
+		handler.responses.Error(response, request, err)
+		return
+	}
+
+	handler.responses.JSON(response, http.StatusOK, newPlotVersionResponses(versions))
+}

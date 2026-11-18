@@ -8,5 +8,6 @@ const (
 	wrapDeletePlot             = "delete plot: %w"
 	wrapGetPlot                = "get plot: %w"
 	wrapListPlots              = "list plots: %w"
+	wrapListPlotVersions       = "list plot versions: %w"
 	wrapUpdatePlot             = "update plot: %w"
 )

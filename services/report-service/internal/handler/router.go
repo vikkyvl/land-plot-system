@@ -43,6 +43,7 @@ func protectedRoutes(reports *reportHandler, trace *traceHandler) []protectedRou
 			scopes:  []string{domain.ScopeReportsWrite, domain.ScopePlotsRead},
 			handle:  reports.create,
 		},
+		{pattern: "GET /api/v1/reports", scopes: []string{domain.ScopeReportsRead}, handle: reports.list},
 		{pattern: "GET /api/v1/reports/{id}", scopes: []string{domain.ScopeReportsRead}, handle: reports.get},
 		{pattern: "GET /api/v1/demo/chain", handle: trace.trace},
 	}

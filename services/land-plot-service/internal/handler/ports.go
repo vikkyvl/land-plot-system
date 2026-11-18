@@ -12,5 +12,6 @@ type PlotService interface {
 	Get(requestContext context.Context, ownerID, plotID string) (domain.Plot, error)
 	Update(requestContext context.Context, ownerID, plotID string, changes domain.PlotChanges) (domain.Plot, error)
 	Delete(requestContext context.Context, ownerID, plotID string) error
+	Versions(requestContext context.Context, ownerID, plotID string) ([]domain.PlotVersion, error)
 	Preview(points []domain.Coordinate) domain.PolygonInspection
 }

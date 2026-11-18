@@ -10,5 +10,6 @@ import (
 type ReportService interface {
 	Create(requestContext context.Context, caller service.Caller, plotID string) (domain.Report, error)
 	Get(requestContext context.Context, ownerID, reportID string) (domain.Report, error)
+	List(requestContext context.Context, ownerID string, query service.ReportQuery) ([]domain.Report, error)
 	Trace(requestContext context.Context, caller service.Caller, gatewayInstance, message string) (domain.Trace, error)
 }

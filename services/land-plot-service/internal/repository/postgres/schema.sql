@@ -23,6 +23,24 @@ ALTER TABLE plots ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'CONFIRM
 
 ALTER TABLE plots ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;
 
+CREATE TABLE IF NOT EXISTS plot_versions (
+    plot_id UUID NOT NULL REFERENCES plots (id),
+    version BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    points JSONB NOT NULL,
+    area_m2 DOUBLE PRECISION NOT NULL,
+    perimeter_m DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (plot_id, version)
+);
+
+-- Plots confirmed before the history existed start it with their current version.
+INSERT INTO plot_versions (plot_id, version, name, points, area_m2, perimeter_m, created_at)
+SELECT id, version, name, points, area_m2, perimeter_m, updated_at
+FROM plots
+WHERE status = 'CONFIRMED' AND deleted_at IS NULL
+ON CONFLICT (plot_id, version) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS plot_sagas (
     id UUID PRIMARY KEY,
     plot_id UUID NOT NULL REFERENCES plots (id),

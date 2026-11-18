@@ -92,7 +92,7 @@ func (repository *PlotRepository) ListByOwner(requestContext context.Context, ow
 	rows, err := repository.pool.Query(requestContext, `
 		SELECT `+plotColumns+` FROM plots
 		WHERE owner_id = $1 AND status <> $2 AND deleted_at IS NULL
-		ORDER BY created_at, id`,
+		ORDER BY updated_at DESC, id`,
 		ownerID, domain.StatusCancelled,
 	)
 	if err != nil {
@@ -116,4 +116,38 @@ func (repository *PlotRepository) ListByOwner(requestContext context.Context, ow
 	}
 
 	return plots, nil
+}
+
+func (repository *PlotRepository) ListVersions(
+	requestContext context.Context,
+	plotID string,
+) ([]domain.PlotVersion, error) {
+	rows, err := repository.pool.Query(requestContext, `
+		SELECT plot_id, version, name, points, area_m2, perimeter_m, created_at
+		FROM plot_versions
+		WHERE plot_id = $1
+		ORDER BY version DESC`,
+		plotID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(wrapQueryPlotVersions, err)
+	}
+	defer rows.Close()
+
+	versions := make([]domain.PlotVersion, 0)
+
+	for rows.Next() {
+		version, err := scanPlotVersion(rows)
+		if err != nil {
+			return nil, fmt.Errorf(wrapQueryPlotVersions, err)
+		}
+
+		versions = append(versions, version)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(wrapQueryPlotVersions, err)
+	}
+
+	return versions, nil
 }

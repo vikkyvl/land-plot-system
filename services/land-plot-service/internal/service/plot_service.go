@@ -91,6 +91,22 @@ func (plotService *PlotService) Get(requestContext context.Context, ownerID, plo
 	return plot, nil
 }
 
+func (plotService *PlotService) Versions(
+	requestContext context.Context,
+	ownerID, plotID string,
+) ([]domain.PlotVersion, error) {
+	if _, err := plotService.Get(requestContext, ownerID, plotID); err != nil {
+		return nil, err
+	}
+
+	versions, err := plotService.repository.ListVersions(requestContext, plotID)
+	if err != nil {
+		return nil, fmt.Errorf(wrapListPlotVersions, err)
+	}
+
+	return versions, nil
+}
+
 func (plotService *PlotService) Delete(requestContext context.Context, ownerID, plotID string) error {
 	plot, err := plotService.Get(requestContext, ownerID, plotID)
 	if err != nil {
