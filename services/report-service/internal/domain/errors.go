@@ -41,3 +41,8 @@ var (
 	ErrPlotNotConfirmed = NewError(KindConflict, "plot_not_confirmed",
 		"plot is waiting for confirmation; retry the request later")
 )
+
+var (
+	ErrElevationCountMismatch = errors.New("elevation count does not match the sampled points")
+	ErrDegenerateTerrainGrid  = errors.New("sampled points do not span a plane")
+)

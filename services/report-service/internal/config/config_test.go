@@ -120,3 +120,36 @@ func TestLoadReadsOutboxCleanupSettings(t *testing.T) {
 		t.Fatalf("Load() = %v, %v, %v", serviceConfig.OutboxCleanupInterval, serviceConfig.OutboxRetention, err)
 	}
 }
+
+func TestLoadReadsExternalDataSettings(t *testing.T) {
+	setRequiredEnv(t)
+
+	serviceConfig, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if serviceConfig.OpenMeteo.ElevationURL != defaultElevationURL ||
+		serviceConfig.OpenMeteo.Timeout != defaultOpenMeteoTimeout ||
+		serviceConfig.Terrain != (TerrainConfig{GridSide: 10, MarginM: 90, CoarseAreaM2: 10_000}) {
+		t.Fatalf("Load() = %+v, %+v", serviceConfig.OpenMeteo, serviceConfig.Terrain)
+	}
+
+	invalid := map[string]string{
+		"OPEN_METEO_ELEVATION_URL": "ftp://example.org",
+		"OPEN_METEO_TIMEOUT":       "0s",
+		"TERRAIN_GRID_SIDE":        "11",
+		"TERRAIN_MARGIN_M":         "-5",
+		"TERRAIN_COARSE_AREA_M2":   "lots",
+	}
+	for key, value := range invalid {
+		t.Run(key, func(t *testing.T) {
+			setRequiredEnv(t)
+			t.Setenv(key, value)
+
+			if _, err := Load(); err == nil {
+				t.Fatalf("%s=%q: Load() error = nil", key, value)
+			}
+		})
+	}
+}

@@ -32,7 +32,23 @@ const (
 	maximumPort              = 65535
 )
 
+const (
+	defaultElevationURL     = "https://api.open-meteo.com/v1/elevation"
+	defaultOpenMeteoTimeout = 3 * time.Second
+	defaultTerrainGridSide  = 10
+	defaultTerrainMarginM   = 90
+	defaultCoarseAreaM2     = 10_000
+	minimumTerrainGridSide  = 2
+	maximumTerrainGridSide  = 10
+)
+
 var (
+	errInvalidGridSide = fmt.Errorf(
+		formatMustBeBetween,
+		envTerrainGridSide,
+		minimumTerrainGridSide,
+		maximumTerrainGridSide,
+	)
 	errInvalidPort     = errors.New(envHTTPAddress + " must contain a valid port")
 	errInvalidPrefetch = errors.New(envRabbitMQPrefetch + " must be a positive integer")
 )
@@ -63,6 +79,20 @@ type Config struct {
 
 	OutboxCleanupInterval time.Duration
 	OutboxRetention       time.Duration
+
+	OpenMeteo OpenMeteoConfig
+	Terrain   TerrainConfig
+}
+
+type OpenMeteoConfig struct {
+	ElevationURL string
+	Timeout      time.Duration
+}
+
+type TerrainConfig struct {
+	GridSide     int
+	MarginM      float64
+	CoarseAreaM2 float64
 }
 
 func Load() (Config, error) {
@@ -103,6 +133,10 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	if err := serviceConfig.loadExternalData(); err != nil {
+		return Config{}, err
+	}
+
 	if serviceConfig.InstanceID == "" {
 		if serviceConfig.InstanceID, err = defaultInstanceID(); err != nil {
 			return Config{}, err
@@ -139,6 +173,38 @@ func (serviceConfig *Config) loadDurations() error {
 	}
 
 	return nil
+}
+
+func (serviceConfig *Config) loadExternalData() error {
+	serviceConfig.OpenMeteo.ElevationURL = stringOrDefault(envOpenMeteoElevationURL, defaultElevationURL)
+	if err := requireHTTPURL(envOpenMeteoElevationURL, serviceConfig.OpenMeteo.ElevationURL); err != nil {
+		return err
+	}
+
+	var err error
+	if serviceConfig.OpenMeteo.Timeout, err = durationOrDefault(
+		envOpenMeteoTimeout,
+		defaultOpenMeteoTimeout,
+	); err != nil {
+		return err
+	}
+
+	terrain := &serviceConfig.Terrain
+	if terrain.GridSide, err = positiveIntOrDefault(envTerrainGridSide, defaultTerrainGridSide); err != nil {
+		return err
+	}
+
+	if terrain.GridSide < minimumTerrainGridSide || terrain.GridSide > maximumTerrainGridSide {
+		return errInvalidGridSide
+	}
+
+	if terrain.MarginM, err = positiveNumberOrDefault(envTerrainMarginM, defaultTerrainMarginM); err != nil {
+		return err
+	}
+
+	terrain.CoarseAreaM2, err = positiveNumberOrDefault(envTerrainCoarseAreaM2, defaultCoarseAreaM2)
+
+	return err
 }
 
 func (serviceConfig *Config) validate() error {

@@ -1,6 +1,11 @@
 package config
 
 const (
+	envOpenMeteoElevationURL    = "OPEN_METEO_ELEVATION_URL"
+	envOpenMeteoTimeout         = "OPEN_METEO_TIMEOUT"
+	envTerrainCoarseAreaM2      = "TERRAIN_COARSE_AREA_M2"
+	envTerrainGridSide          = "TERRAIN_GRID_SIDE"
+	envTerrainMarginM           = "TERRAIN_MARGIN_M"
 	envConsulAddress            = "CONSUL_ADDRESS"
 	envConsulTimeout            = "CONSUL_TIMEOUT"
 	envDatabaseTimeout          = "DATABASE_TIMEOUT"

@@ -24,6 +24,10 @@ type PlotClient interface {
 	Trace(requestContext context.Context, caller Caller, message string) ([]domain.TraceHop, error)
 }
 
+type ElevationProvider interface {
+	Elevations(requestContext context.Context, points []domain.Coordinate) ([]float64, error)
+}
+
 type PlotSummaryRepository interface {
 	Apply(processingContext context.Context, event domain.PlotEvent, reply domain.SummaryApplied) error
 }
