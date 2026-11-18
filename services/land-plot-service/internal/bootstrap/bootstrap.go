@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/config"
-	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/messaging/rabbitmq"
@@ -20,9 +19,9 @@ import (
 )
 
 func Run() error {
-	serviceConfig, err := config.Load()
+	serviceConfig, accuracy, err := loadConfig()
 	if err != nil {
-		return fmt.Errorf(wrapLoadConfig, err)
+		return err
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(logging.KeyService, config.ServiceName)
@@ -45,7 +44,7 @@ func Run() error {
 		}
 	}()
 
-	plots := service.NewPlotService(plotRepository, domain.LocalEllipsoidCalculator{}, serviceConfig.SagaTimeout)
+	plots := newPlotService(plotRepository, accuracy, serviceConfig.SagaTimeout)
 	sagas := service.NewSagaService(plotRepository, logger)
 	relay := service.NewOutboxRelay(
 		postgres.NewOutboxRepository(pool),

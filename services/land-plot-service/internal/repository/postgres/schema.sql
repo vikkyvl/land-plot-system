@@ -23,6 +23,10 @@ ALTER TABLE plots ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'CONFIRM
 
 ALTER TABLE plots ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;
 
+-- Plots stored before the accuracy estimate have no capture, so the worst case applies to them.
+ALTER TABLE plots ADD COLUMN IF NOT EXISTS capture JSONB NULL;
+ALTER TABLE plots ADD COLUMN IF NOT EXISTS obstructions JSONB NOT NULL DEFAULT '[]';
+
 CREATE TABLE IF NOT EXISTS plot_versions (
     plot_id UUID NOT NULL REFERENCES plots (id),
     version BIGINT NOT NULL,
@@ -33,6 +37,9 @@ CREATE TABLE IF NOT EXISTS plot_versions (
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (plot_id, version)
 );
+
+ALTER TABLE plot_versions ADD COLUMN IF NOT EXISTS capture JSONB NULL;
+ALTER TABLE plot_versions ADD COLUMN IF NOT EXISTS obstructions JSONB NOT NULL DEFAULT '[]';
 
 -- Plots confirmed before the history existed start it with their current version.
 INSERT INTO plot_versions (plot_id, version, name, points, area_m2, perimeter_m, created_at)

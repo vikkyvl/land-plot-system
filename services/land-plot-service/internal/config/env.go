@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -24,6 +25,20 @@ func positiveIntOrDefault(key string, fallback int) (int, error) {
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < 1 {
 		return 0, fmt.Errorf(formatMustBeAPositiveInteger, key)
+	}
+
+	return parsed, nil
+}
+
+func positiveNumberOrDefault(key string, fallback float64) (float64, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || !(parsed > 0) || math.IsInf(parsed, 0) {
+		return 0, fmt.Errorf(formatMustBeAPositiveNumber, key)
 	}
 
 	return parsed, nil

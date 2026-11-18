@@ -15,6 +15,9 @@ type plotStateRecord struct {
 	AreaM2     float64       `json:"area_m2"`
 	PerimeterM float64       `json:"perimeter_m"`
 	Version    int64         `json:"version"`
+
+	Capture      *captureRecord      `json:"capture,omitempty"`
+	Obstructions []obstructionRecord `json:"obstructions,omitempty"`
 }
 
 func scanSaga(row rowScanner) (domain.Saga, error) {
@@ -50,6 +53,9 @@ func encodePreviousState(state *domain.PlotState) ([]byte, error) {
 		AreaM2:     state.AreaM2,
 		PerimeterM: state.PerimeterM,
 		Version:    state.Version,
+
+		Capture:      toCaptureRecord(state.Survey.Capture),
+		Obstructions: toObstructionRecords(state.Survey.Obstructions),
 	})
 	if err != nil {
 		return nil, fmt.Errorf(wrapEncodePreviousState, err)
@@ -73,6 +79,10 @@ func decodePreviousState(encoded []byte) (*domain.PlotState, error) {
 		Points:     toCoordinates(record.Points),
 		AreaM2:     record.AreaM2,
 		PerimeterM: record.PerimeterM,
-		Version:    record.Version,
+		Survey: domain.Survey{
+			Capture:      toCapture(record.Capture),
+			Obstructions: toObstructions(record.Obstructions),
+		},
+		Version: record.Version,
 	}, nil
 }

@@ -147,3 +147,30 @@ func TestLoadReadsOIDCSettings(t *testing.T) {
 			serviceConfig.OIDCIssuer, serviceConfig.OIDCAudience, serviceConfig.OIDCTimeout)
 	}
 }
+
+func TestLoadReadsAccuracySettings(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("ACCURACY_TREES_M", "4.5")
+	t.Setenv("ACCURACY_FALLBACK_LAYER", "map")
+
+	serviceConfig, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	accuracy := serviceConfig.Accuracy
+	if accuracy.TreesM != 4.5 || accuracy.FallbackLayer != "map" ||
+		accuracy.TouchClickPixels != defaultTouchClickPixels ||
+		accuracy.FallbackZoom != defaultFallbackZoom ||
+		accuracy.FallbackPointer != defaultFallbackPointer {
+		t.Fatalf("Accuracy = %+v", accuracy)
+	}
+
+	for _, value := range []string{"0", "-1", "many", "NaN", "Inf"} {
+		t.Setenv("ACCURACY_UNCLEAR_M", value)
+
+		if _, err := Load(); err == nil {
+			t.Errorf("ACCURACY_UNCLEAR_M=%q: Load() error = nil", value)
+		}
+	}
+}

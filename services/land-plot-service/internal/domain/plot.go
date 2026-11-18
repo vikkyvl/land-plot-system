@@ -22,6 +22,8 @@ type Plot struct {
 	Points     []Coordinate
 	AreaM2     float64
 	PerimeterM float64
+	Survey     Survey
+	Accuracy   Accuracy
 	Version    int64
 	Status     PlotStatus
 	CreatedAt  time.Time
@@ -33,11 +35,14 @@ type PlotDraft struct {
 	OwnerID string
 	Name    string
 	Points  []Coordinate
+	Survey  Survey
 }
 
 type PlotChanges struct {
-	Name   *string
-	Points *[]Coordinate
+	Name         *string
+	Points       *[]Coordinate
+	Capture      *Capture
+	Obstructions *[]Obstruction
 }
 
 type PlotState struct {
@@ -45,12 +50,17 @@ type PlotState struct {
 	Points     []Coordinate
 	AreaM2     float64
 	PerimeterM float64
+	Survey     Survey
 	Version    int64
 }
 
 func NewPlot(id string, draft PlotDraft, calculator AreaCalculator, now time.Time) (Plot, error) {
 	normalizedName, err := normalizeName(draft.Name)
 	if err != nil {
+		return Plot{}, err
+	}
+
+	if err := draft.Survey.Validate(len(draft.Points)); err != nil {
 		return Plot{}, err
 	}
 
@@ -68,6 +78,7 @@ func NewPlot(id string, draft PlotDraft, calculator AreaCalculator, now time.Tim
 		Points:     clonePoints(draft.Points),
 		AreaM2:     result.AreaM2,
 		PerimeterM: result.PerimeterM,
+		Survey:     draft.Survey.clone(),
 		Version:    1,
 		Status:     StatusPending,
 		CreatedAt:  createdAt,
@@ -76,7 +87,11 @@ func NewPlot(id string, draft PlotDraft, calculator AreaCalculator, now time.Tim
 }
 
 func (plot Plot) Updated(changes PlotChanges, calculator AreaCalculator, now time.Time) (Plot, error) {
-	if changes.Name == nil && changes.Points == nil {
+	if changes.Capture != nil && changes.Points == nil {
+		return Plot{}, ErrInvalidCapture
+	}
+
+	if changes.empty() {
 		return Plot{}, ErrNoChanges
 	}
 
@@ -94,6 +109,13 @@ func (plot Plot) Updated(changes PlotChanges, calculator AreaCalculator, now tim
 
 		updated.Name = name
 	}
+
+	survey := changes.survey(plot.Survey)
+	if err := survey.Validate(len(changes.pointsOr(plot.Points))); err != nil {
+		return Plot{}, err
+	}
+
+	updated.Survey = survey
 
 	if changes.Points != nil {
 		result, err := measure(*changes.Points, calculator)
@@ -138,6 +160,7 @@ func (plot Plot) State() PlotState {
 		Points:     clonePoints(plot.Points),
 		AreaM2:     plot.AreaM2,
 		PerimeterM: plot.PerimeterM,
+		Survey:     plot.Survey.clone(),
 		Version:    plot.Version,
 	}
 }
@@ -161,11 +184,37 @@ func (plot Plot) Restored(previous PlotState, now time.Time) Plot {
 	plot.Points = clonePoints(previous.Points)
 	plot.AreaM2 = previous.AreaM2
 	plot.PerimeterM = previous.PerimeterM
+	plot.Survey = previous.Survey.clone()
 	plot.Status = StatusConfirmed
 	plot.Version++
 	plot.UpdatedAt = now.UTC()
 
 	return plot
+}
+
+func (changes PlotChanges) empty() bool {
+	return changes.Name == nil && changes.Points == nil && changes.Obstructions == nil
+}
+
+func (changes PlotChanges) pointsOr(current []Coordinate) []Coordinate {
+	if changes.Points != nil {
+		return *changes.Points
+	}
+
+	return current
+}
+
+func (changes PlotChanges) survey(current Survey) Survey {
+	survey := current.clone()
+	if changes.Points != nil {
+		survey = Survey{Capture: changes.Capture}
+	}
+
+	if changes.Obstructions != nil {
+		survey.Obstructions = append([]Obstruction(nil), *changes.Obstructions...)
+	}
+
+	return survey
 }
 
 func normalizeName(name string) (string, error) {

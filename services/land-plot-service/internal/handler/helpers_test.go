@@ -19,8 +19,12 @@ const (
 	testPlotBody    = `{"name":"Plot","points":[{"lat":50,"lon":30},{"lat":50,"lon":30.001},{"lat":50.001,"lon":30}]}`
 )
 
+var stubAccuracy = domain.Accuracy{AreaMarginM2: 500, Percent: 2, Confidence: domain.AccuracyConfidence}
+
 type plotServiceStub struct {
 	ownerID   string
+	draft     domain.PlotDraft
+	survey    domain.Survey
 	changes   domain.PlotChanges
 	deletedID string
 	versions  []domain.PlotVersion
@@ -30,6 +34,8 @@ type plotServiceStub struct {
 
 func (stub *plotServiceStub) Create(_ context.Context, draft domain.PlotDraft) (domain.Plot, error) {
 	stub.ownerID = draft.OwnerID
+	stub.draft = draft
+
 	return stub.plot, stub.err
 }
 
@@ -67,8 +73,22 @@ func (stub *plotServiceStub) Versions(_ context.Context, ownerID, _ string) ([]d
 	return stub.versions, stub.err
 }
 
-func (stub *plotServiceStub) Preview(points []domain.Coordinate) domain.PolygonInspection {
-	return domain.InspectPolygon(points, domain.LocalEllipsoidCalculator{})
+func (stub *plotServiceStub) Preview(
+	points []domain.Coordinate,
+	survey domain.Survey,
+) (domain.PolygonInspection, error) {
+	stub.survey = survey
+
+	if err := survey.Validate(len(points)); err != nil {
+		return domain.PolygonInspection{}, err
+	}
+
+	inspection := domain.InspectPolygon(points, domain.LocalEllipsoidCalculator{})
+	if inspection.Valid() {
+		inspection.Accuracy = &stubAccuracy
+	}
+
+	return inspection, nil
 }
 
 var allScopes = []string{domain.ScopePlotsRead, domain.ScopePlotsWrite}

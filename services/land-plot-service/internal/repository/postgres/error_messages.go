@@ -1,6 +1,8 @@
 package postgres
 
 const (
+	wrapDecodePlotSurvey            = "decode plot survey: %w"
+	wrapEncodePlotSurvey            = "encode plot survey: %w"
 	wrapApplyPlotSchema             = "apply plot schema: %w"
 	wrapBeginOutboxTransaction      = "begin outbox transaction: %w"
 	wrapBeginPlotTransaction        = "begin plot transaction: %w"

@@ -22,11 +22,16 @@ func (store *plotStore) CreatePlot(requestContext context.Context, plot domain.P
 		return err
 	}
 
+	survey, err := encodeSurvey(plot.Survey)
+	if err != nil {
+		return err
+	}
+
 	_, err = store.transaction.Exec(requestContext, `
 		INSERT INTO plots (`+plotColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		plot.ID, plot.OwnerID, plot.Name, points, plot.AreaM2, plot.PerimeterM,
-		plot.Version, plot.Status, plot.CreatedAt, plot.UpdatedAt, plot.DeletedAt,
+		plot.Version, plot.Status, plot.CreatedAt, plot.UpdatedAt, plot.DeletedAt, survey.capture, survey.obstructions,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertPlot, err)
@@ -41,13 +46,18 @@ func (store *plotStore) UpdatePlot(requestContext context.Context, plot domain.P
 		return err
 	}
 
+	survey, err := encodeSurvey(plot.Survey)
+	if err != nil {
+		return err
+	}
+
 	command, err := store.transaction.Exec(requestContext, `
 		UPDATE plots
 		SET name = $1, points = $2, area_m2 = $3, perimeter_m = $4, version = $5, status = $6, updated_at = $7,
-			deleted_at = $8
+			deleted_at = $8, capture = $12, obstructions = $13
 		WHERE id = $9 AND owner_id = $10 AND version = $11 AND deleted_at IS NULL`,
 		plot.Name, points, plot.AreaM2, plot.PerimeterM, plot.Version, plot.Status, plot.UpdatedAt,
-		plot.DeletedAt, plot.ID, plot.OwnerID, expectedVersion,
+		plot.DeletedAt, plot.ID, plot.OwnerID, expectedVersion, survey.capture, survey.obstructions,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapUpdatePlotRow, err)
@@ -141,11 +151,17 @@ func (store *plotStore) RecordVersion(requestContext context.Context, version do
 		return err
 	}
 
+	survey, err := encodeSurvey(version.Survey)
+	if err != nil {
+		return err
+	}
+
 	_, err = store.transaction.Exec(requestContext, `
-		INSERT INTO plot_versions (plot_id, version, name, points, area_m2, perimeter_m, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO plot_versions (`+plotVersionColumns+`)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (plot_id, version) DO NOTHING`,
 		version.PlotID, version.Version, version.Name, points, version.AreaM2, version.PerimeterM, version.CreatedAt,
+		survey.capture, survey.obstructions,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertPlotVersion, err)

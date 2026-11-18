@@ -2,6 +2,7 @@ package bootstrap
 
 const (
 	wrapCreateTokenVerifier     = "create token verifier: %w"
+	wrapFallbackCapture         = "accuracy fallback capture: %w"
 	wrapDetermineServiceAddress = "determine service address: %w"
 	wrapListenHTTP              = "listen HTTP: %w"
 	wrapLoadConfig              = "load config: %w"

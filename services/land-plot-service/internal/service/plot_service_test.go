@@ -13,8 +13,19 @@ import (
 
 const testSagaTimeout = 30 * time.Second
 
+var testAccuracyModel = domain.AccuracyModel{
+	MouseClickPixels: 3,
+	TouchClickPixels: 8,
+	MapShiftM:        2,
+	SatelliteShiftM:  4,
+	TreesM:           3,
+	BuildingsM:       2,
+	UnclearM:         5,
+	FallbackCapture:  domain.Capture{Zoom: 16, Layer: domain.LayerSatellite, Pointer: domain.PointerTouch},
+}
+
 func newTestPlotService(repository *fakeRepository) *PlotService {
-	return NewPlotService(repository, domain.LocalEllipsoidCalculator{}, testSagaTimeout)
+	return NewPlotService(repository, domain.LocalEllipsoidCalculator{}, testAccuracyModel, testSagaTimeout)
 }
 
 func TestPlotServiceCreateWritesPlotSagaAndEventInOneTransaction(t *testing.T) {

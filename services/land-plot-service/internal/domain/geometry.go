@@ -19,8 +19,9 @@ type AreaCalculator interface {
 }
 
 type PolygonInspection struct {
-	Area   AreaResult
-	Errors []*Error
+	Area     AreaResult
+	Accuracy *Accuracy
+	Errors   []*Error
 }
 
 func (inspection PolygonInspection) Valid() bool {

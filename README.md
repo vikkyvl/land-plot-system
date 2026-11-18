@@ -80,6 +80,41 @@ The calculation sits behind the `AreaCalculator` interface (`LocalEllipsoidCalcu
 
 For plots up to a few kilometres across, the method itself adds almost no error: on a reference square it matches GeographicLib within 0.01 %. The real accuracy is limited by the input coordinates, because an error of d metres per point changes the area by about perimeter × d. The result is therefore not a cadastral or legal measurement.
 
+### Area accuracy
+
+Every area comes with its margin, because points placed on a map are never exact. The plot service estimates it in the domain (`AccuracyModel` in `internal/domain/accuracy.go`) from two optional facts the client sends with the points:
+
+- `capture`: `{"zoom": 18, "layer": "map" | "satellite", "pointer": "mouse" | "touch" | "pen"}`;
+- `obstructions`: `[{"side": 1, "reason": "trees" | "buildings" | "unclear"}]`, where `side` is the side from point `side` to point `side + 1`, counted from 0.
+
+The error of one point is `σ_i = √(σ_click² + σ_obst²)` metres on each axis:
+
+- `σ_click = k · r`, where `r = 156543.03 · cos φ / 2^zoom` is the ground size of a screen pixel at the mean latitude `φ`, and `k` is the click size in pixels (a pen counts as a mouse);
+- `σ_obst` comes from the reason of a marked side and applies to both of its end points; a point between two marked sides takes the larger one.
+
+The variance of the area is `σ_A² = ¼ · Σ σ_i² · |P(i+1) − P(i−1)|²` on the same local plane as the area, and the API reports `± 2σ_A` (about 95 %). For a square with side `L` and the same `σ` everywhere this gives `σ_A = √2 · σ · L`.
+
+The map layer error `σ_geo` is not in `σ_A`: a shifted layer moves every point the same way, which does not change the area. It is reported apart as `ground_shift_m`, the possible shift of the whole boundary on the ground.
+
+Without `capture` the service assumes the worst case (zoom 16, satellite, touch). The web app sends as `capture.zoom` the smallest zoom at which any of the current points was placed or moved, not the zoom of the last change, so zooming in at the end cannot make the margin smaller.
+
+Example: a square plot of 2.48 ha placed at zoom 18 near Kyiv has a margin of ± 0.05 ha with a mouse and ± 0.13 ha with touch.
+
+The constants are assumptions, set in the environment of `land-plot-service`:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ACCURACY_MOUSE_CLICK_PX` | `3` | click size with a mouse or pen, pixels |
+| `ACCURACY_TOUCH_CLICK_PX` | `8` | click size with a finger, pixels |
+| `ACCURACY_MAP_SHIFT_M` | `2` | possible shift of the map layer, metres |
+| `ACCURACY_SATELLITE_SHIFT_M` | `4` | possible shift of the satellite layer, metres |
+| `ACCURACY_TREES_M` | `3` | boundary hidden by trees, metres |
+| `ACCURACY_BUILDINGS_M` | `2` | boundary hidden by buildings or shadows, metres |
+| `ACCURACY_UNCLEAR_M` | `5` | boundary hard to see, metres |
+| `ACCURACY_FALLBACK_ZOOM`, `ACCURACY_FALLBACK_LAYER`, `ACCURACY_FALLBACK_POINTER` | `16`, `satellite`, `touch` | capture assumed when the client sends none |
+
+The margin is calculated when a plot or version is read, from its points, `capture` and `obstructions`, so it is not stored and follows the constants.
+
 Updating a plot replaces its geometry and increments `version`. Concurrent updates are detected with optimistic locking, and the losing request gets `409 Conflict`. Each report records the plot `version` it was built from.
 
 ## Project layout
@@ -206,7 +241,7 @@ Validation errors may add `details` with zero-based point indices, so a client c
 
 | HTTP | Codes |
 |------|-------|
-| 400 | `invalid_request`, `no_changes`, `invalid_plot_id`, `invalid_report_id`, `invalid_query` |
+| 400 | `invalid_request`, `no_changes`, `invalid_plot_id`, `invalid_report_id`, `invalid_query`, `invalid_capture`, `invalid_obstruction` |
 | 401 | `unauthorized` |
 | 403 | `forbidden`, `insufficient_scope`, `origin_not_allowed` |
 | 404 | `plot_not_found`, `report_not_found`, `route_not_found` |
@@ -241,12 +276,12 @@ curl http://localhost:8080/api/v1/users/profile -H "Authorization: Bearer $TOKEN
 
 | Method | Path                  | Description                                          |
 |--------|-----------------------|------------------------------------------------------|
-| POST   | `/api/v1/plots`       | Create a plot (`name`, `points[]` with `lat`/`lon`)  |
+| POST   | `/api/v1/plots`       | Create a plot (`name`, `points[]` with `lat`/`lon`, optional `capture` and `obstructions`) |
 | POST   | `/api/v1/plots/preview` | Measure and validate `points[]` without saving; no token needed |
 | GET    | `/api/v1/plots`       | List the current user's plots, recently changed first |
 | GET    | `/api/v1/plots/{id}`  | Get one plot                                         |
 | GET    | `/api/v1/plots/{id}/versions` | Confirmed versions of a plot, newest first    |
-| PATCH  | `/api/v1/plots/{id}`  | Update `name` and/or `points`                        |
+| PATCH  | `/api/v1/plots/{id}`  | Update `name`, `points`, `capture` and `obstructions` |
 | DELETE | `/api/v1/plots/{id}`  | Delete a confirmed plot (`204`)                      |
 
 ```sh
@@ -261,13 +296,29 @@ curl -X PATCH http://localhost:8080/api/v1/plots/<plot_id> \
   -d '{"name":"North field (renamed)"}'
 ```
 
-A plot response includes `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, `version`, `status`, and timestamps. A new or changed plot is `PENDING` until `report-service` confirms its projection, then `CONFIRMED`. `PATCH` and `DELETE` on a `PENDING` plot return `409 plot_not_confirmed`. A cancelled plot is hidden: the list skips it and `GET` returns `404 plot_not_found`.
+A plot response includes `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, `capture` (or `null`), `obstructions`, `accuracy`, `version`, `status`, and timestamps. `accuracy` is
 
-**Preview.** `POST /api/v1/plots/preview` takes `{"points": [...]}` and always answers `200` with `{area_m2, area_ares, area_hectares, perimeter_m, valid, errors[]}`; for an invalid polygon the numbers are `null` and `errors` lists every problem with its `details`. It uses the same validation as `POST /api/v1/plots`, saves nothing and needs no token. The gateway allows `PREVIEW_RATE_LIMIT_PER_MINUTE` requests per minute from one IP (60 by default) and answers `429 rate_limited` with `Retry-After` above that. On macOS all requests from the host reach the gateway from one Docker network address, so the limit is shared by the whole host.
+```json
+{
+  "area_m2_margin": 520.4,
+  "area_hectares_margin": 0.052,
+  "percent": 2.1,
+  "confidence": 0.95,
+  "contributions": { "scale": 0.4, "obstructions": 0.6 },
+  "worst_side": 1,
+  "ground_shift_m": 4
+}
+```
+
+with the shares of `σ_A²` per source and `worst_side` as the marked side that adds the most, or `null` without marks (see [Area accuracy](#area-accuracy)).
+
+`PATCH` with `points` takes `capture` and `obstructions` from the same request: without them the worst case and no marks apply. `PATCH` with only `obstructions` replaces the marks of the current boundary and keeps its `capture`; a `PATCH` with only `name` keeps both. `capture` without `points` is `400 invalid_capture`. A new or changed plot is `PENDING` until `report-service` confirms its projection, then `CONFIRMED`. `PATCH` and `DELETE` on a `PENDING` plot return `409 plot_not_confirmed`. A cancelled plot is hidden: the list skips it and `GET` returns `404 plot_not_found`.
+
+**Preview.** `POST /api/v1/plots/preview` takes `{"points": [...]}` with optional `capture` and `obstructions` and answers `200` with `{area_m2, area_ares, area_hectares, perimeter_m, accuracy, valid, errors[]}`; for an invalid polygon the numbers and `accuracy` are `null` and `errors` lists every problem with its `details`. It uses the same validation as `POST /api/v1/plots`, saves nothing, calls no external service and needs no token. An invalid `capture` or `obstructions` gives `400 invalid_capture` or `400 invalid_obstruction` (with `{"index": i}`). The gateway allows `PREVIEW_RATE_LIMIT_PER_MINUTE` requests per minute from one IP (60 by default) and answers `429 rate_limited` with `Retry-After` above that. On macOS all requests from the host reach the gateway from one Docker network address, so the limit is shared by the whole host.
 
 **Deletion.** `DELETE` is soft: the plot gets `deleted_at`, a new version and the `plot.deleted` event through the outbox, without a saga. Afterwards `GET`, `PATCH`, `DELETE` and `/versions` return `410 plot_deleted` and the list no longer shows it.
 
-**History.** A row in `plot_versions` is written every time a plot becomes `CONFIRMED`, also when a compensated update restores the previous boundary. Each version has `name`, `points`, `area_*`, `perimeter_m` and `created_at`.
+**History.** A row in `plot_versions` is written every time a plot becomes `CONFIRMED`, also when a compensated update restores the previous boundary. Each version has `name`, `points`, `area_*`, `perimeter_m`, `capture`, `obstructions`, `accuracy` and `created_at`.
 
 ### Reports
 

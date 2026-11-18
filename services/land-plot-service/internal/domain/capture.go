@@ -41,8 +41,31 @@ type Obstruction struct {
 	Reason ObstructionReason
 }
 
+type Survey struct {
+	Capture      *Capture
+	Obstructions []Obstruction
+}
+
+func (survey Survey) Validate(pointCount int) error {
+	if err := ValidateCapture(survey.Capture); err != nil {
+		return err
+	}
+
+	return ValidateObstructions(survey.Obstructions, pointCount)
+}
+
+func (survey Survey) clone() Survey {
+	cloned := Survey{Obstructions: append([]Obstruction(nil), survey.Obstructions...)}
+	if survey.Capture != nil {
+		capture := *survey.Capture
+		cloned.Capture = &capture
+	}
+
+	return cloned
+}
+
 type InvalidObstructionDetails struct {
-	Index int `json:"index"`
+	Index int
 }
 
 func ValidateCapture(capture *Capture) error {

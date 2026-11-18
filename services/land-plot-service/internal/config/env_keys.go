@@ -1,6 +1,16 @@
 package config
 
 const (
+	envAccuracyBuildingsM       = "ACCURACY_BUILDINGS_M"
+	envAccuracyFallbackLayer    = "ACCURACY_FALLBACK_LAYER"
+	envAccuracyFallbackPointer  = "ACCURACY_FALLBACK_POINTER"
+	envAccuracyFallbackZoom     = "ACCURACY_FALLBACK_ZOOM"
+	envAccuracyMapShiftM        = "ACCURACY_MAP_SHIFT_M"
+	envAccuracyMouseClickPixels = "ACCURACY_MOUSE_CLICK_PX"
+	envAccuracySatelliteShiftM  = "ACCURACY_SATELLITE_SHIFT_M"
+	envAccuracyTouchClickPixels = "ACCURACY_TOUCH_CLICK_PX"
+	envAccuracyTreesM           = "ACCURACY_TREES_M"
+	envAccuracyUnclearM         = "ACCURACY_UNCLEAR_M"
 	envConsulAddress            = "CONSUL_ADDRESS"
 	envConsulTimeout            = "CONSUL_TIMEOUT"
 	envDatabaseTimeout          = "DATABASE_TIMEOUT"

@@ -123,7 +123,7 @@ func (repository *PlotRepository) ListVersions(
 	plotID string,
 ) ([]domain.PlotVersion, error) {
 	rows, err := repository.pool.Query(requestContext, `
-		SELECT plot_id, version, name, points, area_m2, perimeter_m, created_at
+		SELECT `+plotVersionColumns+`
 		FROM plot_versions
 		WHERE plot_id = $1
 		ORDER BY version DESC`,

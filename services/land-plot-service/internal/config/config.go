@@ -30,6 +30,19 @@ const (
 	maximumPort            = 65535
 )
 
+const (
+	defaultMouseClickPixels = 3
+	defaultTouchClickPixels = 8
+	defaultMapShiftM        = 2
+	defaultSatelliteShiftM  = 4
+	defaultTreesM           = 3
+	defaultBuildingsM       = 2
+	defaultUnclearM         = 5
+	defaultFallbackZoom     = 16
+	defaultFallbackLayer    = "satellite"
+	defaultFallbackPointer  = "touch"
+)
+
 var errInvalidPort = errors.New(envHTTPAddress + " must contain a valid port")
 
 type Config struct {
@@ -56,6 +69,21 @@ type Config struct {
 	OIDCJWKSURL  string
 	OIDCAudience string
 	OIDCTimeout  time.Duration
+
+	Accuracy AccuracyConfig
+}
+
+type AccuracyConfig struct {
+	MouseClickPixels float64
+	TouchClickPixels float64
+	MapShiftM        float64
+	SatelliteShiftM  float64
+	TreesM           float64
+	BuildingsM       float64
+	UnclearM         float64
+	FallbackZoom     float64
+	FallbackLayer    string
+	FallbackPointer  string
 }
 
 func Load() (Config, error) {
@@ -75,6 +103,10 @@ func Load() (Config, error) {
 	}
 
 	if err := serviceConfig.validate(); err != nil {
+		return Config{}, err
+	}
+
+	if err := serviceConfig.loadAccuracy(); err != nil {
 		return Config{}, err
 	}
 
@@ -123,6 +155,37 @@ func (serviceConfig *Config) loadDurations() error {
 		}
 
 		*duration.target = value
+	}
+
+	return nil
+}
+
+func (serviceConfig *Config) loadAccuracy() error {
+	accuracy := &serviceConfig.Accuracy
+	accuracy.FallbackLayer = stringOrDefault(envAccuracyFallbackLayer, defaultFallbackLayer)
+	accuracy.FallbackPointer = stringOrDefault(envAccuracyFallbackPointer, defaultFallbackPointer)
+
+	numbers := []struct {
+		key      string
+		target   *float64
+		fallback float64
+	}{
+		{envAccuracyMouseClickPixels, &accuracy.MouseClickPixels, defaultMouseClickPixels},
+		{envAccuracyTouchClickPixels, &accuracy.TouchClickPixels, defaultTouchClickPixels},
+		{envAccuracyMapShiftM, &accuracy.MapShiftM, defaultMapShiftM},
+		{envAccuracySatelliteShiftM, &accuracy.SatelliteShiftM, defaultSatelliteShiftM},
+		{envAccuracyTreesM, &accuracy.TreesM, defaultTreesM},
+		{envAccuracyBuildingsM, &accuracy.BuildingsM, defaultBuildingsM},
+		{envAccuracyUnclearM, &accuracy.UnclearM, defaultUnclearM},
+		{envAccuracyFallbackZoom, &accuracy.FallbackZoom, defaultFallbackZoom},
+	}
+	for _, number := range numbers {
+		value, err := positiveNumberOrDefault(number.key, number.fallback)
+		if err != nil {
+			return err
+		}
+
+		*number.target = value
 	}
 
 	return nil

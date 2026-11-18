@@ -45,17 +45,16 @@ type vertexObstruction struct {
 func (model AccuracyModel) Estimate(
 	points []Coordinate,
 	areaM2 float64,
-	capture *Capture,
-	obstructions []Obstruction,
+	survey Survey,
 ) Accuracy {
 	used := model.FallbackCapture
-	if capture != nil {
-		used = *capture
+	if survey.Capture != nil {
+		used = *survey.Capture
 	}
 
 	clickSigma := model.clickPixels(used.Pointer) * groundResolution(points, used.Zoom)
 	projected := projectToLocalPlane(points)
-	vertexObstructions := model.vertexObstructions(obstructions, len(points))
+	vertexObstructions := model.vertexObstructions(survey.Obstructions, len(points))
 
 	var scaleVariance, obstructionVariance float64
 

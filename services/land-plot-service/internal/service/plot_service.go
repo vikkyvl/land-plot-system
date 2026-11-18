@@ -13,6 +13,7 @@ import (
 type PlotService struct {
 	repository  PlotRepository
 	calculator  domain.AreaCalculator
+	accuracy    domain.AccuracyModel
 	sagaTimeout time.Duration
 	now         func() time.Time
 }
@@ -20,11 +21,13 @@ type PlotService struct {
 func NewPlotService(
 	repository PlotRepository,
 	calculator domain.AreaCalculator,
+	accuracy domain.AccuracyModel,
 	sagaTimeout time.Duration,
 ) *PlotService {
 	return &PlotService{
 		repository:  repository,
 		calculator:  calculator,
+		accuracy:    accuracy,
 		sagaTimeout: sagaTimeout,
 		now:         time.Now,
 	}
@@ -50,17 +53,34 @@ func (plotService *PlotService) Create(requestContext context.Context, draft dom
 		return domain.Plot{}, fmt.Errorf(wrapCreatePlot, err)
 	}
 
-	return plot, nil
+	return plotService.withAccuracy(plot), nil
 }
 
-func (plotService *PlotService) Preview(points []domain.Coordinate) domain.PolygonInspection {
-	return domain.InspectPolygon(points, plotService.calculator)
+func (plotService *PlotService) Preview(
+	points []domain.Coordinate,
+	survey domain.Survey,
+) (domain.PolygonInspection, error) {
+	if err := survey.Validate(len(points)); err != nil {
+		return domain.PolygonInspection{}, err
+	}
+
+	inspection := domain.InspectPolygon(points, plotService.calculator)
+	if inspection.Valid() {
+		accuracy := plotService.accuracy.Estimate(points, inspection.Area.AreaM2, survey)
+		inspection.Accuracy = &accuracy
+	}
+
+	return inspection, nil
 }
 
 func (plotService *PlotService) List(requestContext context.Context, ownerID string) ([]domain.Plot, error) {
 	plots, err := plotService.repository.ListByOwner(requestContext, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf(wrapListPlots, err)
+	}
+
+	for i, plot := range plots {
+		plots[i] = plotService.withAccuracy(plot)
 	}
 
 	return plots, nil
@@ -88,7 +108,7 @@ func (plotService *PlotService) Get(requestContext context.Context, ownerID, plo
 		return domain.Plot{}, domain.ErrPlotDeleted
 	}
 
-	return plot, nil
+	return plotService.withAccuracy(plot), nil
 }
 
 func (plotService *PlotService) Versions(
@@ -102,6 +122,10 @@ func (plotService *PlotService) Versions(
 	versions, err := plotService.repository.ListVersions(requestContext, plotID)
 	if err != nil {
 		return nil, fmt.Errorf(wrapListPlotVersions, err)
+	}
+
+	for i, version := range versions {
+		versions[i].Accuracy = plotService.accuracy.Estimate(version.Points, version.AreaM2, version.Survey)
 	}
 
 	return versions, nil
@@ -163,7 +187,13 @@ func (plotService *PlotService) Update(
 		return domain.Plot{}, fmt.Errorf(wrapUpdatePlot, err)
 	}
 
-	return updated, nil
+	return plotService.withAccuracy(updated), nil
+}
+
+func (plotService *PlotService) withAccuracy(plot domain.Plot) domain.Plot {
+	plot.Accuracy = plotService.accuracy.Estimate(plot.Points, plot.AreaM2, plot.Survey)
+
+	return plot
 }
 
 func (plotService *PlotService) startSaga(

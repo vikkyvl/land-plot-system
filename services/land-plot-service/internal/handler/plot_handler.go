@@ -24,6 +24,7 @@ func (handler *plotHandler) create(response http.ResponseWriter, request *http.R
 		OwnerID: middleware.UserID(request.Context()),
 		Name:    body.Name,
 		Points:  toCoordinates(body.Points),
+		Survey:  body.toSurvey(),
 	})
 	if err != nil {
 		handler.responses.Error(response, request, err)
@@ -40,7 +41,12 @@ func (handler *plotHandler) preview(response http.ResponseWriter, request *http.
 		return
 	}
 
-	inspection := handler.plots.Preview(toCoordinates(*body.Points))
+	inspection, err := handler.plots.Preview(toCoordinates(*body.Points), body.toSurvey())
+	if err != nil {
+		handler.responses.Error(response, request, err)
+		return
+	}
+
 	handler.responses.JSON(response, http.StatusOK, newPreviewPlotResponse(inspection))
 }
 

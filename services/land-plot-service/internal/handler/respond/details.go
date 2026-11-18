@@ -17,7 +17,7 @@ type duplicatePointResponse struct {
 	Indices [2]int `json:"indices"`
 }
 
-type invalidCoordinateResponse struct {
+type indexResponse struct {
 	Index int `json:"index"`
 }
 
@@ -32,7 +32,9 @@ func detailsResponse(details any) any {
 	case domain.DuplicatePointDetails:
 		return duplicatePointResponse{Indices: value.Indices}
 	case domain.InvalidCoordinateDetails:
-		return invalidCoordinateResponse{Index: value.Index}
+		return indexResponse{Index: value.Index}
+	case domain.InvalidObstructionDetails:
+		return indexResponse{Index: value.Index}
 	default:
 		return nil
 	}

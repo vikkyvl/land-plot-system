@@ -43,7 +43,7 @@ func testSquare() []Coordinate {
 func estimate(points []Coordinate, capture *Capture, obstructions []Obstruction) Accuracy {
 	area := LocalEllipsoidCalculator{}.Calculate(points).AreaM2
 
-	return testAccuracyModel.Estimate(points, area, capture, obstructions)
+	return testAccuracyModel.Estimate(points, area, Survey{Capture: capture, Obstructions: obstructions})
 }
 
 func TestAreaVarianceOfSquareMatchesAnalyticResult(t *testing.T) {
