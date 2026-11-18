@@ -1,4 +1,4 @@
-import type { AuthSession } from '../port/authSession'
+import type { AccessTokenProvider } from '../port/authSession'
 
 import { networkError, toDomainError } from './errors'
 
@@ -14,7 +14,7 @@ export interface RequestOptions {
 
 export interface HttpClientOptions {
   readonly baseUrl: string
-  readonly session: AuthSession
+  readonly session: AccessTokenProvider
   readonly fetch?: typeof fetch
 }
 
@@ -26,7 +26,7 @@ const statusUnauthorized = 401
 
 export class HttpClient {
   private readonly baseUrl: string
-  private readonly session: AuthSession
+  private readonly session: AccessTokenProvider
   private readonly fetch: typeof fetch
   private renewal: Promise<string | null> | null = null
 

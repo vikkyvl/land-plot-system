@@ -1,4 +1,4 @@
-import type { AuthSession } from '../../port/authSession'
+import type { AccessTokenProvider } from '../../port/authSession'
 import { HttpClient } from '../http'
 
 export const gatewayUrl = 'http://gateway.test'
@@ -17,7 +17,7 @@ export interface FakeReply {
   readonly headers?: Record<string, string>
 }
 
-export class FakeSession implements AuthSession {
+export class FakeSession implements AccessTokenProvider {
   renewals = 0
   private token: string | null
   private readonly renewedToken: string | null
@@ -69,7 +69,7 @@ export class FakeServer {
     return new Response(body, { status: next.status, headers: next.headers })
   }
 
-  client(session: AuthSession = new FakeSession(fakeToken('first'))): HttpClient {
+  client(session: AccessTokenProvider = new FakeSession(fakeToken('first'))): HttpClient {
     return new HttpClient({ baseUrl: `${gatewayUrl}/`, session, fetch: this.fetch })
   }
 }
