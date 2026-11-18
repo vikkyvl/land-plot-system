@@ -98,6 +98,7 @@ function choose(reason: ObstructionReason | null): void {
   position: fixed;
   z-index: 2000;
   inset: 0;
+  animation: motion-fade-in var(--motion-fast) var(--ease-out);
 }
 
 .side-menu {
@@ -113,6 +114,7 @@ function choose(reason: ObstructionReason | null): void {
   border-radius: var(--radius-2xl);
   background: var(--color-surface);
   box-shadow: var(--shadow-dialog);
+  animation: motion-fade-up var(--motion-fast) var(--ease-out);
 }
 
 .side-menu__title {
@@ -179,6 +181,7 @@ function choose(reason: ObstructionReason | null): void {
     width: auto;
     padding: var(--space-5) var(--space-5) calc(var(--space-5) + env(safe-area-inset-bottom));
     border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    animation: motion-sheet-up var(--motion-base) var(--ease-spring);
   }
 
   .side-menu__choices {

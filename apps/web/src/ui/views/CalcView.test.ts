@@ -121,7 +121,7 @@ describe('CalcView', () => {
     }
     const { wrapper, calculator } = await mountCalc(async () => ({ ...valid, accuracy }))
 
-    expect(wrapper.get('.calc__value').text()).toBe('2,48 га ± 0,05 га')
+    expect(wrapper.get('.calc__value').text().replace(/\s+/g, ' ')).toBe('2,48 га ± 0,05 га')
     expect(wrapper.get('.calc__area').text()).toContain('Найбільше впливає: масштаб карти')
     expect(wrapper.get('.calc__area').text()).toContain('Наблизьте карту, щоб зменшити похибку')
     expect(wrapper.get('.calc__area').text()).toContain('Можливий зсув на місцевості ± 4 м')

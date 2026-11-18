@@ -90,6 +90,16 @@ To add a text, add the same key to both files and use `$t('key')` in a template 
 - **Obstructed sides.** A tap or click on a side or its midpoint opens a menu (a popover on the web, a bottom sheet on phones) with «+ Додати точку тут» first and the reasons the boundary is hidden: trees, buildings and shadows, hard to see, or nothing. A marked side is drawn dashed with its reason. The points card lists every side with a select for keyboard and screen reader users. Marks follow their sides when points are inserted, undone or swapped, and a mark disappears with its side.
 - **Reports.** A report shows the boundary of the plot version it was built for. GeoJSON is generated in the browser from the report and that boundary. The blocks «Точність вимірювання», «Рельєф» (with «Оцінка груба» for plots under 1 ha and a note that the cadastral area is the horizontal projection) and «Клімат» (a table on the web, cards on phones) come from the report snapshot. A block whose source did not answer says it is temporarily unavailable and offers «Оновити звіт», which creates a new report; an older report without the blocks says there is no data. The data sources are credited under the blocks: Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90.
 
+## Motion
+
+Motion uses only CSS, Vue `<Transition>`/`<TransitionGroup>` and the View Transitions API, without libraries, and animates `transform` (including `scale` and `translate`) and `opacity`. The one exception is the plot outline that draws itself as a line, which animates `stroke-dashoffset` of one SVG path.
+
+- Tokens in `tokens.css`: `--motion-fast` 150 ms, `--motion-base` 250 ms, `--motion-slow`, `--motion-stagger`, `--ease-out` and `--ease-spring`; keyframes and shared rules in `motion.css`.
+- Map: a new vertex pops in, a dragged vertex grows, the area and the margin cross-fade when they change, the crossing sides blink once and the crossing point pulses, and after «Поміняти точки» the two points slide to their new places.
+- From the list to a plot, the thumbnail turns into the map of the card through a `view-transition-name` per plot; without the API (or with reduced motion) the page changes without animation.
+- The outline draws itself in the plot card and the report; a pending badge shimmers and turns into a check when the plot is confirmed; a deleted card collapses and the list closes up; list cards and report blocks appear one after another, climate and accuracy bars grow, the side menu rises as a sheet with a spring on phones, and skeletons shimmer.
+- With `prefers-reduced-motion: reduce` the tokens become 0 ms, every animation and transition is switched off and no view transition starts. `tests/motion.test.ts` checks these rules.
+
 ## Docker
 
 The `Dockerfile` builds the app with `node:26.12.1-alpine` and serves `dist` with `nginx:1.30.5-alpine` as the unprivileged `nginx` user. From the repository root:

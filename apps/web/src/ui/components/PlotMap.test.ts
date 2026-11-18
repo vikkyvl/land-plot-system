@@ -95,4 +95,24 @@ describe('PlotMap', () => {
     expect(String((labels[0]?.options.icon as L.DivIcon).options.html)).toContain('дерева')
     wrapper.unmount()
   })
+
+  it('slides two swapped points from their old places and pops a new point in', async () => {
+    const { wrapper } = mountMap()
+    const [first, second, third] = points as [Coordinate, Coordinate, Coordinate]
+    const markers = vi.mocked(L.marker).mock.results.map((result) => result.value as L.Marker)
+    const before = markers.length
+
+    await wrapper.setProps({ points: [first, third, second] })
+    const swapped = vi
+      .mocked(L.marker)
+      .mock.results.slice(before)
+      .map((result) => result.value as L.Marker)
+      .filter((marker) => marker.options.draggable)
+    expect(swapped.map((marker) => marker.getElement()?.style.translate !== '')).toEqual([false, true, true])
+
+    await wrapper.setProps({ points: [first, third, second, { latitude: 50.4495, longitude: 30.5205 }] })
+    const icons = document.querySelectorAll('.plot-vertex')
+    expect([...icons].map((icon) => icon.classList.contains('plot-vertex--new'))).toEqual([false, false, false, true])
+    wrapper.unmount()
+  })
 })

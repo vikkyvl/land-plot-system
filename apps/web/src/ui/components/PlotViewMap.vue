@@ -27,9 +27,16 @@ function draw(): void {
     return
   }
   const stroke = css('--color-plot-stroke')
-  L.polygon(latLngs, { color: stroke, weight: 3, fillColor: stroke, fillOpacity: 0.2, interactive: false }).addTo(
-    shape,
-  )
+  L.polygon(latLngs, { stroke: false, fillColor: stroke, fillOpacity: 0.2, interactive: false, className: 'plot-view-fill' })
+    .addTo(shape)
+  const outline = L.polygon(latLngs, {
+    color: stroke,
+    weight: 3,
+    fill: false,
+    interactive: false,
+    className: 'plot-view-outline',
+  }).addTo(shape)
+  outline.getElement()?.setAttribute('pathLength', '1')
   map.fitBounds(L.latLngBounds(latLngs), { padding: fitPadding })
 }
 
@@ -85,5 +92,13 @@ watch(() => props.points, draw)
   background: transparent;
   color: var(--color-ink-3);
   font-size: var(--fs-2xs);
+}
+.plot-view-map :deep(.plot-view-outline) {
+  stroke-dasharray: 1;
+  animation: motion-draw var(--motion-slow) var(--ease-out) both;
+}
+
+.plot-view-map :deep(.plot-view-fill) {
+  animation: motion-fade-in var(--motion-slow) var(--ease-out) both;
 }
 </style>

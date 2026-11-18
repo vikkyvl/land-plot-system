@@ -47,6 +47,7 @@ const onKeydown = useFocusTrap(dialog, () => emit('close'))
   justify-content: center;
   padding: var(--space-6);
   background: var(--overlay);
+  animation: motion-fade-in var(--motion-fast) var(--ease-out);
 }
 
 .dialog {
@@ -59,6 +60,7 @@ const onKeydown = useFocusTrap(dialog, () => emit('close'))
   border-radius: var(--radius-dialog);
   background: var(--color-surface);
   box-shadow: var(--shadow-dialog);
+  animation: motion-fade-up var(--motion-base) var(--ease-spring);
 }
 
 .dialog__title {

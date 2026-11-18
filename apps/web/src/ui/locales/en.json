@@ -138,7 +138,8 @@
     "pick": "Choose a plot from the list to see its map, area and measurement history.",
     "processing": "Processing…",
     "stalled": "Processing takes longer than usual. The server has not confirmed the plot yet.",
-    "checkAgain": "Check again"
+    "checkAgain": "Check again",
+    "confirmed": "Confirmed"
   },
   "plot": {
     "loading": "Loading plot",

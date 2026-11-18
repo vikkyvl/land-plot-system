@@ -114,8 +114,8 @@ async function share(): Promise<void> {
       class="report__skeleton"
       :aria-label="$t('report.loading')"
     >
-      <div class="report__skeleton-line" />
-      <div class="report__skeleton-block" />
+      <div class="report__skeleton-line motion-shimmer" />
+      <div class="report__skeleton-block motion-shimmer" />
     </div>
 
     <div
@@ -291,6 +291,7 @@ async function share(): Promise<void> {
 
         <ReportBlock
           :title="$t('surroundings.accuracyTitle')"
+          :style="{ '--order': 0 }"
           :state="report.accuracy ? 'ready' : 'no-data'"
           :can-refresh="canReport"
           :refreshing="refreshing"
@@ -305,6 +306,7 @@ async function share(): Promise<void> {
         </ReportBlock>
         <ReportBlock
           :title="$t('surroundings.terrainTitle')"
+          :style="{ '--order': 1 }"
           :state="terrainState"
           :can-refresh="canReport"
           :refreshing="refreshing"
@@ -317,6 +319,7 @@ async function share(): Promise<void> {
         </ReportBlock>
         <ReportBlock
           :title="$t('surroundings.climateTitle')"
+          :style="{ '--order': 2 }"
           :state="climateState"
           :can-refresh="canReport"
           :refreshing="refreshing"

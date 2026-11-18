@@ -54,6 +54,8 @@ const titleId = `report-block-${Math.random().toString(36).slice(2)}`
   gap: var(--space-3);
   padding-top: var(--space-5);
   border-top: 1px solid var(--color-border);
+  animation: motion-fade-up var(--motion-base) var(--ease-out) backwards;
+  animation-delay: calc(var(--order, 0) * 2 * var(--motion-stagger) + var(--motion-fast));
 }
 
 .report-block__title {

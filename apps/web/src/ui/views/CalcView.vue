@@ -85,6 +85,9 @@ const chip = computed(() =>
     ? t('calc.updatingChip', { value: formatHectares(lastArea.value.area.hectares) })
     : null,
 )
+const areaText = computed(() =>
+  measurement.value ? formatHectares(measurement.value.area.hectares) : t('units.noHectares'),
+)
 const status = computed(() => {
   if (updating.value) {
     return t('calc.updating')
@@ -269,11 +272,26 @@ onBeforeUnmount(() => calculator.stop())
             class="calc__value"
             :class="{ 'calc__value--empty': measurement === null }"
           >
-            {{ measurement ? formatHectares(measurement.area.hectares) : $t('units.noHectares') }}
-            <span
-              v-if="accuracy"
-              class="calc__margin"
-            >{{ formatMargin(accuracy) }}</span>
+            <Transition
+              name="calc-number"
+              mode="out-in"
+            >
+              <span
+                :key="areaText"
+                class="calc__number"
+              >{{ areaText }}</span>
+            </Transition>
+            {{ accuracy ? ' ' : '' }}
+            <Transition
+              name="calc-number"
+              mode="out-in"
+            >
+              <span
+                v-if="accuracy"
+                :key="formatMargin(accuracy)"
+                class="calc__margin"
+              >{{ formatMargin(accuracy) }}</span>
+            </Transition>
           </p>
           <AccuracyNotes
             v-if="accuracy"
@@ -558,6 +576,27 @@ onBeforeUnmount(() => calculator.stop())
 
 .calc__value--empty {
   color: var(--color-ink-disabled);
+}
+
+.calc__number {
+  display: inline-block;
+}
+
+.calc-number-enter-active,
+.calc-number-leave-active {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.calc-number-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.calc-number-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 .calc__margin {

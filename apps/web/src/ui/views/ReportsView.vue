@@ -7,6 +7,7 @@ import { reportNumber } from '../../domain/reportDetails'
 import { formatDate, formatHectares } from '../composables/format'
 import { useReportService } from '../composables/services'
 import { useFailure, type Failure } from '../composables/useFailure'
+import { maxStaggered } from '../composables/viewTransitions'
 
 const service = useReportService()
 const handle = useFailure()
@@ -83,7 +84,7 @@ watch(plotId, load)
       <div
         v-for="index in 3"
         :key="index"
-        class="reports__skeleton"
+        class="reports__skeleton motion-shimmer"
       />
     </div>
     <div
@@ -116,8 +117,10 @@ watch(plotId, load)
     <template v-else>
       <ul class="reports__items">
         <li
-          v-for="report in visible"
+          v-for="(report, index) in visible"
           :key="report.id"
+          class="reports__item"
+          :style="{ '--order': Math.min(index, maxStaggered) }"
         >
           <RouterLink
             class="reports__card"
@@ -175,6 +178,11 @@ watch(plotId, load)
 </template>
 
 <style scoped>
+.reports__item {
+  animation: motion-fade-up var(--motion-base) var(--ease-out) backwards;
+  animation-delay: calc(var(--order) * var(--motion-stagger));
+}
+
 .reports {
   display: flex;
   flex-direction: column;

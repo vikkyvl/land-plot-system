@@ -1,8 +1,16 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 import type { Climate } from '../../domain/surroundings'
 import { formatCelsius, formatMillimeters, formatMonthDay, formatWhole } from '../composables/surroundingsText'
 
-defineProps<{ climate: Climate }>()
+const props = defineProps<{ climate: Climate }>()
+
+const wettest = computed(() => Math.max(...props.climate.seasons.map((season) => season.precipitationMillimeters), 1))
+
+function share(millimeters: number): number {
+  return millimeters / wettest.value
+}
 </script>
 
 <template>
@@ -48,7 +56,18 @@ defineProps<{ climate: Climate }>()
             <td>{{ formatCelsius(season.meanCelsius) }}</td>
             <td>{{ formatCelsius(season.meanMinCelsius) }}</td>
             <td>{{ formatCelsius(season.meanMaxCelsius) }}</td>
-            <td>{{ formatMillimeters(season.precipitationMillimeters) }}</td>
+            <td>
+              <span class="report-climate__rain">
+                <span
+                  class="report-climate__bar"
+                  aria-hidden="true"
+                ><span
+                  class="report-climate__fill"
+                  :style="{ '--share': share(season.precipitationMillimeters) }"
+                /></span>
+                {{ formatMillimeters(season.precipitationMillimeters) }}
+              </span>
+            </td>
             <td>{{ formatWhole(season.frostDays) }}</td>
             <td>{{ formatWhole(season.heatDays) }}</td>
           </tr>
@@ -70,6 +89,13 @@ defineProps<{ climate: Climate }>()
           })
         }}</span>
         <span class="report-climate__card-line">{{ formatMillimeters(season.precipitationMillimeters) }}</span>
+        <span
+          class="report-climate__bar"
+          aria-hidden="true"
+        ><span
+          class="report-climate__fill"
+          :style="{ '--share': share(season.precipitationMillimeters) }"
+        /></span>
         <span class="report-climate__card-line">{{
           $t('surroundings.seasonDays', { frost: formatWhole(season.frostDays), heat: formatWhole(season.heatDays) })
         }}</span>
@@ -128,6 +154,30 @@ defineProps<{ climate: Climate }>()
 
 .report-climate__cards {
   display: none;
+}
+
+.report-climate__rain {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.report-climate__bar {
+  display: block;
+  width: 56px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--color-primary-soft);
+}
+
+.report-climate__fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+  transform: scaleX(var(--share));
+  transform-origin: left;
+  animation: motion-grow-x var(--motion-slow) var(--ease-out) var(--motion-base) backwards;
 }
 
 .report-climate__facts {

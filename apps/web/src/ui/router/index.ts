@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type Router, type RouterHistory } from 'vue-router'
 
 import { guardRoute, homeRouteName, loginRouteName, type SignedInCheck } from './guard'
+import { installPlotTransitions } from '../composables/viewTransitions'
 
 const CalcView = () => import('../views/CalcView.vue')
 
@@ -54,6 +55,7 @@ export function createAppRouter(session: SignedInCheck, history: RouterHistory =
   })
 
   router.beforeEach((to) => guardRoute(to, session))
+  installPlotTransitions(router)
 
   return router
 }

@@ -32,9 +32,11 @@ const percentOfWhole = 100
         <dd>
           <span
             class="report-accuracy__bar"
-            :style="{ '--share': share.value }"
             aria-hidden="true"
-          />
+          ><span
+            class="report-accuracy__fill"
+            :style="{ '--share': share.value }"
+          /></span>
           {{ formatPercent(share.value * percentOfWhole) }}
         </dd>
       </div>
@@ -100,11 +102,17 @@ const percentOfWhole = 100
 .report-accuracy__bar {
   flex: 1;
   height: 8px;
+  overflow: hidden;
   border-radius: 4px;
-  background: linear-gradient(
-    to right,
-    var(--color-primary) calc(var(--share) * 100%),
-    var(--color-primary-soft) calc(var(--share) * 100%)
-  );
+  background: var(--color-primary-soft);
+}
+
+.report-accuracy__fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+  transform: scaleX(var(--share));
+  transform-origin: left;
+  animation: motion-grow-x var(--motion-slow) var(--ease-out) var(--motion-base) backwards;
 }
 </style>

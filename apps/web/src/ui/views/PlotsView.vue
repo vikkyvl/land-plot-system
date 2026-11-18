@@ -9,6 +9,7 @@ import PlotThumbnail from '../components/PlotThumbnail.vue'
 import { formatDate, formatHectares, formatPlotCount, initials } from '../composables/format'
 import { useFailure, type Failure } from '../composables/useFailure'
 import { useFollowedPlots } from '../composables/useFollowedPlots'
+import { maxStaggered, plotTransitionName } from '../composables/viewTransitions'
 import { useConfirmationsStore } from '../stores/confirmations'
 import { usePlotsStore } from '../stores/plots'
 import { useSessionStore } from '../stores/session'
@@ -134,7 +135,7 @@ onMounted(load)
         <div
           v-for="index in 3"
           :key="index"
-          class="plots__skeleton"
+          class="plots__skeleton motion-shimmer"
         />
       </div>
       <div
@@ -165,10 +166,16 @@ onMounted(load)
         </RouterLink>
       </div>
       <template v-else>
-        <ul class="plots__items">
+        <TransitionGroup
+          tag="ul"
+          name="plots-item"
+          class="plots__items"
+        >
           <li
-            v-for="plot in visible"
+            v-for="(plot, index) in visible"
             :key="plot.id"
+            class="plots__item"
+            :style="{ '--order': Math.min(index, maxStaggered) }"
           >
             <RouterLink
               class="plots__card"
@@ -176,7 +183,10 @@ onMounted(load)
               :to="`/plots/${plot.id}`"
               :aria-current="plot.id === selectedId ? 'page' : undefined"
             >
-              <PlotThumbnail :points="plot.points" />
+              <PlotThumbnail
+                :points="plot.points"
+                :style="{ viewTransitionName: plot.id === selectedId ? undefined : plotTransitionName(plot.id) }"
+              />
               <span class="plots__card-text">
                 <span class="plots__card-name">{{ plot.name }}</span>
                 <span class="plots__card-meta">
@@ -188,7 +198,7 @@ onMounted(load)
               <span class="plots__card-area">{{ formatHectares(plot.measurement.area.hectares) }}</span>
             </RouterLink>
           </li>
-        </ul>
+        </TransitionGroup>
         <p
           v-if="visible.length === 0"
           class="plots__nothing"
@@ -306,6 +316,34 @@ onMounted(load)
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.plots__items {
+  position: relative;
+}
+
+.plots__item {
+  animation: motion-fade-up var(--motion-base) var(--ease-out) backwards;
+  animation-delay: calc(var(--order) * var(--motion-stagger));
+}
+
+.plots-item-move {
+  transition: transform var(--motion-base) var(--ease-out);
+}
+
+.plots-item-leave-active {
+  position: absolute;
+  right: 0;
+  left: 0;
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
+}
+
+.plots-item-leave-to {
+  opacity: 0;
+  transform: scaleY(0.4);
+  transform-origin: top;
 }
 
 .plots__card {

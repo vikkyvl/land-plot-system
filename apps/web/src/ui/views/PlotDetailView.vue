@@ -23,6 +23,7 @@ import { formatMargin } from '../composables/accuracyText'
 import { useMapLayers, usePlotService, useSettingsService } from '../composables/services'
 import { useFailure, type Failure } from '../composables/useFailure'
 import { useFollowedPlots } from '../composables/useFollowedPlots'
+import { plotTransitionName } from '../composables/viewTransitions'
 import { t } from '../i18n'
 import { useConfirmationsStore } from '../stores/confirmations'
 import { usePlotsStore } from '../stores/plots'
@@ -182,9 +183,9 @@ async function createReport(): Promise<void> {
       class="detail__skeleton"
       :aria-label="$t('plot.loading')"
     >
-      <div class="detail__skeleton-line" />
-      <div class="detail__skeleton-map" />
-      <div class="detail__skeleton-line detail__skeleton-line--short" />
+      <div class="detail__skeleton-line motion-shimmer" />
+      <div class="detail__skeleton-map motion-shimmer" />
+      <div class="detail__skeleton-line detail__skeleton-line--short motion-shimmer" />
     </div>
 
     <div
@@ -337,6 +338,7 @@ async function createReport(): Promise<void> {
         class="detail__map"
         :points="plot.points"
         :layer="layer"
+        :style="{ viewTransitionName: plotTransitionName(plot.id) }"
       />
 
       <div class="detail__summary">
