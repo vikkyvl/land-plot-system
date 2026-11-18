@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import type { SignInMethod } from '../../domain/session'
 import { useSessionStore } from '../stores/session'
 
+const googleLogo = `${import.meta.env.BASE_URL}brand/google.svg`
 const session = useSessionStore()
 const route = useRoute()
 const pending = ref<SignInMethod | null>(null)
@@ -31,9 +32,6 @@ async function signIn(method: SignInMethod): Promise<void> {
       aria-labelledby="login-title"
     >
       <div class="login__intro">
-        <p class="login__eyebrow">
-          {{ $t('login.eyebrow') }}
-        </p>
         <h1
           id="login-title"
           class="login__title"
@@ -72,30 +70,17 @@ async function signIn(method: SignInMethod): Promise<void> {
 
         <button
           type="button"
-          class="login__button ui-secondary"
+          class="login__button login__button--google ui-secondary"
           :disabled="pending !== null"
           @click="signIn('google')"
         >
-          <svg
+          <img
+            class="login__google-logo"
+            :src="googleLogo"
             width="20"
             height="20"
-            viewBox="0 0 20 20"
-            aria-hidden="true"
+            alt=""
           >
-            <circle
-              cx="10"
-              cy="10"
-              r="8"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            />
-            <path
-              d="M10 10 H16"
-              stroke="currentColor"
-              stroke-width="1.8"
-            />
-          </svg>
           {{ $t('login.google') }}
         </button>
       </div>
@@ -128,19 +113,34 @@ async function signIn(method: SignInMethod): Promise<void> {
   flex-direction: column;
   gap: var(--space-7);
   width: 100%;
-  max-width: 390px;
+  max-width: var(--login-card-width);
+  padding: var(--login-card-padding);
+  border: 1px solid var(--color-border);
+  border-radius: var(--login-card-radius);
+  background: var(--color-surface);
+  box-shadow: var(--login-card-shadow);
+}
+
+@media (min-width: 768px) {
+  .login {
+    padding-top: var(--space-7);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .login__card {
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
 }
 
 .login__intro {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.login__eyebrow {
-  margin: 0;
-  font-size: var(--fs-lg);
-  font-weight: 700;
 }
 
 .login__title {
@@ -225,5 +225,15 @@ async function signIn(method: SignInMethod): Promise<void> {
 .login__note {
   font-size: var(--fs-sm);
   text-align: center;
+}
+.login__button--google {
+  padding-inline: 12px;
+  border-width: 1px;
+  border-color: var(--color-google-stroke);
+  background: var(--color-surface);
+}
+
+.login__google-logo {
+  flex: none;
 }
 </style>

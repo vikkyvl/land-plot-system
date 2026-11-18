@@ -29,7 +29,7 @@ html.login-pf,
 }
 
 .pf-v5-c-login__container {
-  grid-template-columns: minmax(0, 460px);
+  grid-template-columns: minmax(0, var(--login-card-width));
   justify-content: center;
   width: 100%;
   max-width: none;
@@ -67,9 +67,9 @@ html.login-pf,
 .pf-v5-c-login__main {
   padding: 0;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sheet);
+  border-radius: var(--login-card-radius);
   background: var(--color-surface);
-  box-shadow: none;
+  box-shadow: var(--login-card-shadow);
 }
 
 .pf-v5-c-login__main-header {
@@ -78,7 +78,7 @@ html.login-pf,
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-7) var(--space-7) 0;
+  padding: var(--login-card-padding) var(--login-card-padding) 0;
   border-top: none;
 }
 
@@ -102,7 +102,7 @@ html.login-pf,
 }
 
 .pf-v5-c-login__main-body {
-  padding: var(--space-5) var(--space-7) var(--space-7);
+  padding: var(--space-5) var(--login-card-padding) var(--login-card-padding);
 }
 
 .pf-v5-c-login__main-footer {
@@ -111,13 +111,6 @@ html.login-pf,
 
 .pf-v5-c-login__main-body > .pf-v5-c-login__main-footer:last-child {
   padding: 0;
-}
-
-.arqetra-intro {
-  margin: 0 0 var(--space-6);
-  color: var(--color-muted);
-  font-size: var(--fs-base);
-  line-height: 1.5;
 }
 
 .arqetra-tabs {
@@ -462,6 +455,7 @@ a:focus-visible {
     border: none;
     border-radius: 0;
     background: transparent;
+    box-shadow: none;
   }
 
   .pf-v5-c-login__main-header,
@@ -477,7 +471,7 @@ a:focus-visible {
 .pf-v5-c-login__container {
   position: relative;
   grid-template-columns: minmax(0, 1fr);
-  width: min(460px, 100%);
+  width: min(var(--login-card-width), 100%);
   margin-inline: auto;
 }
 
@@ -487,9 +481,51 @@ a:focus-visible {
 }
 
 .pf-v5-c-login__main-header-utilities {
+  display: none;
+}
+
+.arqetra-locale {
   position: absolute;
   top: 0;
   right: 0;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--color-segmented-bg);
+}
+
+.arqetra-locale a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 var(--space-2);
+  border-radius: calc(var(--radius-sm) - 2px);
+  color: var(--color-ink-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.arqetra-locale a[aria-current='true'] {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-weight: 800;
+}
+
+@media (hover: hover) {
+  .arqetra-locale a:not([aria-current='true']):hover {
+    background-color: var(--color-hover-soft);
+  }
+}
+
+@media (pointer: coarse) {
+  .arqetra-locale a {
+    min-width: var(--touch-min);
+    height: var(--touch-min);
+  }
 }
 
 .pf-v5-c-login__main-header-utilities .pf-v5-c-form-control {
@@ -515,6 +551,12 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   padding-block: 0;
+  padding-inline: 12px;
+  background: var(--color-surface);
+}
+
+#kc-social-providers .arqetra-social-button::after {
+  border: 1px solid var(--color-google-stroke);
 }
 
 #kc-social-providers li {

@@ -33,7 +33,6 @@
     "growingDays": "{n} day with a mean temperature ≥ 5 °C | {n} days with a mean temperature ≥ 5 °C"
   },
   "login": {
-    "eyebrow": "Account",
     "title": "Sign in to save your plot",
     "text": "Your saved plots and reports will be available in your account.",
     "signIn": "Sign in",

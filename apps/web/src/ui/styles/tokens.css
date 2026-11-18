@@ -117,6 +117,11 @@
   --focus-ring-width: 3px;
   --focus-ring-offset: 2px;
   --nav-underline-height: 2px;
+  --login-card-width: 460px;
+  --login-card-padding: var(--space-7);
+  --login-card-radius: var(--radius-sheet);
+  --login-card-shadow: var(--shadow-float);
+  --color-google-stroke: #747775;
 
   --motion-fast: 150ms;
   --motion-base: 250ms;
