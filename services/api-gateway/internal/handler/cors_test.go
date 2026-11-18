@@ -37,7 +37,7 @@ func TestPreflightFromAnAllowedOriginNeedsNoToken(t *testing.T) {
 	headers := response.Header()
 	if response.Code != http.StatusNoContent ||
 		headers.Get("Access-Control-Allow-Origin") != allowedOrigin ||
-		headers.Get("Access-Control-Allow-Methods") != "GET, POST, PATCH, OPTIONS" ||
+		headers.Get("Access-Control-Allow-Methods") != "GET, POST, PATCH, DELETE, OPTIONS" ||
 		headers.Get("Access-Control-Allow-Headers") != "Authorization, Content-Type, X-Request-ID" ||
 		headers.Get("Access-Control-Max-Age") != "600" ||
 		headers.Get("Vary") != "Origin" ||

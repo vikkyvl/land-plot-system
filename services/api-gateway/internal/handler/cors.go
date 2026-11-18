@@ -18,7 +18,7 @@ const (
 	headerRequestMethod         = "Access-Control-Request-Method"
 	headerRequestPrivateNetwork = "Access-Control-Request-Private-Network"
 	headerAllowPrivateNetwork   = "Access-Control-Allow-Private-Network"
-	allowedMethods              = "GET, POST, PATCH, OPTIONS"
+	allowedMethods              = "GET, POST, PATCH, DELETE, OPTIONS"
 	allowedHeaders              = "Authorization, Content-Type, X-Request-ID"
 	exposedHeaders              = "X-Request-ID"
 	preflightMaxAgeSeconds      = "600"

@@ -15,7 +15,7 @@ PLOT_TEST_DATABASE_URL ?= postgres://plot_user:plot_dev_password@localhost:$(POS
 REPORT_TEST_DATABASE_URL ?= postgres://report_user:report_dev_password@localhost:$(POSTGRES_PORT)/report_db?sslmode=disable
 INTEGRATION_TEST := go test -count=1 -tags=integration ./internal/repository/postgres/...
 
-.PHONY: fmt lint lint-fix strip-comments test test-integration vet check compose-config demo demo-lr3 demo-lr4 demo-lr5 ai-mcp-inspector
+.PHONY: fmt lint lint-fix strip-comments test test-integration vet check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector
 
 # Formats code: gofumpt, import groups (gci) and long lines (golines).
 fmt:
@@ -67,6 +67,10 @@ demo-lr4:
 # Checks CORS, Keycloak tokens, scopes and Zero Trust through the gateway and the services.
 demo-lr5:
 	./scripts/demo_lr5.sh
+
+# Shows preview, validation details, deletion, version history, report listing, Mailpit and the preview rate limit.
+demo-web:
+	./scripts/demo_web.sh
 
 # Opens MCP Inspector with the MCP server over stdio; the stack must be running (docker compose up -d).
 ai-mcp-inspector:

@@ -127,7 +127,7 @@ status=$(request --request OPTIONS --header "Origin: $allowed_origin" \
 tr -d '\r' <"$demo_tmp/headers.txt" | grep -iE '^(HTTP/|access-control|vary)' | sed 's/^/   /'
 expect_status "$status" 204 "preflight from $allowed_origin"
 [ "$(header_values Access-Control-Allow-Origin)" = "$allowed_origin" ] || fail "wrong Access-Control-Allow-Origin"
-[ "$(header_values Access-Control-Allow-Methods)" = "GET, POST, PATCH, OPTIONS" ] || fail "wrong Access-Control-Allow-Methods"
+[ "$(header_values Access-Control-Allow-Methods)" = "GET, POST, PATCH, DELETE, OPTIONS" ] || fail "wrong Access-Control-Allow-Methods"
 
 echo
 echo "2. Preflight from $foreign_origin"

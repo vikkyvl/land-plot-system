@@ -26,13 +26,13 @@
   "oauth2DevicePollingInterval": 5,
   "enabled": true,
   "sslRequired": "external",
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "registrationEmailAsUsername": false,
   "rememberMe": false,
   "verifyEmail": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
-  "resetPasswordAllowed": false,
+  "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
   "permanentLockout": false,
@@ -1572,7 +1572,15 @@
     "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
     "strictTransportSecurity": "max-age=31536000; includeSubDomains"
   },
-  "smtpServer": {},
+  "smtpServer": {
+    "host": "mailpit",
+    "port": "1025",
+    "from": "no-reply@arqetra.local",
+    "fromDisplayName": "Arqetra",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  },
   "eventsEnabled": false,
   "eventsListeners": [
     "jboss-logging"
@@ -1580,7 +1588,7 @@
   "enabledEventTypes": [],
   "adminEventsEnabled": false,
   "adminEventsDetailsEnabled": false,
-  "internationalizationEnabled": false,
+  "internationalizationEnabled": true,
   "authenticationFlows": [
     {
       "alias": "Account verification options",
@@ -2442,5 +2450,10 @@
         }
       ]
     }
-  ]
+  ],
+  "supportedLocales": [
+    "uk",
+    "en"
+  ],
+  "defaultLocale": "uk"
 }
