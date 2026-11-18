@@ -35,6 +35,19 @@ var (
 	ErrNoChanges = NewError(KindInvalidRequest, "no_changes",
 		"at least one field must be provided")
 
+	ErrInvalidCapture = NewError(
+		KindInvalidRequest,
+		"invalid_capture",
+		fmt.Sprintf(
+			"capture needs a zoom between %g and %g, a layer map or satellite and a pointer mouse, touch or pen",
+			MinimumZoom,
+			MaximumZoom,
+		),
+	)
+
+	ErrInvalidObstruction = NewError(KindInvalidRequest, "invalid_obstruction",
+		"obstruction needs an existing side, marked once, and a reason trees, buildings or unclear")
+
 	ErrInvalidPlotID = NewError(KindInvalidRequest, "invalid_plot_id",
 		"plot ID must be a valid UUID")
 
