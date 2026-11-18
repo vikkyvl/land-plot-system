@@ -704,4 +704,28 @@ async function share(): Promise<void> {
     font-size: var(--fs-md);
   }
 }
+
+.report__back {
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (pointer: coarse) {
+  .report__back,
+  .report__banner-button {
+    min-height: var(--touch-min);
+  }
+}
+
+.report {
+  padding-right: max(var(--space-6), env(safe-area-inset-right));
+  padding-left: max(var(--space-6), env(safe-area-inset-left));
+}
+
+@media (max-width: 767.98px) {
+  .report {
+    padding-right: max(var(--space-5), env(safe-area-inset-right));
+    padding-left: max(var(--space-5), env(safe-area-inset-left));
+  }
+}
 </style>

@@ -760,4 +760,21 @@ onBeforeUnmount(() => calculator.stop())
     display: none;
   }
 }
+
+.calc {
+  padding-right: max(var(--space-6), env(safe-area-inset-right));
+  padding-left: max(var(--space-6), env(safe-area-inset-left));
+}
+
+@media (max-width: 767.98px) {
+  .calc {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .calc__panel {
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+}
 </style>

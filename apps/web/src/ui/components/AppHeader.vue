@@ -216,4 +216,12 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
     font-weight: 700;
   }
 }
+
+@media (pointer: coarse) {
+  .app-header__brand,
+  .app-header__tab,
+  .app-header__button {
+    min-height: var(--touch-min);
+  }
+}
 </style>

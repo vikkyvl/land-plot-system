@@ -55,4 +55,10 @@ const options: readonly { id: MapLayerId; label: string }[] = [
   color: var(--color-ink);
   font-weight: 700;
 }
+
+@media (pointer: coarse) {
+  .layer-switch__option {
+    min-height: var(--touch-min);
+  }
+}
 </style>

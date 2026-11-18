@@ -338,4 +338,27 @@ watch(plotId, load)
     padding: calc(18px + env(safe-area-inset-top)) var(--space-5) var(--space-5);
   }
 }
+
+.reports__all {
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (pointer: coarse) {
+  .reports__all {
+    min-height: var(--touch-min);
+  }
+}
+
+.reports {
+  padding-right: max(var(--space-6), env(safe-area-inset-right));
+  padding-left: max(var(--space-6), env(safe-area-inset-left));
+}
+
+@media (max-width: 767.98px) {
+  .reports {
+    padding-right: max(var(--space-5), env(safe-area-inset-right));
+    padding-left: max(var(--space-5), env(safe-area-inset-left));
+  }
+}
 </style>

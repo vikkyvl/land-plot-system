@@ -47,4 +47,10 @@ const emit = defineEmits<{ retry: [] }>()
   font-weight: 700;
   cursor: pointer;
 }
+
+@media (pointer: coarse) {
+  .stalled__button {
+    min-height: var(--touch-min);
+  }
+}
 </style>

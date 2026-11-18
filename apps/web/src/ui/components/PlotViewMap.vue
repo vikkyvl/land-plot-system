@@ -46,6 +46,7 @@ onMounted(() => {
     touchZoom: false,
     boxZoom: false,
     keyboard: false,
+    fadeAnimation: false,
   })
   L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map)
   L.tileLayer(props.layer.tileUrl, { attribution: props.layer.attribution, maxZoom: props.layer.maxZoom }).addTo(map)

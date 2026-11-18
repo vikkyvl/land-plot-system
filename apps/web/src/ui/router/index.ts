@@ -1,30 +1,33 @@
 import { createRouter, createWebHistory, type Router, type RouterHistory } from 'vue-router'
 
-import AuthCallbackView from '../views/AuthCallbackView.vue'
-import CalcView from '../views/CalcView.vue'
-import LoginView from '../views/LoginView.vue'
-import PlotDetailView from '../views/PlotDetailView.vue'
-import PlotsEmptyView from '../views/PlotsEmptyView.vue'
-import PlotsView from '../views/PlotsView.vue'
-import ReportsView from '../views/ReportsView.vue'
-import ReportView from '../views/ReportView.vue'
-
 import { guardRoute, homeRouteName, loginRouteName, type SignedInCheck } from './guard'
+
+const CalcView = () => import('../views/CalcView.vue')
 
 export function createAppRouter(session: SignedInCheck, history: RouterHistory = createWebHistory()): Router {
   const router = createRouter({
     history,
     routes: [
       { path: '/', name: homeRouteName, component: CalcView },
-      { path: '/login', name: loginRouteName, component: LoginView, meta: { guestOnly: true, bottomNav: false } },
-      { path: '/auth/callback', name: 'auth-callback', component: AuthCallbackView, meta: { bottomNav: false } },
+      {
+        path: '/login',
+        name: loginRouteName,
+        component: () => import('../views/LoginView.vue'),
+        meta: { guestOnly: true, bottomNav: false },
+      },
+      {
+        path: '/auth/callback',
+        name: 'auth-callback',
+        component: () => import('../views/AuthCallbackView.vue'),
+        meta: { bottomNav: false },
+      },
       {
         path: '/plots',
-        component: PlotsView,
+        component: () => import('../views/PlotsView.vue'),
         meta: { requiresAuth: true, ownMobileHeader: true },
         children: [
-          { path: '', name: 'plots', component: PlotsEmptyView },
-          { path: ':id', name: 'plot', component: PlotDetailView, props: true },
+          { path: '', name: 'plots', component: () => import('../views/PlotsEmptyView.vue') },
+          { path: ':id', name: 'plot', component: () => import('../views/PlotDetailView.vue'), props: true },
         ],
       },
       {
@@ -34,11 +37,16 @@ export function createAppRouter(session: SignedInCheck, history: RouterHistory =
         props: (route) => ({ plotId: route.params['id'] }),
         meta: { requiresAuth: true },
       },
-      { path: '/reports', name: 'reports', component: ReportsView, meta: { requiresAuth: true, ownMobileHeader: true } },
+      {
+        path: '/reports',
+        name: 'reports',
+        component: () => import('../views/ReportsView.vue'),
+        meta: { requiresAuth: true, ownMobileHeader: true },
+      },
       {
         path: '/reports/:id',
         name: 'report',
-        component: ReportView,
+        component: () => import('../views/ReportView.vue'),
         props: true,
         meta: { requiresAuth: true, ownMobileHeader: true },
       },

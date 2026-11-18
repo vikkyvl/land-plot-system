@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 
 import AppHeader from './components/AppHeader.vue'
 import BottomNav from './components/BottomNav.vue'
+import OfflineBanner from './components/OfflineBanner.vue'
 import ToastHost from './components/ToastHost.vue'
 import { useSessionStore } from './stores/session'
 
@@ -21,6 +22,7 @@ onMounted(() => session.refresh())
     class="app"
     :class="{ 'app--own-mobile-header': route.meta.ownMobileHeader, 'app--bottom-nav': showBottomNav }"
   >
+    <OfflineBanner />
     <AppHeader class="app__header" />
     <RouterView />
     <BottomNav v-if="showBottomNav" />

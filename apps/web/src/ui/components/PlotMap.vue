@@ -224,7 +224,10 @@ onMounted(() => {
   if (container.value === null) {
     return
   }
-  map.value = L.map(container.value, { zoomControl: false, attributionControl: false }).setView(kyiv, startZoom)
+  map.value = L.map(container.value, { zoomControl: false, attributionControl: false, fadeAnimation: false }).setView(
+    kyiv,
+    startZoom,
+  )
   L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map.value)
   showLayer(props.layer)
   shapes.addTo(map.value)
@@ -438,5 +441,12 @@ defineExpose({ fitPoints })
   background: var(--color-surface);
   opacity: 0.75;
   cursor: copy;
+}
+
+.plot-map :deep(.plot-vertex)::before,
+.plot-map :deep(.plot-midpoint)::before {
+  position: absolute;
+  inset: calc((var(--touch-min) - 100%) / -2);
+  content: '';
 }
 </style>

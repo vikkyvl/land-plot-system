@@ -89,7 +89,7 @@ onMounted(load)
           <button
             type="button"
             class="plots__avatar"
-            aria-label="Профіль"
+            :aria-label="`${initials(userName ?? '')} — профіль і вихід`"
             :aria-expanded="menuOpen"
             @click="menuOpen = !menuOpen"
           >
@@ -525,6 +525,18 @@ onMounted(load)
     margin-top: var(--space-3);
     border-radius: var(--radius-lg);
     font-size: var(--fs-md);
+  }
+}
+
+.plots {
+  padding-right: max(var(--space-6), env(safe-area-inset-right));
+  padding-left: max(var(--space-6), env(safe-area-inset-left));
+}
+
+@media (max-width: 767.98px) {
+  .plots {
+    padding-right: max(var(--space-5), env(safe-area-inset-right));
+    padding-left: max(var(--space-5), env(safe-area-inset-left));
   }
 }
 </style>
