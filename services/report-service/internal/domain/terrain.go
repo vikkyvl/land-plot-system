@@ -50,6 +50,11 @@ type localPlane struct {
 	parallelScale   float64
 }
 
+const (
+	TerrainSource = "Open-Meteo.com (CC BY 4.0), Copernicus DEM GLO-90"
+	ClimateSource = "Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5"
+)
+
 func UnavailableTerrain() Terrain {
 	return Terrain{Status: DataUnavailable}
 }

@@ -10,9 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vleshchenko/land-plot-system/services/report-service/internal/client/httpclient"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/config"
-	"github.com/vleshchenko/land-plot-system/services/report-service/internal/discovery/consul"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/messaging/rabbitmq"
@@ -49,13 +47,7 @@ func Run() error {
 		}
 	}()
 
-	resolver := consul.NewResolver(serviceConfig.ConsulAddress, &http.Client{Timeout: serviceConfig.ConsulTimeout})
-	plotClient := httpclient.NewPlotClient(
-		resolver,
-		&http.Client{Timeout: serviceConfig.UpstreamTimeout},
-		serviceConfig.PlotServiceName,
-	)
-	reports := service.NewReportService(postgres.NewReportRepository(pool), plotClient, serviceConfig.InstanceID)
+	reports := newReportService(serviceConfig, pool, logger)
 	projection := service.NewPlotProjection(postgres.NewPlotSummaryRepository(pool, serviceConfig.FailNamePrefix))
 	relay := service.NewOutboxRelay(
 		postgres.NewOutboxRepository(pool),

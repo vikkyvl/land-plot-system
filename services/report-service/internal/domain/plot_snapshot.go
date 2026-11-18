@@ -10,6 +10,8 @@ type PlotSnapshot struct {
 	PerimeterM float64
 	Version    int64
 	Status     string
+	Points     []Coordinate
+	Accuracy   *AreaAccuracy
 }
 
 func (plot PlotSnapshot) IsConfirmed() bool {

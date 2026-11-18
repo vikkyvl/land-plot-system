@@ -17,14 +17,26 @@ const (
 )
 
 type ReportService struct {
-	repository ReportRepository
-	plots      PlotClient
-	instanceID string
-	now        func() time.Time
+	repository   ReportRepository
+	plots        PlotClient
+	surroundings Surroundings
+	instanceID   string
+	now          func() time.Time
 }
 
-func NewReportService(repository ReportRepository, plots PlotClient, instanceID string) *ReportService {
-	return &ReportService{repository: repository, plots: plots, instanceID: instanceID, now: time.Now}
+func NewReportService(
+	repository ReportRepository,
+	plots PlotClient,
+	surroundings Surroundings,
+	instanceID string,
+) *ReportService {
+	return &ReportService{
+		repository:   repository,
+		plots:        plots,
+		surroundings: surroundings,
+		instanceID:   instanceID,
+		now:          time.Now,
+	}
 }
 
 func (reportService *ReportService) Create(
@@ -49,7 +61,9 @@ func (reportService *ReportService) Create(
 		return domain.Report{}, domain.ErrPlotNotConfirmed
 	}
 
-	report := domain.NewReport(uuid.NewString(), plot, reportService.now())
+	terrain, climate := reportService.surroundings.Describe(requestContext, plot)
+	report := domain.NewReport(uuid.NewString(), plot, reportService.now()).WithSurroundings(terrain, climate)
+
 	if err := reportService.repository.Create(requestContext, report); err != nil {
 		return domain.Report{}, fmt.Errorf(wrapCreateReport, err)
 	}

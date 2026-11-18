@@ -12,7 +12,7 @@ import (
 )
 
 const reportColumns = `id, owner_id, plot_id, plot_name, plot_version, area_m2,
-	area_ares, area_hectares, perimeter_m, created_at`
+	area_ares, area_hectares, perimeter_m, created_at, accuracy, terrain, climate`
 
 const storedReportColumns = reportColumns + `, plot_deleted_at`
 
@@ -25,11 +25,17 @@ func NewReportRepository(pool *pgxpool.Pool) *ReportRepository {
 }
 
 func (repository *ReportRepository) Create(requestContext context.Context, report domain.Report) error {
-	_, err := repository.pool.Exec(requestContext, `
+	snapshot, err := encodeSnapshot(report)
+	if err != nil {
+		return err
+	}
+
+	_, err = repository.pool.Exec(requestContext, `
 		INSERT INTO reports (`+reportColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		report.ID, report.OwnerID, report.PlotID, report.PlotName, report.PlotVersion,
 		report.AreaM2, report.AreaAres, report.AreaHectares, report.PerimeterM, report.CreatedAt,
+		snapshot.accuracy, snapshot.terrain, snapshot.climate,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertReport, err)
@@ -88,13 +94,19 @@ type rowScanner interface {
 }
 
 func scanReport(row rowScanner) (domain.Report, error) {
-	var report domain.Report
+	var (
+		report   domain.Report
+		snapshot snapshotColumns
+	)
 
 	err := row.Scan(
 		&report.ID, &report.OwnerID, &report.PlotID, &report.PlotName, &report.PlotVersion,
 		&report.AreaM2, &report.AreaAres, &report.AreaHectares, &report.PerimeterM, &report.CreatedAt,
-		&report.PlotDeletedAt,
+		&snapshot.accuracy, &snapshot.terrain, &snapshot.climate, &report.PlotDeletedAt,
 	)
+	if err != nil {
+		return domain.Report{}, err
+	}
 
-	return report, err
+	return snapshot.decodeInto(report)
 }

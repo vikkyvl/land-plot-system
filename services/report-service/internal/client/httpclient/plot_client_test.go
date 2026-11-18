@@ -15,7 +15,11 @@ import (
 
 const (
 	testServiceName = "land-plot-service"
-	testPlotBody    = `{"id":"plot-id","owner_id":"owner-1","name":"Plot","area_m2":10000,"perimeter_m":400,"version":2,"status":"CONFIRMED"}`
+	testPlotBody    = `{"id":"plot-id","owner_id":"owner-1","name":"Plot","area_m2":10000,"perimeter_m":400,` +
+		`"version":2,"status":"CONFIRMED","points":[{"lat":50.45,"lon":30.52},{"lat":50.45,"lon":30.5214},` +
+		`{"lat":50.4509,"lon":30.5214}],"accuracy":{"area_m2_margin":520,"area_hectares_margin":0.052,` +
+		`"percent":2.1,"confidence":0.95,"contributions":{"scale":0.4,"obstructions":0.6},"worst_side":1,` +
+		`"ground_shift_m":4,"basis":"capture"}}`
 )
 
 var testCaller = service.Caller{UserID: "owner-1", AccessToken: "access-token", RequestID: "request-1"}
@@ -68,8 +72,28 @@ func TestPlotClientGetsProtectedPlot(t *testing.T) {
 		t.Fatalf("Get() error = %v", err)
 	}
 
-	if plot.OwnerID != "owner-1" || plot.AreaM2 != 10_000 || plot.Version != 2 {
+	if plot.OwnerID != "owner-1" || plot.AreaM2 != 10_000 || plot.Version != 2 || len(plot.Points) != 3 ||
+		plot.Points[1] != (domain.Coordinate{Latitude: 50.45, Longitude: 30.5214}) {
 		t.Fatalf("plot = %#v", plot)
+	}
+
+	accuracy := plot.Accuracy
+	if accuracy == nil || accuracy.AreaMarginM2 != 520 || accuracy.ObstructionShare != 0.6 ||
+		accuracy.WorstSide == nil || *accuracy.WorstSide != 1 || accuracy.Basis != "capture" {
+		t.Fatalf("accuracy = %#v", accuracy)
+	}
+}
+
+func TestPlotClientRejectsPlotWithoutBoundary(t *testing.T) {
+	body := `{"id":"plot-id","owner_id":"owner-1","name":"Plot","area_m2":10000,"perimeter_m":400,` +
+		`"version":2,"status":"CONFIRMED","points":[]}`
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+
+	_, err := NewPlotClient(singleInstance(), client, testServiceName).Get(context.Background(), testCaller, "plot-id")
+	if !errors.Is(err, service.ErrInvalidPlotResponse) {
+		t.Fatalf("Get() error = %v, want ErrInvalidPlotResponse", err)
 	}
 }
 

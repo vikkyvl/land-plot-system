@@ -337,6 +337,31 @@ curl -X POST http://localhost:8080/api/v1/reports \
 
 A report contains `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, the `plot_version` it was built from and `plot_deleted`. Reports are built only for `CONFIRMED` plots; otherwise the request returns `409 plot_not_confirmed`, and for a deleted plot `410 plot_deleted`. A wrong `limit` or `plot_id` in the list query gives `400 invalid_query`. When a plot is deleted, its reports stay and are marked with `plot_deleted: true`.
 
+A report also keeps a snapshot of three blocks, so a report never changes after it is created:
+
+- `accuracy`: the area margin of the plot version, as `GET /api/v1/plots/{id}` returned it (see [Area accuracy](#area-accuracy));
+- `terrain`: `status`, the mean `slope_degrees`, `surface_area_m2` and `surface_area_hectares`, `surface_increase_percent`, `min_elevation_m`, `max_elevation_m`, `relief_m`, `coarse` and `source`;
+- `climate`: `status`, `first_year` and `last_year`, four `seasons` (`winter`, `spring`, `summer`, `autumn`, each with `mean_c`, `mean_min_c`, `mean_max_c`, `precipitation_mm`, `frost_days`, `heat_days`), `last_spring_frost` and `first_autumn_frost` as `MM-DD` or `null`, `growing_days` and `source`.
+
+Reports created before these blocks existed have them as `null`.
+
+**Terrain.** `report-service` takes elevations from the Open-Meteo Elevation API (Copernicus DEM GLO-90, 90 m) on a 10 × 10 grid over the plot's bounding box, widened by 90 m on each side (100 points, the limit of one request). A least-squares plane through them gives the mean slope `α` and the surface area `A / cos α`: 5° adds 0.4 %, 10° adds 1.5 %, 15° adds 3.5 %. Plots under 1 ha are marked `coarse`, because the model step is 90 m. The legal (cadastral) area is the horizontal one; the surface area is for reference only.
+
+**Climate.** Daily mean, minimum and maximum temperature and precipitation for the last ten full calendar years come from the Open-Meteo Historical Weather API (ERA5) for the centre of the 0.1° cell (about 11 km) around the plot. Seasons are meteorological, winter includes the December of the previous year, and every value is the average over the years. Frost days have a minimum below 0 °C and heat days a maximum of at least 30 °C; the last spring frost is the median of the last frost before 1 July, the first autumn frost the median of the first one after it, and `growing_days` counts days with a mean of at least 5 °C. Profiles are cached in `climate_cache` per cell and period for a year, because neighbouring plots share a climate; ten years of daily data count as about 260 calls of the free Open-Meteo limit.
+
+Both requests run in parallel with a 3 s timeout, below the 5 s the gateway waits. If Open-Meteo fails or is slow, the report is still created and the block has `status: "unavailable"`; creating a new report for the plot tries again. The public preview never calls Open-Meteo. The data are under CC BY 4.0, and clients show the attribution «Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90».
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `OPEN_METEO_ELEVATION_URL` | `https://api.open-meteo.com/v1/elevation` | Elevation API |
+| `OPEN_METEO_ARCHIVE_URL` | `https://archive-api.open-meteo.com/v1/archive` | Historical Weather API |
+| `OPEN_METEO_TIMEOUT` | `3s` | timeout of each Open-Meteo request |
+| `TERRAIN_GRID_SIDE` | `10` | grid side, 2 to 10 (at most 100 points) |
+| `TERRAIN_MARGIN_M` | `90` | margin around the plot, metres |
+| `TERRAIN_COARSE_AREA_M2` | `10000` | plots below this area are `coarse` |
+| `CLIMATE_YEARS` | `10` | full calendar years in the profile |
+| `CLIMATE_CACHE_TTL` | `8760h` | lifetime of a cached climate profile |
+
 ### Plot events
 
 `land-plot-service` publishes persistent JSON events to the durable topic exchange `land.events`. The routing keys are `plot.created`, `plot.updated`, `plot.cancelled`, and `plot.deleted`. The versioned contract contains:

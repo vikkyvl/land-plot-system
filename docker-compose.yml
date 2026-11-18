@@ -229,6 +229,9 @@ services:
       OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-1m}
       OUTBOX_RETENTION: ${OUTBOX_RETENTION:-1h}
       REPORT_FAIL_NAME_PREFIX: ${REPORT_FAIL_NAME_PREFIX-FAIL}
+      OPEN_METEO_ELEVATION_URL: ${OPEN_METEO_ELEVATION_URL:-https://api.open-meteo.com/v1/elevation}
+      OPEN_METEO_ARCHIVE_URL: ${OPEN_METEO_ARCHIVE_URL:-https://archive-api.open-meteo.com/v1/archive}
+      OPEN_METEO_TIMEOUT: ${OPEN_METEO_TIMEOUT:-3s}
     expose:
       - "8083"
     depends_on:

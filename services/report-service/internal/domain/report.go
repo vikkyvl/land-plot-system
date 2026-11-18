@@ -19,6 +19,16 @@ type Report struct {
 	PerimeterM    float64
 	CreatedAt     time.Time
 	PlotDeletedAt *time.Time
+	Accuracy      *AreaAccuracy
+	Terrain       *Terrain
+	Climate       *Climate
+}
+
+func (report Report) WithSurroundings(terrain Terrain, climate Climate) Report {
+	report.Terrain = &terrain
+	report.Climate = &climate
+
+	return report
 }
 
 func (report Report) PlotDeleted() bool {
@@ -37,5 +47,6 @@ func NewReport(id string, plot PlotSnapshot, now time.Time) Report {
 		AreaHectares: plot.AreaM2 / SquareMetersPerHectare,
 		PerimeterM:   plot.PerimeterM,
 		CreatedAt:    now.UTC(),
+		Accuracy:     plot.Accuracy,
 	}
 }

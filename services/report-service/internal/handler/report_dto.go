@@ -21,6 +21,10 @@ type reportResponse struct {
 	PerimeterM   float64   `json:"perimeter_m"`
 	CreatedAt    time.Time `json:"created_at"`
 	PlotDeleted  bool      `json:"plot_deleted"`
+
+	Accuracy *accuracyResponse `json:"accuracy"`
+	Terrain  *terrainResponse  `json:"terrain"`
+	Climate  *climateResponse  `json:"climate"`
 }
 
 func newReportResponse(report domain.Report) reportResponse {
@@ -35,5 +39,8 @@ func newReportResponse(report domain.Report) reportResponse {
 		PerimeterM:   report.PerimeterM,
 		CreatedAt:    report.CreatedAt,
 		PlotDeleted:  report.PlotDeleted(),
+		Accuracy:     newAccuracyResponse(report.Accuracy),
+		Terrain:      newTerrainResponse(report.Terrain),
+		Climate:      newClimateResponse(report.Climate),
 	}
 }

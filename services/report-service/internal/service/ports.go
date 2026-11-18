@@ -24,6 +24,10 @@ type PlotClient interface {
 	Trace(requestContext context.Context, caller Caller, message string) ([]domain.TraceHop, error)
 }
 
+type Surroundings interface {
+	Describe(requestContext context.Context, plot domain.PlotSnapshot) (domain.Terrain, domain.Climate)
+}
+
 type ElevationProvider interface {
 	Elevations(requestContext context.Context, points []domain.Coordinate) ([]float64, error)
 }

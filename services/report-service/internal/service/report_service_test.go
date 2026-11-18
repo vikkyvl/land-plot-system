@@ -38,6 +38,21 @@ func (stub *reportRepositoryStub) List(_ context.Context, filter domain.ReportFi
 	return []domain.Report{stub.report}, stub.err
 }
 
+type surroundingsStub struct {
+	plot domain.PlotSnapshot
+}
+
+func (stub *surroundingsStub) Describe(_ context.Context, plot domain.PlotSnapshot) (domain.Terrain, domain.Climate) {
+	stub.plot = plot
+
+	return domain.Terrain{
+			Status:       domain.DataAvailable,
+			SlopeDegrees: 4,
+		}, domain.UnavailableClimate(
+			domain.ClimatePeriod{},
+		)
+}
+
 type plotClientStub struct {
 	plot   domain.PlotSnapshot
 	caller Caller
@@ -65,7 +80,7 @@ func TestReportServiceCreatesSnapshotFromPlotService(t *testing.T) {
 		ID: plotID, OwnerID: testCaller.UserID, Name: "Plot", AreaM2: 10_000, PerimeterM: 400, Version: 2,
 		Status: domain.PlotStatusConfirmed,
 	}}
-	reports := NewReportService(repository, plots, testInstanceID)
+	reports := NewReportService(repository, plots, &surroundingsStub{}, testInstanceID)
 	fixedNow := time.Date(2026, time.October, 26, 12, 0, 0, 0, time.UTC)
 	reports.now = func() time.Time { return fixedNow }
 
@@ -90,7 +105,7 @@ func TestReportServiceRejectsInvalidPlotIDBeforeCallingPlotService(t *testing.T)
 	_, err := NewReportService(
 		&reportRepositoryStub{},
 		plots,
-		testInstanceID,
+		&surroundingsStub{}, testInstanceID,
 	).Create(context.Background(), testCaller, "bad")
 
 	if !errors.Is(err, domain.ErrInvalidPlotID) || plots.plotID != "" {
@@ -114,7 +129,7 @@ func TestReportServiceRejectsForeignPlot(t *testing.T) {
 	_, err := NewReportService(
 		&reportRepositoryStub{},
 		plots,
-		testInstanceID,
+		&surroundingsStub{}, testInstanceID,
 	).Create(context.Background(), testCaller, plotID)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("Create() error = %v, want ErrForbidden", err)
@@ -128,7 +143,7 @@ func TestReportServiceProtectsStoredReport(t *testing.T) {
 	_, err := NewReportService(
 		repository,
 		&plotClientStub{},
-		testInstanceID,
+		&surroundingsStub{}, testInstanceID,
 	).Get(context.Background(), "owner-2", reportID)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("Get() error = %v, want ErrForbidden", err)
@@ -137,7 +152,7 @@ func TestReportServiceProtectsStoredReport(t *testing.T) {
 
 func TestReportServiceBuildsDiagnosticPath(t *testing.T) {
 	plots := &plotClientStub{}
-	reports := NewReportService(&reportRepositoryStub{}, plots, testInstanceID)
+	reports := NewReportService(&reportRepositoryStub{}, plots, &surroundingsStub{}, testInstanceID)
 
 	trace, err := reports.Trace(context.Background(), testCaller, "gateway-1", "hello")
 	if err != nil {
@@ -162,8 +177,40 @@ func TestReportServiceRejectsPlotWaitingForConfirmation(t *testing.T) {
 		Status: "PENDING",
 	}}
 
-	_, err := NewReportService(repository, plots, testInstanceID).Create(context.Background(), testCaller, plotID)
+	_, err := NewReportService(
+		repository,
+		plots,
+		&surroundingsStub{},
+		testInstanceID,
+	).Create(context.Background(), testCaller, plotID)
 	if !errors.Is(err, domain.ErrPlotNotConfirmed) || repository.created.ID != "" {
 		t.Fatalf("Create() error = %v, created = %#v", err, repository.created)
+	}
+}
+
+func TestReportServiceStoresAccuracyTerrainAndClimate(t *testing.T) {
+	plotID := uuid.NewString()
+	repository := &reportRepositoryStub{}
+	accuracy := &domain.AreaAccuracy{AreaMarginM2: 520, Basis: "assumed"}
+	plot := domain.PlotSnapshot{
+		ID: plotID, OwnerID: testCaller.UserID, Name: "Plot", AreaM2: 10_000, PerimeterM: 400, Version: 2,
+		Status: domain.PlotStatusConfirmed, Points: testTerrainBoundary, Accuracy: accuracy,
+	}
+	surroundings := &surroundingsStub{}
+
+	report, err := NewReportService(repository, &plotClientStub{plot: plot}, surroundings, testInstanceID).
+		Create(context.Background(), testCaller, plotID)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if len(surroundings.plot.Points) != len(testTerrainBoundary) || report.Accuracy != accuracy ||
+		report.Terrain == nil || report.Terrain.SlopeDegrees != 4 ||
+		report.Climate == nil || report.Climate.Status != domain.DataUnavailable {
+		t.Fatalf("report = %+v", report)
+	}
+
+	if repository.created.Terrain != report.Terrain || repository.created.Climate != report.Climate {
+		t.Fatalf("stored report = %+v", repository.created)
 	}
 }

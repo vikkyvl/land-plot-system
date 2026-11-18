@@ -63,6 +63,11 @@ DROP INDEX IF EXISTS outbox_events_unpublished_idx;
 CREATE INDEX IF NOT EXISTS outbox_events_pending_idx
     ON outbox_events (position) WHERE published_at IS NULL AND failed_at IS NULL;
 
+-- Reports created before the accuracy, terrain and climate blocks keep them empty.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS accuracy JSONB NULL;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS terrain JSONB NULL;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS climate JSONB NULL;
+
 -- Climate profiles per 0.1° cell and period of years; neighbouring plots share the same climate.
 CREATE TABLE IF NOT EXISTS climate_cache (
     cell_latitude_tenths INT NOT NULL,
