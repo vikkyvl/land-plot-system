@@ -277,7 +277,7 @@ async function createReport(): Promise<void> {
           <template v-if="canWrite">
             <RouterLink
               v-if="!pending"
-              class="detail__button detail__edit"
+              class="detail__button detail__edit ui-secondary"
               :to="`/plots/${plot.id}/edit`"
             >
               {{ $t('plot.editBoundary') }}
@@ -285,7 +285,7 @@ async function createReport(): Promise<void> {
             <button
               v-else
               type="button"
-              class="detail__button detail__edit"
+              class="detail__button detail__edit ui-secondary"
               disabled
               :title="pendingHint"
             >
@@ -293,7 +293,7 @@ async function createReport(): Promise<void> {
             </button>
             <button
               type="button"
-              class="detail__button detail__rename"
+              class="detail__button detail__rename ui-secondary"
               :disabled="pending"
               :title="pending ? pendingHint : undefined"
               @click="open('rename')"
@@ -302,7 +302,7 @@ async function createReport(): Promise<void> {
             </button>
             <button
               type="button"
-              class="detail__button detail__button--danger detail__delete"
+              class="detail__button detail__button--danger detail__delete ui-secondary"
               :disabled="pending"
               :title="pending ? pendingHint : undefined"
               @click="open('delete')"
@@ -313,7 +313,7 @@ async function createReport(): Promise<void> {
           <button
             v-if="canReport"
             type="button"
-            class="detail__button detail__button--primary detail__report"
+            class="detail__button detail__button--primary detail__report ui-primary"
             :disabled="pending || reporting"
             :title="pending ? pendingHint : undefined"
             @click="createReport"
@@ -459,7 +459,7 @@ async function createReport(): Promise<void> {
       <button
         v-if="canReport"
         type="button"
-        class="detail__button detail__button--primary detail__report-mobile"
+        class="detail__button detail__button--primary detail__report-mobile ui-primary"
         :disabled="pending || reporting"
         @click="createReport"
       >
@@ -559,10 +559,6 @@ async function createReport(): Promise<void> {
   cursor: pointer;
 }
 
-.detail__button:hover {
-  color: var(--color-ink);
-}
-
 .detail__button.detail__report-mobile {
   display: none;
 }
@@ -572,20 +568,12 @@ async function createReport(): Promise<void> {
   opacity: 0.5;
 }
 
+.detail__button--danger {
+  --ui-secondary-border-hover: var(--color-danger-border);
+}
+
 .detail__button--danger,
-.detail__button--danger:hover {
-  border-color: var(--color-danger-border-soft);
-  color: var(--color-danger);
-}
-
 .detail__button--primary,
-.detail__button--primary:hover {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  font-weight: 700;
-}
-
 .detail__pending {
   flex-basis: 100%;
   margin: 0;

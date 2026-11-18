@@ -18,7 +18,7 @@ const names: Readonly<Record<Locale, string>> = { uk: 'Українська', en
       v-for="option in locales"
       :key="option"
       type="button"
-      class="locale-switch__option"
+      class="locale-switch__option ui-control"
       :lang="option"
       :aria-pressed="locale === option"
       :aria-label="names[option]"

@@ -58,14 +58,14 @@ const swap = computed(() => (props.problem.details?.kind === 'self_intersection'
       <button
         v-if="swap"
         type="button"
-        class="error-panel__button error-panel__button--primary"
+        class="error-panel__button error-panel__button--primary ui-primary"
         @click="emit('swap', swap.swap[0], swap.swap[1])"
       >
         {{ swapText(swap) }}
       </button>
       <button
         type="button"
-        class="error-panel__button"
+        class="error-panel__button ui-secondary"
         @click="emit('dismiss')"
       >
         {{ $t('problems.fixMyself') }}

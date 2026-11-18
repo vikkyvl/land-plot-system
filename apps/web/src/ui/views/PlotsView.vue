@@ -82,7 +82,7 @@ onMounted(load)
           {{ $t('plots.title') }}
         </h1>
         <RouterLink
-          class="plots__new plots__new--web"
+          class="plots__new plots__new--web ui-primary"
           to="/"
         >
           {{ $t('plots.new') }}
@@ -147,7 +147,7 @@ onMounted(load)
         <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
         <button
           type="button"
-          class="plots__retry"
+          class="plots__retry ui-secondary"
           @click="load"
         >
           {{ $t('app.retry') }}
@@ -159,7 +159,7 @@ onMounted(load)
       >
         <p>{{ $t('plots.empty') }}</p>
         <RouterLink
-          class="plots__new"
+          class="plots__new ui-primary"
           to="/"
         >
           {{ $t('plots.new') }}
@@ -178,7 +178,7 @@ onMounted(load)
             :style="{ '--order': Math.min(index, maxStaggered) }"
           >
             <RouterLink
-              class="plots__card"
+              class="plots__card ui-card"
               :class="{ 'plots__card--selected': plot.id === selectedId }"
               :to="`/plots/${plot.id}`"
               :aria-current="plot.id === selectedId ? 'page' : undefined"
@@ -212,7 +212,7 @@ onMounted(load)
       </template>
 
       <RouterLink
-        class="plots__new plots__new--mobile"
+        class="plots__new plots__new--mobile ui-primary"
         to="/"
       >
         <svg
@@ -286,11 +286,6 @@ onMounted(load)
   text-decoration: none;
 }
 
-.plots__new:hover {
-  background: var(--color-primary-hover);
-  color: var(--color-on-primary);
-}
-
 .plots__new--mobile,
 .plots__profile,
 .plots__search,
@@ -356,11 +351,6 @@ onMounted(load)
   background: var(--color-surface);
   color: var(--color-ink);
   text-decoration: none;
-}
-
-.plots__card:hover {
-  border-color: var(--color-border-strong);
-  color: var(--color-ink);
 }
 
 .plots__card--selected,

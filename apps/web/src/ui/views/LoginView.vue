@@ -48,7 +48,7 @@ async function signIn(method: SignInMethod): Promise<void> {
       <div class="login__actions">
         <button
           type="button"
-          class="login__button login__button--primary"
+          class="login__button login__button--primary ui-primary"
           :disabled="pending !== null"
           @click="signIn('password')"
         >
@@ -56,7 +56,7 @@ async function signIn(method: SignInMethod): Promise<void> {
         </button>
         <button
           type="button"
-          class="login__button"
+          class="login__button ui-secondary"
           :disabled="pending !== null"
           @click="signIn('registration')"
         >
@@ -72,7 +72,7 @@ async function signIn(method: SignInMethod): Promise<void> {
 
         <button
           type="button"
-          class="login__button"
+          class="login__button ui-secondary"
           :disabled="pending !== null"
           @click="signIn('google')"
         >
@@ -189,11 +189,6 @@ async function signIn(method: SignInMethod): Promise<void> {
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: var(--fs-md);
-}
-
-.login__button--primary:hover:not(:disabled) {
-  border-color: var(--color-primary-hover);
-  background: var(--color-primary-hover);
 }
 
 .login__button:disabled {

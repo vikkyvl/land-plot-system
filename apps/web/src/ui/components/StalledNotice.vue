@@ -10,7 +10,7 @@ const emit = defineEmits<{ retry: [] }>()
     <span>{{ $t('plots.stalled') }}</span>
     <button
       type="button"
-      class="stalled__button"
+      class="stalled__button ui-secondary"
       @click="emit('retry')"
     >
       {{ $t('plots.checkAgain') }}

@@ -41,9 +41,6 @@ const map = shallowRef<L.Map | null>(null)
 let tiles: L.TileLayer | null = null
 const shapes = L.layerGroup()
 const handles = L.layerGroup()
-let vertexMarkers: L.Marker[] = []
-let drawnPoints: readonly Coordinate[] = []
-let animatedIntersection: string | null = null
 let lastPointer: PointerKind = 'mouse'
 
 function rememberPointer(event: PointerEvent): void {
@@ -133,15 +130,7 @@ function drawSides(latLngs: L.LatLngTuple[], stroke: string): void {
   })
 }
 
-function intersectionMotion(): { blink: string; pulse: string } {
-  const key = props.selfIntersection === null ? null : JSON.stringify(props.selfIntersection.segments)
-  const fresh = key !== null && key !== animatedIntersection
-  animatedIntersection = key
-
-  return fresh ? { blink: 'plot-crossing', pulse: 'plot-crossing-pulse' } : { blink: '', pulse: '' }
-}
-
-function drawShapes(latLngs: L.LatLngTuple[], motion = { blink: '', pulse: '' }): void {
+function drawShapes(latLngs: L.LatLngTuple[]): void {
   shapes.clearLayers()
   const stroke = css('--color-plot-stroke')
   const intersection = css('--color-intersection')
@@ -171,7 +160,6 @@ function drawShapes(latLngs: L.LatLngTuple[], motion = { blink: '', pulse: '' })
         weight: 5,
         lineCap: 'round',
         interactive: false,
-        className: motion.blink,
       }).addTo(shapes)
     }
   }
@@ -187,24 +175,11 @@ function drawShapes(latLngs: L.LatLngTuple[], motion = { blink: '', pulse: '' })
       fillOpacity: 0.18,
       interactive: false,
     }).addTo(shapes)
-    if (motion.pulse !== '') {
-      L.circleMarker(point, {
-        radius: 16,
-        color: intersection,
-        weight: 2,
-        fill: false,
-        interactive: false,
-        className: motion.pulse,
-      }).addTo(shapes)
-    }
   }
 }
 
-function vertexIcon(index: number, fresh: boolean): L.DivIcon {
+function vertexIcon(index: number): L.DivIcon {
   const classes = ['plot-vertex']
-  if (fresh) {
-    classes.push('plot-vertex--new')
-  }
   if (index === props.points.length - 1) {
     classes.push('plot-vertex--last')
   }
@@ -226,12 +201,8 @@ function draw(): void {
     return
   }
   const latLngs = props.points.map(toLatLng)
-  const grew = props.points.length > drawnPoints.length
-  const previous = new Set(drawnPoints)
-  drawnPoints = props.points
-  drawShapes(latLngs, intersectionMotion())
+  drawShapes(latLngs)
   handles.clearLayers()
-  vertexMarkers = []
 
   if (latLngs.length >= 2) {
     latLngs.forEach((from, index) => {
@@ -257,7 +228,7 @@ function draw(): void {
 
   latLngs.forEach((latLng, index) => {
     const vertex = L.marker(latLng, {
-      icon: vertexIcon(index, grew && !previous.has(props.points[index] as Coordinate)),
+      icon: vertexIcon(index),
       draggable: true,
       autoPan: true,
       title: t('map.point', { n: index + 1 }),
@@ -271,45 +242,9 @@ function draw(): void {
     })
     vertex.on('dragend', () => emit('move', index, toCoordinate(vertex.getLatLng()), gesture()))
     vertex.addTo(handles)
-    vertexMarkers.push(vertex)
   })
 }
 
-function swappedPair(previous: readonly Coordinate[], current: readonly Coordinate[]): [number, number] | null {
-  if (previous.length !== current.length) {
-    return null
-  }
-  const changed = current.flatMap((point, index) => (point === previous[index] ? [] : [index]))
-  const [first, second] = changed
-  if (changed.length !== 2 || first === undefined || second === undefined) {
-    return null
-  }
-
-  return current[first] === previous[second] && current[second] === previous[first] ? [first, second] : null
-}
-
-function animateSwap(previous: readonly Coordinate[], current: readonly Coordinate[]): void {
-  const pair = swappedPair(previous, current)
-  if (pair === null || map.value === null) {
-    return
-  }
-  for (const index of pair) {
-    const element = vertexMarkers[index]?.getElement()
-    const from = previous[index]
-    const to = current[index]
-    if (element === undefined || from === undefined || to === undefined) {
-      continue
-    }
-    const start = map.value.latLngToLayerPoint(toLatLng(from))
-    const end = map.value.latLngToLayerPoint(toLatLng(to))
-    element.style.transition = 'none'
-    element.style.translate = `${start.x - end.x}px ${start.y - end.y}px`
-    requestAnimationFrame(() => {
-      element.style.transition = 'translate var(--motion-base) var(--ease-spring)'
-      element.style.translate = '0px 0px'
-    })
-  }
-}
 
 function fitPoints(): void {
   if (map.value !== null && props.points.length >= 2) {
@@ -369,13 +304,8 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [props.points, props.selfIntersection, props.flaggedVertices, props.showNumbers, props.obstructions] as const,
-  ([points], [previousPoints]) => {
-    draw()
-    if (points !== previousPoints) {
-      animateSwap(previousPoints, points)
-    }
-  },
+  () => [props.points, props.selfIntersection, props.flaggedVertices, props.showNumbers, props.obstructions],
+  () => draw(),
 )
 watch(
   () => props.points,
@@ -420,7 +350,7 @@ defineExpose({ fitPoints })
     <div class="plot-map__controls">
       <button
         type="button"
-        class="plot-map__control"
+        class="plot-map__control ui-control"
         :aria-label="$t('map.zoomIn')"
         @click="zoomIn"
       >
@@ -428,7 +358,7 @@ defineExpose({ fitPoints })
       </button>
       <button
         type="button"
-        class="plot-map__control"
+        class="plot-map__control ui-control"
         :aria-label="$t('map.zoomOut')"
         @click="zoomOut"
       >
@@ -436,7 +366,7 @@ defineExpose({ fitPoints })
       </button>
       <button
         type="button"
-        class="plot-map__control"
+        class="plot-map__control ui-control"
         :aria-label="$t('map.locate')"
         :aria-busy="locating"
         @click="locate"
@@ -535,28 +465,6 @@ defineExpose({ fitPoints })
   border-radius: 50%;
   background: var(--color-surface);
   cursor: grab;
-}
-
-.plot-map :deep(.plot-vertex) {
-  transition: scale var(--motion-fast) var(--ease-out);
-}
-
-.plot-map :deep(.plot-vertex--new) {
-  animation: motion-pop var(--motion-base) var(--ease-spring);
-}
-
-.plot-map :deep(.plot-vertex.leaflet-drag-target) {
-  scale: 1.35;
-}
-
-.plot-map :deep(.plot-crossing) {
-  animation: motion-blink 900ms ease-in-out 1;
-}
-
-.plot-map :deep(.plot-crossing-pulse) {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: motion-pulse 1.1s var(--ease-out) 3 both;
 }
 
 .plot-map :deep(.plot-vertex--last) {

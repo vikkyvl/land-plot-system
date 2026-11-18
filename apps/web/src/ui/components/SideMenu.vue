@@ -61,7 +61,7 @@ function choose(reason: ObstructionReason | null): void {
         </h2>
         <button
           type="button"
-          class="side-menu__insert"
+          class="side-menu__insert ui-secondary"
           @click="emit('insert')"
         >
           {{ $t('sides.insertHere') }}
@@ -74,7 +74,7 @@ function choose(reason: ObstructionReason | null): void {
             v-for="choice in choices"
             :key="choice ?? 'none'"
             type="button"
-            class="side-menu__choice"
+            class="side-menu__choice ui-secondary"
             :aria-pressed="reason === choice"
             @click="choose(choice)"
           >
@@ -83,7 +83,7 @@ function choose(reason: ObstructionReason | null): void {
         </div>
         <button
           type="button"
-          class="side-menu__cancel"
+          class="side-menu__cancel ui-secondary"
           @click="emit('close')"
         >
           {{ $t('sides.cancel') }}

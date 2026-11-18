@@ -47,21 +47,21 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
         :aria-label="$t('app.sections')"
       >
         <RouterLink
-          class="app-header__tab"
+          class="app-header__tab ui-nav-link"
           to="/"
           :aria-current="route.name === 'home' || route.name === 'plot-edit' ? 'page' : undefined"
         >
           {{ $t('app.calculator') }}
         </RouterLink>
         <RouterLink
-          class="app-header__tab"
+          class="app-header__tab ui-nav-link"
           to="/plots"
           :aria-current="route.path.startsWith('/plots') && route.name !== 'plot-edit' ? 'page' : undefined"
         >
           {{ $t('app.myPlots') }}
         </RouterLink>
         <RouterLink
-          class="app-header__tab"
+          class="app-header__tab ui-nav-link"
           to="/reports"
           :aria-current="route.path.startsWith('/reports') ? 'page' : undefined"
         >
@@ -79,7 +79,7 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
         >{{ userName }}</span>
         <button
           type="button"
-          class="app-header__button"
+          class="app-header__button ui-secondary"
           @click="session.signOut()"
         >
           {{ $t('app.signOut') }}
@@ -87,7 +87,7 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
       </div>
       <RouterLink
         v-else-if="route.name !== 'login'"
-        class="app-header__button app-header__button--primary"
+        class="app-header__button app-header__button--primary ui-primary"
         :to="loginTarget"
       >
         {{ $t('app.signIn') }}

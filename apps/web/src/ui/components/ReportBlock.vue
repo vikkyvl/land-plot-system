@@ -36,7 +36,7 @@ const titleId = `report-block-${Math.random().toString(36).slice(2)}`
       <button
         v-if="canRefresh"
         type="button"
-        class="report-block__refresh"
+        class="report-block__refresh ui-secondary"
         :disabled="refreshing"
         @click="emit('refresh')"
       >

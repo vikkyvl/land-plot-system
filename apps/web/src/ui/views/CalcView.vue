@@ -350,7 +350,7 @@ onBeforeUnmount(() => calculator.stop())
           <button
             v-if="canWrite"
             type="button"
-            class="calc__button calc__button--primary calc__save"
+            class="calc__button calc__button--primary calc__save ui-primary"
             :disabled="!canSave"
             :aria-busy="saving"
             @click="save"
@@ -359,7 +359,7 @@ onBeforeUnmount(() => calculator.stop())
           </button>
           <button
             type="button"
-            class="calc__button calc__undo"
+            class="calc__button calc__undo ui-secondary"
             :disabled="points.length === 0"
             @click="calculator.undo"
           >
@@ -367,7 +367,7 @@ onBeforeUnmount(() => calculator.stop())
           </button>
           <button
             type="button"
-            class="calc__button calc__clear"
+            class="calc__button calc__clear ui-secondary"
             :disabled="points.length === 0"
             @click="calculator.clear"
           >
@@ -696,10 +696,6 @@ onBeforeUnmount(() => calculator.stop())
   color: var(--color-on-primary);
   font-size: var(--fs-md);
   font-weight: 700;
-}
-
-.calc__button--primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
 }
 
 .calc__button--primary:disabled {

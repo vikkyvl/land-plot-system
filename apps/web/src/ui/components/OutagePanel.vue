@@ -31,7 +31,7 @@ const emit = defineEmits<{ retry: [] }>()
     <button
       v-if="!outage.rateLimited"
       type="button"
-      class="outage-panel__button"
+      class="outage-panel__button ui-secondary"
       @click="emit('retry')"
     >
       {{ $t('app.retry') }}

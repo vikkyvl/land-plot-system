@@ -96,7 +96,7 @@ watch(plotId, load)
       <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
       <button
         type="button"
-        class="reports__retry"
+        class="reports__retry ui-secondary"
         @click="load"
       >
         {{ $t('app.retry') }}
@@ -123,7 +123,7 @@ watch(plotId, load)
           :style="{ '--order': Math.min(index, maxStaggered) }"
         >
           <RouterLink
-            class="reports__card"
+            class="reports__card ui-card"
             :to="`/reports/${report.id}`"
           >
             <span
@@ -248,11 +248,6 @@ watch(plotId, load)
   background: var(--color-surface);
   color: var(--color-ink);
   text-decoration: none;
-}
-
-.reports__card:hover {
-  border-color: var(--color-border-strong);
-  color: var(--color-ink);
 }
 
 .reports__icon {

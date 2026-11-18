@@ -95,10 +95,18 @@ To add a text, add the same key to both files and use `$t('key')` in a template 
 Motion uses only CSS, Vue `<Transition>`/`<TransitionGroup>` and the View Transitions API, without libraries, and animates `transform` (including `scale` and `translate`) and `opacity`. The one exception is the plot outline that draws itself as a line, which animates `stroke-dashoffset` of one SVG path.
 
 - Tokens in `tokens.css`: `--motion-fast` 150 ms, `--motion-base` 250 ms, `--motion-slow`, `--motion-stagger`, `--ease-out` and `--ease-spring`; keyframes and shared rules in `motion.css`.
-- Map: a new vertex pops in, a dragged vertex grows, the area and the margin cross-fade when they change, the crossing sides blink once and the crossing point pulses, and after «Поміняти точки» the two points slide to their new places.
+- Map: points stay still. A new or swapped point is placed at once, a dragged vertex only changes colour, and the crossing sides and the crossing marker are drawn statically in red. The area and the margin cross-fade when they change.
 - From the list to a plot, the thumbnail turns into the map of the card through a `view-transition-name` per plot; without the API (or with reduced motion) the page changes without animation.
 - The outline draws itself in the plot card and the report; a pending badge shimmers and turns into a check when the plot is confirmed; a deleted card collapses and the list closes up; list cards and report blocks appear one after another, climate and accuracy bars grow, the side menu rises as a sheet with a spring on phones, and skeletons shimmer.
-- With `prefers-reduced-motion: reduce` the tokens become 0 ms, every animation and transition is switched off and no view transition starts. `tests/motion.test.ts` checks these rules.
+- Hover and press states come from `interaction.css` and the classes `ui-primary`, `ui-secondary`, `ui-control`, `ui-card` and `ui-nav-link`, with colours, shadows and sizes from `tokens.css`, `--motion-fast` and only `transform`, `opacity`, `background-color`, `border-color` and `box-shadow`:
+  - primary buttons («Зберегти ділянку», «Увійти», «Сформувати звіт», …) get a darker background, `translateY(-1px)` and a light shadow, and `scale(0.98)` while pressed; danger buttons use the danger colour;
+  - secondary buttons («Скасувати точку», «Вийти», «Перейменувати», …) get a light background and a darker border;
+  - the header links grow an underline from the left (`scaleX`), which stays under the active section;
+  - the map controls, «Карта / Супутник» and «УК / EN» get a light background;
+  - plot and report cards rise by 2 px with a shadow;
+  - every focusable element shows a clear `:focus-visible` ring for the keyboard.
+  Hover effects live inside `@media (hover: hover)`, so they never stick after a tap on a phone. The Keycloak theme gives its buttons the same states.
+- With `prefers-reduced-motion: reduce` the tokens become 0 ms, every animation and transition is switched off, no view transition starts and hover only changes colours, without moving anything. `tests/motion.test.ts` checks these rules, the allowed properties, the static map and the theme.
 
 ## Docker
 

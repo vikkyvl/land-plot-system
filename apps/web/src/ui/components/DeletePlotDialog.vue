@@ -56,14 +56,14 @@ const history = computed(() =>
       <div class="delete-dialog__actions">
         <button
           type="button"
-          class="delete-dialog__button"
+          class="delete-dialog__button ui-secondary"
           @click="emit('close')"
         >
           {{ $t('app.cancel') }}
         </button>
         <button
           type="submit"
-          class="delete-dialog__button delete-dialog__button--danger"
+          class="delete-dialog__button delete-dialog__button--danger ui-primary"
           :disabled="!matches || busy"
         >
           {{ busy ? $t('dialogs.deleting') : $t('dialogs.deleteForever') }}
@@ -149,6 +149,7 @@ const history = computed(() =>
 }
 
 .delete-dialog__button--danger {
+  --ui-primary-hover: var(--color-danger-hover);
   border-color: var(--color-danger);
   background: var(--color-danger);
   color: var(--color-on-primary);

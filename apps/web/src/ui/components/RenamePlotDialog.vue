@@ -46,14 +46,14 @@ const inputId = `rename-${Math.random().toString(36).slice(2)}`
       <div class="rename-dialog__actions">
         <button
           type="button"
-          class="rename-dialog__button"
+          class="rename-dialog__button ui-secondary"
           @click="emit('close')"
         >
           {{ $t('app.cancel') }}
         </button>
         <button
           type="submit"
-          class="rename-dialog__button rename-dialog__button--primary"
+          class="rename-dialog__button rename-dialog__button--primary ui-primary"
           :disabled="busy"
         >
           {{ busy ? $t('dialogs.saving') : $t('dialogs.save') }}

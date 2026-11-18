@@ -108,6 +108,15 @@
 
   --shadow-on-imagery: 0 2px 8px rgba(0, 0, 0, 0.25);
   --color-shimmer: rgba(255, 255, 255, 0.55);
+  --color-danger-hover: #8A2F22;
+  --color-hover-soft: #EFEEE7;
+  --color-border-hover: #7D867F;
+  --color-focus-ring: #1D5BB8;
+  --shadow-hover: 0 4px 12px rgba(31, 42, 36, 0.18);
+  --shadow-card-hover: 0 8px 20px rgba(31, 42, 36, 0.12);
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
+  --nav-underline-height: 2px;
 
   --motion-fast: 150ms;
   --motion-base: 250ms;

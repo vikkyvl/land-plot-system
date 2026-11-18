@@ -237,9 +237,59 @@ html.login-pf,
   font-size: var(--fs-md);
 }
 
-.pf-v5-c-button.pf-m-primary:hover,
-.pf-v5-c-button.pf-m-primary:focus {
-  background: var(--color-primary-hover);
+.pf-v5-c-button.pf-m-primary,
+.pf-v5-c-button.pf-m-secondary,
+.pf-v5-c-button.pf-m-tertiary {
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.pf-v5-c-button.pf-m-secondary::after,
+.pf-v5-c-button.pf-m-tertiary::after {
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .pf-v5-c-button.pf-m-primary:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+  }
+
+  .pf-v5-c-button.pf-m-secondary:hover:not(:disabled),
+  .pf-v5-c-button.pf-m-tertiary:hover:not(:disabled) {
+    background: var(--color-hover-soft);
+  }
+
+  .pf-v5-c-button.pf-m-secondary:hover:not(:disabled)::after,
+  .pf-v5-c-button.pf-m-tertiary:hover:not(:disabled)::after {
+    border-color: var(--color-border-hover);
+  }
+}
+
+.pf-v5-c-button.pf-m-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.pf-v5-c-button:focus-visible,
+.arqetra-tabs a:focus-visible,
+a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-v5-c-button,
+  .pf-v5-c-button::after {
+    transition-duration: 0.01ms !important;
+  }
+
+  .pf-v5-c-button.pf-m-primary:hover,
+  .pf-v5-c-button.pf-m-primary:active {
+    transform: none !important;
+  }
 }
 
 .pf-v5-c-button.pf-m-secondary,

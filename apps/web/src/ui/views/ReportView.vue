@@ -171,7 +171,7 @@ async function share(): Promise<void> {
         <div class="report__actions">
           <button
             type="button"
-            class="report__button report__download"
+            class="report__button report__download ui-secondary"
             :disabled="points === null"
             :title="points === null ? $t('report.noBoundary') : undefined"
             @click="download"
@@ -180,7 +180,7 @@ async function share(): Promise<void> {
           </button>
           <button
             type="button"
-            class="report__button report__button--primary report__share"
+            class="report__button report__button--primary report__share ui-primary"
             @click="share"
           >
             <span class="report__share-web">{{ $t('report.shareLink') }}</span>
@@ -231,7 +231,7 @@ async function share(): Promise<void> {
         <button
           v-if="canReport"
           type="button"
-          class="report__banner-button"
+          class="report__banner-button ui-secondary"
           :disabled="refreshing"
           @click="refresh"
         >

@@ -20,7 +20,7 @@ const options: readonly { id: MapLayerId; label: string }[] = [
       v-for="option in options"
       :key="option.id"
       type="button"
-      class="layer-switch__option"
+      class="layer-switch__option ui-control"
       :aria-pressed="modelValue === option.id"
       @click="emit('update:modelValue', option.id)"
     >
