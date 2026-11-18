@@ -110,6 +110,25 @@ describe('calculator store', () => {
     expect(store.canSave).toBe(true)
   })
 
+  it('asks for a new preview with the marks when a side is marked', async () => {
+    const { store, service } = useStore()
+    store.addPoint(a, gesture)
+    store.addPoint(b, gesture)
+    store.addPoint(c, gesture)
+    await settle()
+
+    store.markSide(1, 'trees')
+    await settle()
+
+    expect(service.preview).toHaveBeenCalledTimes(2)
+    expect(service.preview).toHaveBeenLastCalledWith([a, b, c], {
+      zooms: [18, 18, 18],
+      layer: 'map',
+      pointer: 'mouse',
+      obstructions: [{ side: 1, reason: 'trees' }],
+    })
+  })
+
   it('sends one preview for quick edits in a row', async () => {
     const { store, service } = useStore()
     store.addPoint(a, gesture)

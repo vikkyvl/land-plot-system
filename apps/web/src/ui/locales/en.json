@@ -80,7 +80,6 @@
     "zoomOut": "Zoom out",
     "locate": "My location",
     "point": "Point {n}",
-    "insertBetween": "Add a point between {from} and {to}",
     "layers": "Map layer",
     "layerMap": "Map",
     "layerSatellite": "Satellite"
@@ -275,5 +274,17 @@
     "trees": "trees",
     "buildings": "buildings and shadows",
     "unclear": "unclear boundary"
+  },
+  "sides": {
+    "title": "Boundary sides",
+    "side": "Side {from}–{to}",
+    "insertHere": "+ Add a point here",
+    "coveredBy": "The boundary is hidden by:",
+    "none": "Nothing",
+    "trees": "Trees",
+    "buildings": "Buildings and shadows",
+    "unclear": "Boundary hard to see",
+    "cancel": "Cancel",
+    "coveredBySide": "Side {from}–{to} is hidden by"
   }
 }

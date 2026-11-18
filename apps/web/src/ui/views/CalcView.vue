@@ -7,7 +7,7 @@ import type { Coordinate } from '../../domain/coordinate'
 import type { MapLayerId } from '../../domain/mapLayer'
 import type { Place } from '../../domain/place'
 import { hasScope, Scope } from '../../domain/profile'
-import type { MapGesture } from '../../domain/survey'
+import { obstructionOn, type MapGesture, type ObstructionReason } from '../../domain/survey'
 import AccuracyNotes from '../components/AccuracyNotes.vue'
 import ChecksCard from '../components/ChecksCard.vue'
 import ErrorPanel from '../components/ErrorPanel.vue'
@@ -16,6 +16,7 @@ import OutagePanel from '../components/OutagePanel.vue'
 import PlaceSearch from '../components/PlaceSearch.vue'
 import PlotMap from '../components/PlotMap.vue'
 import PointsCard from '../components/PointsCard.vue'
+import SideMenu from '../components/SideMenu.vue'
 import StalledNotice from '../components/StalledNotice.vue'
 import { formatMargin } from '../composables/accuracyText'
 import { errorText } from '../composables/errorText'
@@ -106,8 +107,30 @@ function move(index: number, point: Coordinate, mapGesture: MapGesture): void {
   calculator.movePoint(index, point, gestureOn(mapGesture))
 }
 
-function insert(afterIndex: number, point: Coordinate, mapGesture: MapGesture): void {
-  calculator.insertPoint(afterIndex, point, gestureOn(mapGesture))
+interface OpenSide {
+  readonly side: number
+  readonly middle: Coordinate
+  readonly gesture: MapGesture
+  readonly anchor: { readonly x: number; readonly y: number }
+}
+
+const openSide = shallowRef<OpenSide | null>(null)
+
+function showSide(side: number, middle: Coordinate, mapGesture: MapGesture, anchor: OpenSide['anchor']): void {
+  openSide.value = { side, middle, gesture: mapGesture, anchor }
+}
+
+function insertOnSide(): void {
+  if (openSide.value !== null) {
+    const { side, middle, gesture } = openSide.value
+    calculator.insertPoint(side, middle, gestureOn(gesture))
+  }
+  openSide.value = null
+}
+
+function markSide(side: number, reason: ObstructionReason | null): void {
+  calculator.markSide(side, reason)
+  openSide.value = null
 }
 
 async function save(): Promise<void> {
@@ -175,9 +198,10 @@ onBeforeUnmount(() => calculator.stop())
         :flagged-vertices="flaggedVertices"
         :show-numbers="selfIntersection !== null"
         :place="place"
+        :obstructions="survey.obstructions"
         @add="add"
         @move="move"
-        @insert="insert"
+        @side="showSide"
       >
         <p
           v-if="chip"
@@ -392,12 +416,24 @@ onBeforeUnmount(() => calculator.stop())
         class="calc__points"
         :points="points"
         :flagged="flaggedVertices"
+        :obstructions="survey.obstructions"
+        @mark="markSide"
       />
 
       <p class="calc__note">
         {{ $t('calc.note') }}
       </p>
     </aside>
+    <SideMenu
+      v-if="openSide && points.length >= 2"
+      :side="openSide.side"
+      :point-count="points.length"
+      :reason="obstructionOn(survey, openSide.side)"
+      :anchor="openSide.anchor"
+      @insert="insertOnSide"
+      @mark="markSide(openSide.side, $event)"
+      @close="openSide = null"
+    />
   </main>
 </template>
 

@@ -7,7 +7,7 @@ import type { Coordinate } from '../../domain/coordinate'
 import type { MapLayer } from '../../domain/mapLayer'
 import type { Place } from '../../domain/place'
 import type { SelfIntersectionDetails } from '../../domain/problem'
-import type { MapGesture, PointerKind } from '../../domain/survey'
+import { obstructionOn, type MapGesture, type Obstruction, type PointerKind } from '../../domain/survey'
 import { t } from '../i18n'
 
 const props = defineProps<{
@@ -17,12 +17,13 @@ const props = defineProps<{
   flaggedVertices: readonly number[]
   showNumbers: boolean
   place: Place | null
+  obstructions?: readonly Obstruction[]
 }>()
 
 const emit = defineEmits<{
   add: [point: Coordinate, gesture: MapGesture]
   move: [index: number, point: Coordinate, gesture: MapGesture]
-  insert: [afterIndex: number, point: Coordinate, gesture: MapGesture]
+  side: [side: number, middle: Coordinate, gesture: MapGesture, anchor: { x: number; y: number }]
 }>()
 
 const kyiv: L.LatLngTuple = [50.4501, 30.5234]
@@ -31,6 +32,8 @@ const placeZoom = 16
 const fitPadding: L.PointTuple = [48, 48]
 const vertexSize = 22
 const midpointSize = 14
+const sideHitWeight = 24
+const obstructedDash = '8 8'
 
 const container = ref<HTMLDivElement | null>(null)
 const locating = ref(false)
@@ -82,6 +85,51 @@ function crossing(a: Coordinate, b: Coordinate, c: Coordinate, d: Coordinate): L
   return [a.latitude + t * (b.latitude - a.latitude), a.longitude + t * (b.longitude - a.longitude)]
 }
 
+function anchorOf(event: L.LeafletMouseEvent): { x: number; y: number } {
+  const original = event.originalEvent as MouseEvent | undefined
+
+  return { x: original?.clientX ?? 0, y: original?.clientY ?? 0 }
+}
+
+function middleOf(from: L.LatLngTuple, to: L.LatLngTuple): L.LatLngTuple {
+  return [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]
+}
+
+function openSide(index: number, middle: L.LatLngTuple, event: L.LeafletMouseEvent): void {
+  emit('side', index, { latitude: middle[0], longitude: middle[1] }, gesture(), anchorOf(event))
+}
+
+function drawSides(latLngs: L.LatLngTuple[], stroke: string): void {
+  latLngs.forEach((from, index) => {
+    const to = latLngs[(index + 1) % latLngs.length]
+    if (to === undefined) {
+      return
+    }
+    const reason = obstructionOn({ obstructions: props.obstructions ?? [] }, index)
+    L.polyline([from, to], {
+      color: stroke,
+      weight: 3,
+      lineCap: 'round',
+      dashArray: reason === null ? undefined : obstructedDash,
+      interactive: false,
+    }).addTo(shapes)
+    L.polyline([from, to], { weight: sideHitWeight, opacity: 0, bubblingMouseEvents: false })
+      .on('click', (event: L.LeafletMouseEvent) => openSide(index, middleOf(from, to), event))
+      .addTo(shapes)
+    if (reason !== null) {
+      L.marker(middleOf(from, to), {
+        icon: L.divIcon({
+          className: 'plot-side-label',
+          html: `<span class="plot-side-label__text">${t(`obstructions.${reason}`)}</span>`,
+          iconSize: [0, 0],
+        }),
+        interactive: false,
+        keyboard: false,
+      }).addTo(shapes)
+    }
+  })
+}
+
 function drawShapes(latLngs: L.LatLngTuple[]): void {
   shapes.clearLayers()
   const stroke = css('--color-plot-stroke')
@@ -90,13 +138,12 @@ function drawShapes(latLngs: L.LatLngTuple[]): void {
 
   if (latLngs.length >= 3) {
     L.polygon(latLngs, {
-      color: stroke,
-      weight: 3,
+      stroke: false,
       fillColor: broken ? intersection : stroke,
       fillOpacity: broken ? 0.12 : 0.2,
-      lineJoin: 'round',
       interactive: false,
     }).addTo(shapes)
+    drawSides(latLngs, stroke)
   } else if (latLngs.length === 2) {
     L.polyline(latLngs, { color: stroke, weight: 3, interactive: false }).addTo(shapes)
   }
@@ -164,7 +211,7 @@ function draw(): void {
       if (to === undefined || (latLngs.length === 2 && index === 1) || crossingSide) {
         return
       }
-      const middle: L.LatLngTuple = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]
+      const middle = middleOf(from, to)
       L.marker(middle, {
         icon: L.divIcon({
           className: 'plot-midpoint',
@@ -172,9 +219,9 @@ function draw(): void {
           iconAnchor: [midpointSize / 2, midpointSize / 2],
         }),
         keyboard: false,
-        title: t('map.insertBetween', { from: index + 1, to: ((index + 1) % latLngs.length) + 1 }),
+        title: t('sides.side', { from: index + 1, to: ((index + 1) % latLngs.length) + 1 }),
       })
-        .on('click', () => emit('insert', index, { latitude: middle[0], longitude: middle[1] }, gesture()))
+        .on('click', (event: L.LeafletMouseEvent) => openSide(index, middle, event))
         .addTo(handles)
     })
   }
@@ -256,7 +303,7 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => [props.points, props.selfIntersection, props.flaggedVertices, props.showNumbers],
+  () => [props.points, props.selfIntersection, props.flaggedVertices, props.showNumbers, props.obstructions],
   () => draw(),
 )
 watch(
@@ -454,6 +501,19 @@ defineExpose({ fitPoints })
   background: var(--color-surface);
   opacity: 0.75;
   cursor: copy;
+}
+
+.plot-map :deep(.plot-side-label__text) {
+  position: absolute;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-control);
+  color: var(--color-ink);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translate(-50%, -150%);
 }
 
 .plot-map :deep(.plot-vertex)::before,

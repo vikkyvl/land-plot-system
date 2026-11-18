@@ -2,7 +2,9 @@ import { mount } from '@vue/test-utils'
 import L from 'leaflet'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { Coordinate } from '../../domain/coordinate'
 import type { MapLayer } from '../../domain/mapLayer'
+import type { Obstruction } from '../../domain/survey'
 
 import PlotMap from './PlotMap.vue'
 
@@ -17,23 +19,34 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function mountMap() {
+function mountMap(obstructions: readonly Obstruction[] = []) {
   const markers: L.Marker[] = []
-  const create = L.marker
+  const lines: L.Polyline[] = []
+  const createMarker = L.marker
+  const createLine = L.polyline
   vi.spyOn(L, 'marker').mockImplementation((...args: Parameters<typeof L.marker>) => {
-    const marker = create(...args)
+    const marker = createMarker(...args)
     markers.push(marker)
 
     return marker
   })
+  vi.spyOn(L, 'polyline').mockImplementation((...args: Parameters<typeof L.polyline>) => {
+    const line = createLine(...args)
+    lines.push(line)
+
+    return line
+  })
   const wrapper = mount(PlotMap, {
     attachTo: document.body,
-    props: { points, layer, selfIntersection: null, flaggedVertices: [], showNumbers: false, place: null },
+    props: { points, layer, selfIntersection: null, flaggedVertices: [], showNumbers: false, place: null, obstructions },
   })
   const vertices = markers.filter((marker) => marker.options.draggable)
-  const midpoints = markers.filter((marker) => !marker.options.draggable)
+  const midpoints = markers.filter((marker) => !marker.options.draggable && marker.options.interactive !== false)
+  const labels = markers.filter((marker) => marker.options.interactive === false)
+  const sides = lines.filter((line) => line.options.opacity === 0)
+  const dashed = lines.filter((line) => typeof line.options.dashArray === 'string')
 
-  return { wrapper, vertices, midpoints }
+  return { wrapper, vertices, midpoints, labels, sides, dashed }
 }
 
 describe('PlotMap', () => {
@@ -53,16 +66,33 @@ describe('PlotMap', () => {
     wrapper.unmount()
   })
 
-  it('draws a draggable vertex per point and a midpoint per side that inserts a vertex', () => {
-    const { wrapper, vertices, midpoints } = mountMap()
+  it('opens the side menu from a midpoint or from the side itself', () => {
+    const { wrapper, vertices, midpoints, sides } = mountMap()
 
     expect(vertices).toHaveLength(3)
     expect(midpoints).toHaveLength(3)
-    midpoints[0]?.fire('click')
-    const [afterIndex, point] = wrapper.emitted('insert')?.[0] as [number, { latitude: number; longitude: number }]
-    expect(afterIndex).toBe(0)
-    expect(point.latitude).toBeCloseTo(50.4505, 9)
-    expect(point.longitude).toBeCloseTo(30.5215, 9)
+    expect(sides).toHaveLength(3)
+    midpoints[0]?.fire('click', { originalEvent: { clientX: 120, clientY: 80 } })
+    sides[2]?.fire('click', { originalEvent: { clientX: 10, clientY: 20 } })
+
+    const [first, second] = wrapper.emitted('side') as [number, Coordinate, unknown, { x: number; y: number }][]
+    expect(first?.[0]).toBe(0)
+    expect(first?.[1].latitude).toBeCloseTo(50.4505, 9)
+    expect(first?.[1].longitude).toBeCloseTo(30.5215, 9)
+    expect(first?.[2]).toEqual({ zoom: expect.any(Number), pointer: 'mouse' })
+    expect(first?.[3]).toEqual({ x: 120, y: 80 })
+    expect(second?.[0]).toBe(2)
+    expect(wrapper.emitted('add')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('draws a marked side dashed with the reason next to it', () => {
+    const { wrapper, labels, dashed } = mountMap([{ side: 1, reason: 'trees' }])
+
+    expect(dashed).toHaveLength(1)
+    expect(dashed[0]?.getLatLngs()).toEqual([L.latLng(50.451, 30.523), L.latLng(50.449, 30.524)])
+    expect(labels).toHaveLength(1)
+    expect(String((labels[0]?.options.icon as L.DivIcon).options.html)).toContain('дерева')
     wrapper.unmount()
   })
 })

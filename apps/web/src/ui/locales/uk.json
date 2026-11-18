@@ -80,7 +80,6 @@
     "zoomOut": "Віддалити",
     "locate": "Моє місцезнаходження",
     "point": "Точка {n}",
-    "insertBetween": "Додати точку між {from} і {to}",
     "layers": "Шар карти",
     "layerMap": "Карта",
     "layerSatellite": "Супутник"
@@ -275,5 +274,17 @@
     "trees": "дерева",
     "buildings": "будівлі й тіні",
     "unclear": "погано видно межу"
+  },
+  "sides": {
+    "title": "Сторони межі",
+    "side": "Сторона {from}–{to}",
+    "insertHere": "+ Додати точку тут",
+    "coveredBy": "Межу закривають:",
+    "none": "Нічого",
+    "trees": "Дерева",
+    "buildings": "Будівлі й тіні",
+    "unclear": "Погано видно межу",
+    "cancel": "Скасувати",
+    "coveredBySide": "Межу сторони {from}–{to} закривають"
   }
 }

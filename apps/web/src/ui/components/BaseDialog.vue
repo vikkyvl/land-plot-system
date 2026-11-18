@@ -1,53 +1,14 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ref } from 'vue'
+
+import { useFocusTrap } from '../composables/useFocusTrap'
 
 defineProps<{ title: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const dialog = ref<HTMLElement | null>(null)
 const titleId = `dialog-${Math.random().toString(36).slice(2)}`
-const focusable = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-let previous: HTMLElement | null = null
-
-function elements(): HTMLElement[] {
-  return [...(dialog.value?.querySelectorAll<HTMLElement>(focusable) ?? [])].filter(
-    (element) => !element.hasAttribute('disabled'),
-  )
-}
-
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    emit('close')
-
-    return
-  }
-  if (event.key !== 'Tab') {
-    return
-  }
-  const list = elements()
-  const first = list[0]
-  const last = list.at(-1)
-  if (first === undefined || last === undefined) {
-    return
-  }
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first.focus()
-  }
-}
-
-onMounted(async () => {
-  previous = document.activeElement as HTMLElement | null
-  await nextTick()
-  const input = dialog.value?.querySelector<HTMLElement>('input')
-  ;(input ?? elements()[0])?.focus()
-})
-
-onBeforeUnmount(() => previous?.focus())
+const onKeydown = useFocusTrap(dialog, () => emit('close'))
 </script>
 
 <template>
