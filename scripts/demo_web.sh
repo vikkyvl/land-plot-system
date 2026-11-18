@@ -24,8 +24,23 @@ square='[{"lat":50.45021,"lon":30.52011},{"lat":50.45048,"lon":30.52342},{"lat":
 square_extended='[{"lat":50.45021,"lon":30.52011},{"lat":50.45048,"lon":30.52342},{"lat":50.44962,"lon":30.5245},{"lat":50.44871,"lon":30.52388},{"lat":50.44853,"lon":30.52144},{"lat":50.44926,"lon":30.51996}]'
 hourglass='[{"lat":50.4509,"lon":30.52},{"lat":50.4509,"lon":30.5214},{"lat":50.45,"lon":30.52},{"lat":50.45,"lon":30.5214}]'
 broken='[{"lat":50,"lon":30},{"lat":95,"lon":30},{"lat":50,"lon":30}]'
+carpathians='[{"lat":48.14,"lon":24.48},{"lat":48.14,"lon":24.486},{"lat":48.144,"lon":24.486},{"lat":48.144,"lon":24.48}]'
+kyiv_left_bank='[{"lat":50.44,"lon":30.64},{"lat":50.44,"lon":30.646},{"lat":50.444,"lon":30.646},{"lat":50.444,"lon":30.64}]'
+lviv='[{"lat":49.84,"lon":24.02},{"lat":49.84,"lon":24.026},{"lat":49.844,"lon":24.026},{"lat":49.844,"lon":24.02}]'
+mouse_capture='{"zoom":18,"layer":"map","pointer":"mouse"}'
+touch_capture='{"zoom":17,"layer":"satellite","pointer":"touch"}'
+unreachable_open_meteo=http://open-meteo.invalid/v1
+open_meteo_broken=false
+
+restore_open_meteo() {
+	docker compose up -d report-service >/dev/null 2>&1
+	open_meteo_broken=false
+}
 
 cleanup() {
+	if [ "$open_meteo_broken" = true ]; then
+		restore_open_meteo
+	fi
 	rm -rf "$demo_tmp"
 }
 trap cleanup EXIT
@@ -82,6 +97,32 @@ preview() {
 		--data "{\"points\":$1}" "$gateway_url/api/v1/plots/preview"
 }
 
+preview_with() {
+	request --request POST --header 'Content-Type: application/json' \
+		--data "$1" "$gateway_url/api/v1/plots/preview"
+}
+
+wait_for_report_service() {
+	attempt=0
+	while [ "$attempt" -lt 60 ]; do
+		if [ "$(docker compose ps report-service --format '{{.Health}}' 2>/dev/null)" = healthy ]; then
+			wait_for_healthy report-service
+			return
+		fi
+		attempt=$((attempt + 1))
+		sleep 2
+	done
+	fail "report-service did not become healthy"
+}
+
+surroundings_summary() {
+	body '{
+		accuracy: {margin_ha: (.accuracy.area_hectares_margin * 1000 | round / 1000), basis: .accuracy.basis},
+		terrain: (.terrain | {status, slope_degrees: (.slope_degrees * 10 | round / 10), surface_area_hectares: (.surface_area_hectares * 100 | round / 100), surface_increase_percent: (.surface_increase_percent * 100 | round / 100), relief_m, coarse}),
+		climate: (.climate | {status, years: "\(.first_year)-\(.last_year)", last_spring_frost, first_autumn_frost, growing_days: (.growing_days | round), summer_mean_c: ([.seasons[]? | select(.season == "summer") | .mean_c * 10 | round / 10][0])})
+	}'
+}
+
 body() {
 	jq -c "$1" "$demo_tmp/body.json"
 }
@@ -116,8 +157,15 @@ wait_for_status() {
 }
 
 create_plot() {
-	api POST /plots --data "{\"name\":\"$1\",\"points\":$2}" >/dev/null
+	api POST /plots --data "{\"name\":\"$1\",\"points\":$2${3:+,$3}}" >/dev/null
 	jq -er .id "$demo_tmp/body.json"
+}
+
+report_for() {
+	plot_id=$(create_plot "$1" "$2" "\"capture\":$3")
+	wait_for_status "$plot_id" CONFIRMED
+	status=$(api POST /reports --data "{\"plot_id\":\"$plot_id\"}")
+	expect_status "$status" 201 "report for $1"
 }
 
 mail_count() {
@@ -242,7 +290,64 @@ done
 curl -fsS "$mailpit_url/api/v1/messages?limit=1" | jq -c '.messages[0] | {to: [.To[].Address], subject: .Subject}' | sed 's/^/   /'
 
 echo
-echo "10. Preview rate limit on the gateway"
+echo "10. Preview with how the points were placed: area margin, its sources and the worst side"
+status=$(preview_with "{\"points\":$square,\"capture\":$mouse_capture}")
+expect_status "$status" 200 "preview with capture"
+expect_body '.accuracy.basis == "capture" and .accuracy.worst_side == null' "preview with capture"
+echo "   zoom 18, mouse: $(body '{area_hectares: (.area_hectares * 100 | round / 100), margin_ha: (.accuracy.area_hectares_margin * 1000 | round / 1000), percent: (.accuracy.percent * 10 | round / 10), worst_side: .accuracy.worst_side, ground_shift_m: .accuracy.ground_shift_m, basis: .accuracy.basis}')"
+status=$(preview_with "{\"points\":$square,\"capture\":$touch_capture,\"obstructions\":[{\"side\":1,\"reason\":\"unclear\"}]}")
+expect_body '.accuracy.worst_side == 1' "preview with an obstruction"
+echo "   zoom 17, touch, side 1 hard to see: $(body '{margin_ha: (.accuracy.area_hectares_margin * 1000 | round / 1000), contributions: (.accuracy.contributions | map_values(. * 100 | round / 100)), worst_side: .accuracy.worst_side, ground_shift_m: .accuracy.ground_shift_m}')"
+status=$(preview "$square")
+expect_body '.accuracy.basis == "assumed"' "preview without capture"
+echo "   without capture: $(body '{margin_ha: (.accuracy.area_hectares_margin * 1000 | round / 1000), basis: .accuracy.basis}')"
+
+echo
+echo "11. Invalid capture and obstruction are rejected with 400"
+status=$(preview_with "{\"points\":$square,\"capture\":{\"zoom\":30,\"layer\":\"map\",\"pointer\":\"mouse\"}}")
+expect_status "$status" 400 "preview with zoom 30"
+echo "   zoom 30: $status, $(body '{code}')"
+status=$(preview_with "{\"points\":$square,\"obstructions\":[{\"side\":0,\"reason\":\"trees\"},{\"side\":9,\"reason\":\"trees\"}]}")
+expect_status "$status" 400 "preview with side 9"
+echo "   side 9 of a five-point plot: $status, $(body '{code, details}')"
+
+echo
+echo "12. PATCH with only obstructions keeps the capture and records a new version"
+plot_id=$(create_plot "Поле з позначками" "$square" "\"capture\":$mouse_capture")
+wait_for_status "$plot_id" CONFIRMED
+status=$(api PATCH "/plots/$plot_id" --data '{"obstructions":[{"side":2,"reason":"trees"}]}')
+expect_status "$status" 200 "PATCH with obstructions"
+expect_body '.capture.zoom == 18 and .obstructions == [{"side":2,"reason":"trees"}] and .accuracy.worst_side == 2' "PATCH with obstructions"
+echo "   $status, $(body '{version, capture, obstructions, worst_side: .accuracy.worst_side}')"
+wait_for_status "$plot_id" CONFIRMED
+api GET "/plots/$plot_id/versions" >/dev/null
+echo "   versions: $(body '[.[] | {version, obstructions}]')"
+
+echo
+echo "13. Reports with terrain and climate from Open-Meteo: the Carpathians and Kyiv"
+report_for "Полонина над Ворохтою" "$carpathians" "$touch_capture"
+expect_body '.terrain.status == "available" and .climate.status == "available" and .terrain.slope_degrees > 5' "Carpathian report"
+echo "   Carpathians: $(surroundings_summary)"
+report_for "Город на Лівому березі" "$kyiv_left_bank" "$mouse_capture"
+expect_body '.terrain.status == "available" and .climate.status == "available" and .terrain.slope_degrees < 1' "Kyiv report"
+echo "   Kyiv: $(surroundings_summary)"
+echo "   sources: $(body '{terrain: .terrain.source, climate: .climate.source}')"
+
+echo
+echo "14. Report while Open-Meteo is unreachable: still 201, the blocks are unavailable"
+open_meteo_broken=true
+OPEN_METEO_ELEVATION_URL=$unreachable_open_meteo/elevation OPEN_METEO_ARCHIVE_URL=$unreachable_open_meteo/archive \
+	docker compose up -d report-service >/dev/null 2>&1
+wait_for_report_service
+report_for "Сад під Львовом" "$lviv" "$mouse_capture"
+expect_body '.terrain.status == "unavailable" and .climate.status == "unavailable"' "report without Open-Meteo"
+echo "   $status, $(body '{terrain: .terrain.status, climate: .climate.status, accuracy_basis: .accuracy.basis}')"
+restore_open_meteo
+wait_for_report_service
+echo "   report-service is back with the real Open-Meteo endpoints"
+
+echo
+echo "15. Preview rate limit on the gateway"
 count=0
 status=200
 while [ "$count" -lt "$max_preview_requests" ] && [ "$status" != 429 ]; do

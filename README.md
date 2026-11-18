@@ -100,6 +100,29 @@ Without `capture` the service assumes the worst case (zoom 16, satellite, touch)
 
 Example: a square plot of 2.48 ha placed at zoom 18 near Kyiv has a margin of ± 0.05 ha with a mouse and ± 0.13 ha with touch.
 
+A preview of the five-point plot of 4.68 ha from `make demo-web`, placed at zoom 17 by touch on the satellite layer, with side 1 marked as hard to see:
+
+```sh
+curl -X POST http://localhost:8080/api/v1/plots/preview -H 'Content-Type: application/json' \
+  -d '{"points":[...],"capture":{"zoom":17,"layer":"satellite","pointer":"touch"},
+       "obstructions":[{"side":1,"reason":"unclear"}]}'
+```
+
+```json
+"accuracy": {
+  "area_m2_margin": 4149,
+  "area_hectares_margin": 0.415,
+  "percent": 8.9,
+  "confidence": 0.95,
+  "contributions": { "scale": 0.79, "obstructions": 0.21 },
+  "worst_side": 1,
+  "ground_shift_m": 4,
+  "basis": "capture"
+}
+```
+
+The numbers are rounded here; the API returns full precision. Without `capture` the same plot gets the worst case (zoom 16, satellite, touch) and `basis: "assumed"`.
+
 The constants are assumptions, set in the environment of `land-plot-service`:
 
 | Variable | Default | Meaning |
@@ -132,7 +155,7 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── scripts/demo_lr3.sh         # transactional outbox and saga demo
 ├── scripts/demo_lr4.sh         # function calling, MCP and A2A demo
 ├── scripts/demo_lr5.sh         # CORS, Keycloak tokens, scopes and Zero Trust demo
-├── scripts/demo_web.sh         # preview, deletion, history, report list, Mailpit and rate limit demo
+├── scripts/demo_web.sh         # preview, deletion, history, report list, Mailpit, accuracy, terrain, climate and rate limit demo
 ├── scripts/keycloak_idp.sh     # adds the Google login to Keycloak
 ├── scripts/keycloak_realm.sh   # applies realm settings to a running Keycloak
 ├── tools/stripcomments/        # comment check used by make lint
@@ -345,11 +368,68 @@ A report also keeps a snapshot of three blocks, so a report never changes after 
 
 Reports created before these blocks existed have them as `null`.
 
+### Terrain and climate in reports
+
 **Terrain.** `report-service` takes elevations from the Open-Meteo Elevation API (Copernicus DEM GLO-90, 90 m) on a 10 × 10 grid over the plot's bounding box, widened by 90 m on each side (100 points, the limit of one request). A least-squares plane through them gives the mean slope `α` and the surface area `A / cos α`: 5° adds 0.4 %, 10° adds 1.5 %, 15° adds 3.5 %. Plots under 1 ha are marked `coarse`, because the model step is 90 m. The legal (cadastral) area is the horizontal one; the surface area is for reference only.
+
+A plot of 19.86 ha on a slope near Vorokhta in the Carpathians:
+
+```json
+"terrain": {
+  "status": "available",
+  "slope_degrees": 16.7,
+  "surface_area_m2": 207381,
+  "surface_area_hectares": 20.74,
+  "surface_increase_percent": 4.42,
+  "min_elevation_m": 1301,
+  "max_elevation_m": 1532,
+  "relief_m": 231,
+  "coarse": false,
+  "source": "Open-Meteo.com (CC BY 4.0), Copernicus DEM GLO-90"
+}
+```
+
+A plot of the same size on the flat left bank of Kyiv gets a slope of 0.1°, a relief of 5 m and practically no difference between the two areas.
 
 **Climate.** Daily mean, minimum and maximum temperature and precipitation for the last ten full calendar years come from the Open-Meteo Historical Weather API (ERA5) for the centre of the 0.1° cell (about 11 km) around the plot. Seasons are meteorological, winter includes the December of the previous year, and every value is the average over the years. Frost days have a minimum below 0 °C and heat days a maximum of at least 30 °C; the last spring frost is the median of the last frost before 1 July, the first autumn frost the median of the first one after it, and `growing_days` counts days with a mean of at least 5 °C. Profiles are cached in `climate_cache` per cell and period for a year, because neighbouring plots share a climate; ten years of daily data count as about 260 calls of the free Open-Meteo limit.
 
-Both requests run in parallel with a 3 s timeout, below the 5 s the gateway waits. If Open-Meteo fails or is slow, the report is still created and the block has `status: "unavailable"`; creating a new report for the plot tries again. The public preview never calls Open-Meteo. The data are under CC BY 4.0, and clients show the attribution «Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90».
+The same Carpathian plot (one season shown, the others have the same fields):
+
+```json
+"climate": {
+  "status": "available",
+  "first_year": 2016,
+  "last_year": 2025,
+  "seasons": [
+    {
+      "season": "winter",
+      "mean_c": -4.2,
+      "mean_min_c": -7.3,
+      "mean_max_c": -1.2,
+      "precipitation_mm": 300,
+      "frost_days": 85.2,
+      "heat_days": 0
+    }
+  ],
+  "last_spring_frost": "05-13",
+  "first_autumn_frost": "10-03",
+  "growing_days": 180.4,
+  "source": "Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5"
+}
+```
+
+For Kyiv the profile gives the last spring frost on `04-05`, the first autumn frost on `10-30` and about 239 days with a mean of at least 5 °C.
+
+**When Open-Meteo is unavailable.**
+
+Both requests run in parallel with a 3 s timeout, below the 5 s the gateway waits. If Open-Meteo fails or is slow, the report is still created (`201`) and the block has `status: "unavailable"` with empty values; creating a new report for the plot tries again. The public preview never calls Open-Meteo.
+
+```json
+"terrain": { "status": "unavailable", "slope_degrees": 0, "...": "...", "source": "Open-Meteo.com (CC BY 4.0), Copernicus DEM GLO-90" },
+"climate": { "status": "unavailable", "first_year": 2016, "last_year": 2025, "seasons": [], "...": "..." }
+```
+
+**Data sources.** The data are under CC BY 4.0 and must be credited next to them. The web app shows «Дані: Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90» (English: «Data: …») under the report blocks, with a link to open-meteo.com. ERA5 is generated using Copernicus Climate Change Service information; elevations come from the Copernicus DEM GLO-90.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
@@ -601,7 +681,7 @@ The security demo runs without a browser. It shows a decoded Keycloak token, a C
 make demo-lr5
 ```
 
-The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), a CORS preflight for `DELETE`, a password reset email in Mailpit and the preview rate limit (`429` with `Retry-After`):
+The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), a CORS preflight for `DELETE`, a password reset email in Mailpit, the area margin with `capture` and an obstruction (`worst_side`, `basis: assumed` without a capture), `400 invalid_capture` and `invalid_obstruction`, a `PATCH` with only obstructions, reports with terrain and climate for the Carpathians and Kyiv, a report while Open-Meteo is unreachable (`201` with `unavailable` blocks; the script restarts `report-service` with a broken URL and restores it) and the preview rate limit (`429` with `Retry-After`):
 
 ```sh
 make demo-web
