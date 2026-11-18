@@ -380,6 +380,10 @@ defineExpose({ fitPoints })
   cursor: pointer;
 }
 
+.plot-map :deep(.leaflet-bottom) {
+  bottom: var(--map-bottom-inset, 0px);
+}
+
 .plot-map :deep(.leaflet-control-attribution) {
   margin: 0 0 var(--space-2) var(--space-3);
   padding: 0;

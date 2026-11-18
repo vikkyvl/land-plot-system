@@ -143,8 +143,7 @@ onBeforeUnmount(() => calculator.stop())
           v-else
           class="calc__hint"
         >
-          <span class="calc__hint-web">Клацніть на карті, щоб додати точку. Перетягніть точку, щоб змінити межу.</span>
-          <span class="calc__hint-mobile">Торкніться карти, щоб додати точку межі. Точок: <b>{{ points.length }}</b></span>
+          Клацніть на карті, щоб додати точку. Перетягніть точку, щоб змінити межу.
         </p>
       </PlotMap>
     </section>
@@ -224,7 +223,8 @@ onBeforeUnmount(() => calculator.stop())
           v-else-if="!enoughPoints"
           class="calc__muted"
         >
-          Додайте щонайменше 3 точки, щоб побачити площу.
+          <span class="calc__empty-web">Додайте щонайменше 3 точки, щоб побачити площу.</span>
+          <span class="calc__empty-mobile">Торкніться карти, щоб додати точку межі. Потрібно щонайменше 3.</span>
         </p>
 
         <div
@@ -373,7 +373,7 @@ onBeforeUnmount(() => calculator.stop())
   font-size: var(--fs-control);
 }
 
-.calc__hint-mobile {
+.calc__empty-mobile {
   display: none;
 }
 
@@ -647,25 +647,24 @@ onBeforeUnmount(() => calculator.stop())
 
   .calc__map {
     --map-controls-top: 72px;
+    --map-bottom-inset: 18px;
 
     height: min(60dvh, 520px);
     border: none;
     border-radius: 0;
   }
 
-  .calc__hint {
-    top: auto;
-    right: 72px;
-    bottom: 34px;
-    max-width: none;
-  }
-
-  .calc__hint-web {
+  .calc__hint,
+  .calc__empty-web {
     display: none;
   }
 
-  .calc__hint-mobile {
+  .calc__empty-mobile {
     display: inline;
+  }
+
+  .calc__chip {
+    bottom: calc(var(--map-bottom-inset) + 30px);
   }
 
   .calc__panel {
