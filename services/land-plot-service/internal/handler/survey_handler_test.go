@@ -62,7 +62,7 @@ func TestCreatePlotPassesSurveyAndShowsAccuracy(t *testing.T) {
 	worstSide := 1
 	plots := &plotServiceStub{plot: domain.Plot{
 		ID: "plot-1", Points: []domain.Coordinate{{Latitude: 50, Longitude: 30}},
-		Accuracy: domain.Accuracy{AreaMarginM2: 520, WorstSide: &worstSide},
+		Accuracy: domain.Accuracy{AreaMarginM2: 520, WorstSide: &worstSide, Basis: domain.BasisAssumed},
 	}}
 
 	request := authorizedRequest(
@@ -83,7 +83,8 @@ func TestCreatePlotPassesSurveyAndShowsAccuracy(t *testing.T) {
 
 	accuracy := string(body["accuracy"])
 	if string(body["capture"]) != "null" || string(body["obstructions"]) != "[]" ||
-		!strings.Contains(accuracy, `"area_m2_margin":520`) || !strings.Contains(accuracy, `"worst_side":1`) {
+		!strings.Contains(accuracy, `"area_m2_margin":520`) || !strings.Contains(accuracy, `"worst_side":1`) ||
+		!strings.Contains(accuracy, `"basis":"assumed"`) {
 		t.Fatalf("body = %s", body)
 	}
 }

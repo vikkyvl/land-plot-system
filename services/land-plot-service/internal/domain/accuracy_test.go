@@ -155,8 +155,12 @@ func TestMissingCaptureUsesFallback(t *testing.T) {
 	missing := estimate(points, nil, nil)
 	fallback := estimate(points, &testAccuracyModel.FallbackCapture, nil)
 
-	if missing != fallback {
+	if missing.AreaMarginM2 != fallback.AreaMarginM2 || missing.GroundShiftM != fallback.GroundShiftM {
 		t.Fatalf("missing capture %+v, fallback %+v", missing, fallback)
+	}
+
+	if missing.Basis != BasisAssumed || fallback.Basis != BasisCapture {
+		t.Fatalf("basis %q without capture and %q with it", missing.Basis, fallback.Basis)
 	}
 }
 

@@ -11,6 +11,13 @@ const (
 	percentMultiplier          = 100
 )
 
+type AccuracyBasis string
+
+const (
+	BasisCapture AccuracyBasis = "capture"
+	BasisAssumed AccuracyBasis = "assumed"
+)
+
 type AccuracyModel struct {
 	MouseClickPixels float64
 	TouchClickPixels float64
@@ -35,6 +42,7 @@ type Accuracy struct {
 	Contributions      AccuracyContributions
 	WorstSide          *int
 	GroundShiftM       float64
+	Basis              AccuracyBasis
 }
 
 type vertexObstruction struct {
@@ -47,9 +55,9 @@ func (model AccuracyModel) Estimate(
 	areaM2 float64,
 	survey Survey,
 ) Accuracy {
-	used := model.FallbackCapture
+	used, basis := model.FallbackCapture, BasisAssumed
 	if survey.Capture != nil {
-		used = *survey.Capture
+		used, basis = *survey.Capture, BasisCapture
 	}
 
 	clickSigma := model.clickPixels(used.Pointer) * groundResolution(points, used.Zoom)
@@ -82,6 +90,7 @@ func (model AccuracyModel) Estimate(
 		Contributions:      contributions(scaleVariance, obstructionVariance),
 		WorstSide:          worstSide(sideVariance),
 		GroundShiftM:       model.groundShift(used.Layer),
+		Basis:              basis,
 	}
 }
 

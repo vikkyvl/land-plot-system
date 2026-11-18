@@ -306,11 +306,12 @@ A plot response includes `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`,
   "confidence": 0.95,
   "contributions": { "scale": 0.4, "obstructions": 0.6 },
   "worst_side": 1,
-  "ground_shift_m": 4
+  "ground_shift_m": 4,
+  "basis": "capture"
 }
 ```
 
-with the shares of `σ_A²` per source and `worst_side` as the marked side that adds the most, or `null` without marks (see [Area accuracy](#area-accuracy)).
+with the shares of `σ_A²` per source, `worst_side` as the marked side that adds the most, or `null` without marks, and `basis`: `capture` when the margin comes from the sent capture, `assumed` when there was none and the worst case was taken (see [Area accuracy](#area-accuracy)).
 
 `PATCH` with `points` takes `capture` and `obstructions` from the same request: without them the worst case and no marks apply. `PATCH` with only `obstructions` replaces the marks of the current boundary and keeps its `capture`; a `PATCH` with only `name` keeps both. `capture` without `points` is `400 invalid_capture`. A new or changed plot is `PENDING` until `report-service` confirms its projection, then `CONFIRMED`. `PATCH` and `DELETE` on a `PENDING` plot return `409 plot_not_confirmed`. A cancelled plot is hidden: the list skips it and `GET` returns `404 plot_not_found`.
 

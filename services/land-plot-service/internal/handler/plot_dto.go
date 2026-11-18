@@ -36,6 +36,7 @@ type accuracyDTO struct {
 	Contributions      contributionsDTO `json:"contributions"`
 	WorstSide          *int             `json:"worst_side"`
 	GroundShiftM       float64          `json:"ground_shift_m"`
+	Basis              string           `json:"basis"`
 }
 
 type surveyRequest struct {
@@ -174,6 +175,7 @@ func newAccuracyDTO(accuracy domain.Accuracy) accuracyDTO {
 		},
 		WorstSide:    accuracy.WorstSide,
 		GroundShiftM: accuracy.GroundShiftM,
+		Basis:        string(accuracy.Basis),
 	}
 }
 
