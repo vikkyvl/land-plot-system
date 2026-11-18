@@ -264,6 +264,37 @@ services:
       consul:
         condition: service_healthy
 
+  web:
+    build:
+      context: ./apps/web
+      args:
+        VITE_GATEWAY_URL: ${WEB_GATEWAY_URL:-http://localhost:8080}
+        VITE_OIDC_AUTHORITY: ${WEB_OIDC_AUTHORITY:-http://localhost:8180/realms/land-plot}
+        VITE_OIDC_CLIENT_ID: ${WEB_OIDC_CLIENT_ID:-land-plot-web}
+        VITE_GEOCODING_URL: ${WEB_GEOCODING_URL:-https://nominatim.openstreetmap.org}
+        VITE_MAP_TILES_URL: ${WEB_MAP_TILES_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+        VITE_SATELLITE_TILES_URL: ${WEB_SATELLITE_TILES_URL:-https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}}
+    environment:
+      CSP_GATEWAY_ORIGIN: ${WEB_CSP_GATEWAY_ORIGIN:-http://localhost:8080}
+      CSP_KEYCLOAK_ORIGIN: ${WEB_CSP_KEYCLOAK_ORIGIN:-http://localhost:8180}
+      CSP_GEOCODING_ORIGIN: ${WEB_CSP_GEOCODING_ORIGIN:-https://nominatim.openstreetmap.org}
+      CSP_TILE_ORIGINS: ${WEB_CSP_TILE_ORIGINS:-https://tile.openstreetmap.org https://server.arcgisonline.com}
+    ports:
+      - "${WEB_PORT:-4173}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - land-network
+
   mcp-server:
     <<: *ai-service
     command: ["/app/mcp-server", "-transport", "http"]

@@ -1,8 +1,8 @@
 # Land Plot System
 
-A microservice backend for storing land plots as geographic polygons and calculating their area and perimeter. Users sign in through Keycloak (also with a Google account), describe a plot by its corner coordinates, and get area figures and saved reports in square metres, ares, and hectares.
+A microservice system for storing land plots as geographic polygons and calculating their area and perimeter. Users sign in through Keycloak (also with a Google account), draw a plot on a map or send its corner coordinates, and get area figures and saved reports in square metres, ares, and hectares.
 
-The system is written in Go and runs locally with Docker Compose.
+The backend is written in Go, the web app Arqetra (`apps/web`) in Vue 3 and TypeScript, and everything runs locally with Docker Compose.
 
 ## Architecture
 
@@ -34,6 +34,8 @@ The system is written in Go and runs locally with Docker Compose.
 
 Each service owns its own database and does not read another service's data directly.
 
+The web app `apps/web` (Arqetra) is a client of the gateway like any other: an installable PWA served by nginx on `http://localhost:4173` that signs users in through Keycloak and draws plots on a Leaflet map. It calculates nothing itself: area, perimeter and validation come from the server (see [`apps/web/README.md`](apps/web/README.md)).
+
 The `ai/` module adds AI access to the same API (see [`ai/README.md`](ai/README.md)). It is a separate Go module and works only through the gateway, like any other client:
 
 | Component        | Responsibility                                                                                        |
@@ -50,6 +52,7 @@ Every Go service registers a unique instance with an HTTP health check in Consul
 | Path prefix              | Target service      | Auth required |
 |--------------------------|---------------------|---------------|
 | `/api/v1/users/profile`  | `identity-service`  | yes           |
+| `POST /api/v1/plots/preview` | `land-plot-service` | no, limited per IP |
 | `/api/v1/plots/*`        | `land-plot-service` | yes           |
 | `/api/v1/reports/*`      | `report-service`    | yes           |
 | `/api/v1/demo/chain`     | `report-service`    | yes           |
@@ -72,7 +75,8 @@ The calculation sits behind the `AreaCalculator` interface (`LocalEllipsoidCalcu
 - coordinates out of range,
 - duplicate points,
 - self-intersections,
-- zero area.
+- zero area,
+- more than 1000 points.
 
 For plots up to a few kilometres across, the method itself adds almost no error: on a reference square it matches GeographicLib within 0.01 %. The real accuracy is limited by the input coordinates, because an error of d metres per point changes the area by about perimeter × d. The result is therefore not a cadastral or legal measurement.
 
@@ -93,9 +97,12 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── scripts/demo_lr3.sh         # transactional outbox and saga demo
 ├── scripts/demo_lr4.sh         # function calling, MCP and A2A demo
 ├── scripts/demo_lr5.sh         # CORS, Keycloak tokens, scopes and Zero Trust demo
+├── scripts/demo_web.sh         # preview, deletion, history, report list, Mailpit and rate limit demo
 ├── scripts/keycloak_idp.sh     # adds the Google login to Keycloak
+├── scripts/keycloak_realm.sh   # applies realm settings to a running Keycloak
 ├── tools/stripcomments/        # comment check used by make lint
 ├── ai/                         # AI agents module: fc-client, MCP server, A2A agents
+├── apps/web/                   # Arqetra web app: Vue 3, PWA, nginx image
 └── services/
     ├── api-gateway/
     ├── identity-service/
@@ -145,7 +152,9 @@ The stack publishes these ports on the host:
 | URL                       | What                                       |
 |---------------------------|--------------------------------------------|
 | `http://localhost:8080`   | API gateway                                |
+| `http://localhost:4173`   | Arqetra web app                            |
 | `http://localhost:8180`   | Keycloak (login pages, tokens, admin console) |
+| `http://localhost:8025`   | Mailpit: emails sent by Keycloak           |
 | `http://localhost:8500`   | Consul UI                                  |
 | `http://localhost:15672`  | RabbitMQ management UI                     |
 
@@ -186,6 +195,27 @@ All requests go through the gateway at `http://localhost:8080`. Errors use one J
 { "code": "plot_not_found", "message": "plot not found", "request_id": "..." }
 ```
 
+Validation errors may add `details` with zero-based point indices, so a client can show which sides cross or which points are wrong:
+
+```json
+{ "code": "self_intersection", "message": "polygon must not intersect itself", "request_id": "...",
+  "details": { "segments": [[1, 2], [3, 0]], "swap": [2, 3] } }
+```
+
+`duplicate_point` adds `{"indices": [i, j]}` and `invalid_coordinate` adds `{"index": i}`. Clients that do not know `details` can ignore it.
+
+| HTTP | Codes |
+|------|-------|
+| 400 | `invalid_request`, `no_changes`, `invalid_plot_id`, `invalid_report_id`, `invalid_query` |
+| 401 | `unauthorized` |
+| 403 | `forbidden`, `insufficient_scope`, `origin_not_allowed` |
+| 404 | `plot_not_found`, `report_not_found`, `route_not_found` |
+| 409 | `version_conflict`, `plot_not_confirmed` |
+| 410 | `plot_deleted` |
+| 422 | `invalid_name`, `insufficient_points`, `invalid_coordinate`, `duplicate_point`, `self_intersection`, `zero_area`, `too_many_points` |
+| 429 | `rate_limited` (with `Retry-After`) |
+| 500, 502, 503 | `internal_error`, `bad_gateway`, `service_unavailable`, `plot_service_unavailable` |
+
 Each service keeps its errors in one catalog, `internal/domain/errors.go`, plus `service/errors.go` and `handler/errors.go` for dependency and request errors. An entry declares the error kind, the stable `code` and the client message:
 
 ```go
@@ -212,9 +242,12 @@ curl http://localhost:8080/api/v1/users/profile -H "Authorization: Bearer $TOKEN
 | Method | Path                  | Description                                          |
 |--------|-----------------------|------------------------------------------------------|
 | POST   | `/api/v1/plots`       | Create a plot (`name`, `points[]` with `lat`/`lon`)  |
-| GET    | `/api/v1/plots`       | List the current user's plots                        |
+| POST   | `/api/v1/plots/preview` | Measure and validate `points[]` without saving; no token needed |
+| GET    | `/api/v1/plots`       | List the current user's plots, recently changed first |
 | GET    | `/api/v1/plots/{id}`  | Get one plot                                         |
+| GET    | `/api/v1/plots/{id}/versions` | Confirmed versions of a plot, newest first    |
 | PATCH  | `/api/v1/plots/{id}`  | Update `name` and/or `points`                        |
+| DELETE | `/api/v1/plots/{id}`  | Delete a confirmed plot (`204`)                      |
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/plots \
@@ -228,13 +261,20 @@ curl -X PATCH http://localhost:8080/api/v1/plots/<plot_id> \
   -d '{"name":"North field (renamed)"}'
 ```
 
-A plot response includes `area_m2`, `perimeter_m`, `version`, `status`, and timestamps. A new or changed plot is `PENDING` until `report-service` confirms its projection, then `CONFIRMED`. `PATCH` on a `PENDING` plot returns `409 plot_not_confirmed`. A cancelled plot is hidden: the list skips it and `GET` returns `404 plot_not_found`.
+A plot response includes `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, `version`, `status`, and timestamps. A new or changed plot is `PENDING` until `report-service` confirms its projection, then `CONFIRMED`. `PATCH` and `DELETE` on a `PENDING` plot return `409 plot_not_confirmed`. A cancelled plot is hidden: the list skips it and `GET` returns `404 plot_not_found`.
+
+**Preview.** `POST /api/v1/plots/preview` takes `{"points": [...]}` and always answers `200` with `{area_m2, area_ares, area_hectares, perimeter_m, valid, errors[]}`; for an invalid polygon the numbers are `null` and `errors` lists every problem with its `details`. It uses the same validation as `POST /api/v1/plots`, saves nothing and needs no token. The gateway allows `PREVIEW_RATE_LIMIT_PER_MINUTE` requests per minute from one IP (60 by default) and answers `429 rate_limited` with `Retry-After` above that. On macOS all requests from the host reach the gateway from one Docker network address, so the limit is shared by the whole host.
+
+**Deletion.** `DELETE` is soft: the plot gets `deleted_at`, a new version and the `plot.deleted` event through the outbox, without a saga. Afterwards `GET`, `PATCH`, `DELETE` and `/versions` return `410 plot_deleted` and the list no longer shows it.
+
+**History.** A row in `plot_versions` is written every time a plot becomes `CONFIRMED`, also when a compensated update restores the previous boundary. Each version has `name`, `points`, `area_*`, `perimeter_m` and `created_at`.
 
 ### Reports
 
 | Method | Path                    | Description                         |
 |--------|-------------------------|-------------------------------------|
 | POST   | `/api/v1/reports`       | Create a report for a plot (`plot_id`) |
+| GET    | `/api/v1/reports`       | List the current user's reports, newest first; `plot_id` and `limit` (50 by default, at most 100) are optional |
 | GET    | `/api/v1/reports/{id}`  | Get a saved report                  |
 
 ```sh
@@ -243,11 +283,11 @@ curl -X POST http://localhost:8080/api/v1/reports \
   -d '{"plot_id":"<plot_id>"}'
 ```
 
-A report contains `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, and the `plot_version` it was built from. Reports are built only for `CONFIRMED` plots; otherwise the request returns `409 plot_not_confirmed`.
+A report contains `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, the `plot_version` it was built from and `plot_deleted`. Reports are built only for `CONFIRMED` plots; otherwise the request returns `409 plot_not_confirmed`, and for a deleted plot `410 plot_deleted`. A wrong `limit` or `plot_id` in the list query gives `400 invalid_query`. When a plot is deleted, its reports stay and are marked with `plot_deleted: true`.
 
 ### Plot events
 
-`land-plot-service` publishes persistent JSON events to the durable topic exchange `land.events`. The routing keys are `plot.created`, `plot.updated`, and `plot.cancelled`. The versioned contract contains:
+`land-plot-service` publishes persistent JSON events to the durable topic exchange `land.events`. The routing keys are `plot.created`, `plot.updated`, `plot.cancelled`, and `plot.deleted`. The versioned contract contains:
 
 ```json
 {
@@ -307,7 +347,9 @@ Keycloak runs in Docker Compose on `http://localhost:8180` and keeps its data in
 
 The admin console is at `http://localhost:8180/admin` (`KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD`, `admin` / `keycloak_admin_dev_password` by default).
 
-Keycloak imports the realm only when it does not exist yet. After changing the realm file or a secret it uses, recreate the volumes:
+The realm allows self-registration and password reset, and its pages are in Ukrainian by default (`uk`, with `en`). Keycloak sends its emails, such as the password reset link, to the development mail catcher **Mailpit**: nothing leaves the machine, and the messages are at `http://localhost:8025`.
+
+Keycloak imports the realm only when it does not exist yet. `./scripts/keycloak_realm.sh` applies the registration, password reset, language and SMTP settings from the realm file to a running Keycloak without deleting volumes; it can be run any number of times and prints no passwords or secrets. To start from a clean realm, recreate the volumes:
 
 ```sh
 docker compose --profile ai down -v
@@ -321,7 +363,7 @@ docker compose --profile ai up -d --build
 
 | Client ID           | Type         | Flow                                       | Used by                                                     |
 |---------------------|--------------|--------------------------------------------|-------------------------------------------------------------|
-| `land-plot-web`     | public       | Authorization Code with PKCE (S256 required) | Postman and the future web frontend                       |
+| `land-plot-web`     | public       | Authorization Code with PKCE (S256 required) | the web app `apps/web` and Postman                        |
 | `land-plot-ai`      | confidential | Client Credentials (service account)       | `fc-client`, `mcp-server`, `producer-agent`, `consumer-agent` |
 | `land-plot-dev-cli` | public       | Direct Access Grants (password)            | the `demo*.sh` scripts only                                 |
 
@@ -344,9 +386,10 @@ All access tokens carry the audience `aud = land-plot-api` (the default client s
 
 | Method and path                                          | Required scope                     |
 |----------------------------------------------------------|------------------------------------|
-| `GET /api/v1/plots`, `GET /api/v1/plots/{id}`            | `plots:read`                       |
-| `POST /api/v1/plots`, `PATCH /api/v1/plots/{id}`         | `plots:write`                      |
-| `GET /api/v1/reports/{id}`                               | `reports:read`                     |
+| `POST /api/v1/plots/preview`                             | none (public, rate limited)        |
+| `GET /api/v1/plots`, `GET /api/v1/plots/{id}`, `GET /api/v1/plots/{id}/versions` | `plots:read` |
+| `POST /api/v1/plots`, `PATCH /api/v1/plots/{id}`, `DELETE /api/v1/plots/{id}` | `plots:write` |
+| `GET /api/v1/reports`, `GET /api/v1/reports/{id}`        | `reports:read`                     |
 | `POST /api/v1/reports`                                   | `reports:write` and `plots:read`   |
 | `GET /api/v1/users/profile`                              | `openid`                           |
 | `GET /api/v1/demo/chain`                                 | any valid token                    |
@@ -387,7 +430,7 @@ Every service keeps its route-to-scope rules in one table (`protectedRoutes` in 
 The gateway lets the department site `https://cad.kpi.ua` and the local frontends call the API from a browser. Its CORS middleware runs before authentication, so a preflight `OPTIONS` request without a token is answered with `204` instead of `401`.
 
 - Allowed origins come from `CORS_ALLOWED_ORIGINS` (by default `https://cad.kpi.ua,http://localhost:5173,http://localhost:4173`) and are compared exactly; `*` is never used, and `https://cad.kpi.ua.evil.com` is not allowed.
-- An allowed origin gets `Access-Control-Allow-Origin: <origin>`, `Vary: Origin` and `Access-Control-Expose-Headers: X-Request-ID`. A preflight also gets `Allow-Methods: GET, POST, PATCH, OPTIONS`, `Allow-Headers: Authorization, Content-Type, X-Request-ID`, `Max-Age: 600` and, when the browser asks for it, `Access-Control-Allow-Private-Network: true`, because a public page calls `localhost`.
+- An allowed origin gets `Access-Control-Allow-Origin: <origin>`, `Vary: Origin` and `Access-Control-Expose-Headers: X-Request-ID, Retry-After`, so the browser can read the request ID and the wait after `429`. A preflight also gets `Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`, `Allow-Headers: Authorization, Content-Type, X-Request-ID`, `Max-Age: 600` and, when the browser asks for it, `Access-Control-Allow-Private-Network: true`, because a public page calls `localhost`.
 - `Access-Control-Allow-Credentials` is not sent: the token travels in the `Authorization` header, not in a cookie.
 - A foreign origin gets no `Access-Control-*` headers, and its preflight gets `403 origin_not_allowed`.
 - The gateway removes `Access-Control-*` headers that a service might return (`ReverseProxy.ModifyResponse`), so each response carries exactly one set.
@@ -479,6 +522,12 @@ The security demo runs without a browser. It shows a decoded Keycloak token, a C
 make demo-lr5
 ```
 
+The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), a CORS preflight for `DELETE`, a password reset email in Mailpit and the preview rate limit (`429` with `Retry-After`):
+
+```sh
+make demo-web
+```
+
 All demo scripts get tokens from Keycloak: the user `taras.melnyk@example.com` through `land-plot-dev-cli`, and the AI service account through client credentials.
 
 ## Configuration
@@ -488,7 +537,9 @@ All settings come from environment variables. `docker-compose.yml` sets developm
 - public ports,
 - timeouts (HTTP shutdown, Consul, database, upstream),
 - Keycloak: port, database, bootstrap admin, test user passwords and the `land-plot-ai` client secret,
-- token verification (`OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_TIMEOUT`) and the CORS origins (`CORS_ALLOWED_ORIGINS`),
+- token verification (`OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_TIMEOUT`), the CORS origins (`CORS_ALLOWED_ORIGINS`) and the preview limit (`PREVIEW_RATE_LIMIT_PER_MINUTE`),
+- the Mailpit web UI port (`MAILPIT_UI_PORT`),
+- the web app container: port, the gateway and Keycloak addresses built into the bundle and the CSP origins (`WEB_*`, see [`apps/web/README.md`](apps/web/README.md)),
 - the Google client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, only in `.env`),
 - PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch,
 - outbox poll interval, saga timeout, and the name prefix that makes `report-service` fail on purpose,
@@ -507,6 +558,8 @@ make lint-fix  # remove comments, apply formatters and automatic lint fixes
 make strip-comments  # only remove comments (tool directives are kept)
 make test      # tests only
 make check     # lint, go test, go vet for every module, including ai/, and docker compose config checks
+make web-check # web app: lint (with layer boundaries), tests, build
+make check-all # make check and make web-check
 make ai-mcp-inspector  # MCP Inspector with the MCP server over stdio
 ```
 
