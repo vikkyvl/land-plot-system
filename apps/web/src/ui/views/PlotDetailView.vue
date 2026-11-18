@@ -115,8 +115,8 @@ async function createReport(): Promise<void> {
   }
   reporting.value = true
   try {
-    await service.createReport(plot.value.id)
-    toasts.show('Звіт сформовано')
+    const report = await service.createReport(plot.value.id)
+    await router.push(`/reports/${report.id}`)
   } catch (error) {
     await handle(error, { toast: true })
   } finally {

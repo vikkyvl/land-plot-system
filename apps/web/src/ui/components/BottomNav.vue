@@ -60,6 +60,32 @@ const isPlots = () => route.path.startsWith('/plots') && !route.path.endsWith('/
       </svg>
       Ділянки
     </RouterLink>
+    <RouterLink
+      class="bottom-nav__item"
+      to="/reports"
+      :aria-current="route.path.startsWith('/reports') ? 'page' : undefined"
+    >
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path
+          d="M7 3 H14 L18 7 V21 H7 Z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M10 12 H15 M10 16 H15"
+          stroke="currentColor"
+          stroke-width="2"
+        />
+      </svg>
+      Звіти
+    </RouterLink>
   </nav>
 </template>
 

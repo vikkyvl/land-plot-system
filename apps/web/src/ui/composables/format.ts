@@ -7,8 +7,12 @@ function decimal(value: number, digits: number): string {
   return value.toLocaleString(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })
 }
 
+export function formatHectareNumber(value: number): string {
+  return decimal(value, 2)
+}
+
 export function formatHectares(value: number): string {
-  return `${decimal(value, 2)} га`
+  return `${formatHectareNumber(value)} га`
 }
 
 export function formatAres(value: number): string {

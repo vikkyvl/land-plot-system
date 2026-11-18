@@ -58,6 +58,13 @@ const loginTarget = computed(() => ({ name: 'login', query: { redirect: route.fu
         >
           Мої ділянки
         </RouterLink>
+        <RouterLink
+          class="app-header__tab"
+          to="/reports"
+          :aria-current="route.path.startsWith('/reports') ? 'page' : undefined"
+        >
+          Звіти
+        </RouterLink>
       </nav>
       <div
         v-if="signedIn"

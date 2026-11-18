@@ -6,6 +6,8 @@ import LoginView from '../views/LoginView.vue'
 import PlotDetailView from '../views/PlotDetailView.vue'
 import PlotsEmptyView from '../views/PlotsEmptyView.vue'
 import PlotsView from '../views/PlotsView.vue'
+import ReportsView from '../views/ReportsView.vue'
+import ReportView from '../views/ReportView.vue'
 
 import { guardRoute, homeRouteName, loginRouteName, type SignedInCheck } from './guard'
 
@@ -31,6 +33,14 @@ export function createAppRouter(session: SignedInCheck, history: RouterHistory =
         component: CalcView,
         props: (route) => ({ plotId: route.params['id'] }),
         meta: { requiresAuth: true },
+      },
+      { path: '/reports', name: 'reports', component: ReportsView, meta: { requiresAuth: true, ownMobileHeader: true } },
+      {
+        path: '/reports/:id',
+        name: 'report',
+        component: ReportView,
+        props: true,
+        meta: { requiresAuth: true, ownMobileHeader: true },
       },
     ],
   })

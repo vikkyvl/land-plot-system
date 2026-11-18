@@ -70,6 +70,7 @@ async function mountDetail(overrides: Partial<Record<keyof PlotService, unknown>
     routes: [
       { path: '/plots', component: { template: '<p>list</p>' } },
       { path: '/plots/:id', component: PlotDetailView, props: true },
+      { path: '/reports/:id', component: { template: '<p>report</p>' } },
       { path: '/login', name: 'login', component: { template: '<p>login</p>' } },
     ],
   })
@@ -179,5 +180,15 @@ describe('PlotDetailView', () => {
     })
 
     expect(wrapper.get('[role="alert"]').text()).toContain('Ділянку видалено')
+  })
+
+  it('creates a report and opens it', async () => {
+    const { wrapper, router, service } = await mountDetail()
+
+    await button(wrapper, 'Сформувати звіт')?.trigger('click')
+    await flushPromises()
+
+    expect(service.createReport).toHaveBeenCalledWith('plot-1')
+    expect(router.currentRoute.value.path).toBe('/reports/report-1')
   })
 })
