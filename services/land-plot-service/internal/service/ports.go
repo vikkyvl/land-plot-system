@@ -11,7 +11,7 @@ type PlotRepository interface {
 	GetByID(requestContext context.Context, id string) (domain.Plot, error)
 	ListByOwner(requestContext context.Context, ownerID string) ([]domain.Plot, error)
 	ListVersions(requestContext context.Context, plotID string) ([]domain.PlotVersion, error)
-	ExpiredSagaIDs(requestContext context.Context, limit int) ([]string, error)
+	ExpiredSagas(requestContext context.Context, limit int) ([]domain.ExpiredSaga, error)
 	InTransaction(requestContext context.Context, work func(store PlotStore) error) error
 }
 
@@ -73,4 +73,8 @@ type SagaMetrics interface {
 type OutboxMetrics interface {
 	OutboxPublished(count int)
 	OutboxPublishFailed(abandoned bool)
+}
+
+type TraceResumer interface {
+	Resume(parent context.Context, traceContext domain.TraceContext, operation string) (context.Context, func())
 }

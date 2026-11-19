@@ -4,7 +4,6 @@ package postgres
 
 import (
 	"context"
-	"slices"
 	"testing"
 	"time"
 
@@ -95,12 +94,12 @@ func TestExpiredSagaIDsReturnsOnlyStartedSagasPastDeadline(t *testing.T) {
 	finished := startTestSaga(t, repository, -time.Second)
 	finishTestSaga(t, repository, service.SagaFinish{SagaID: finished, Status: domain.SagaCompleted})
 
-	sagaIDs, err := repository.ExpiredSagaIDs(context.Background(), 10)
+	sagas, err := repository.ExpiredSagas(context.Background(), 10)
 	if err != nil {
-		t.Fatalf("ExpiredSagaIDs() error = %v", err)
+		t.Fatalf("ExpiredSagas() error = %v", err)
 	}
 
-	if !slices.Equal(sagaIDs, []string{expired}) {
-		t.Fatalf("ExpiredSagaIDs() = %v, want [%s]", sagaIDs, expired)
+	if len(sagas) != 1 || sagas[0].ID != expired || sagas[0].TraceContext != nil {
+		t.Fatalf("ExpiredSagas() = %v, want [%s] without a trace", sagas, expired)
 	}
 }

@@ -13,11 +13,12 @@ type SummaryApplied struct {
 }
 
 type OutboxMessage struct {
-	ID         string
-	RoutingKey string
-	Payload    []byte
-	CreatedAt  time.Time
-	RequestID  string
+	ID           string
+	RoutingKey   string
+	Payload      []byte
+	CreatedAt    time.Time
+	RequestID    string
+	TraceContext TraceContext
 }
 
 func NewSummaryApplied(id string, applied PlotEvent, now time.Time) SummaryApplied {

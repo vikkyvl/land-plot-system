@@ -145,9 +145,15 @@ func appendReply(processingContext context.Context, transaction pgx.Tx, reply do
 		return err
 	}
 
+	traceContext, err := currentTraceContext(processingContext)
+	if err != nil {
+		return err
+	}
+
 	_, err = transaction.Exec(processingContext, `
-		INSERT INTO outbox_events (id, routing_key, payload, request_id) VALUES ($1, $2, $3, NULLIF($4, ''))`,
-		reply.ID, domain.SummaryAppliedEvent, payload, logging.RequestID(processingContext),
+		INSERT INTO outbox_events (id, routing_key, payload, request_id, trace_context)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5)`,
+		reply.ID, domain.SummaryAppliedEvent, payload, logging.RequestID(processingContext), traceContext,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertOutboxEvent, err)

@@ -91,8 +91,13 @@ func (repository *fakeRepository) ListVersions(_ context.Context, plotID string)
 	return versions, repository.err
 }
 
-func (repository *fakeRepository) ExpiredSagaIDs(context.Context, int) ([]string, error) {
-	return repository.expiredSagaIDs, repository.err
+func (repository *fakeRepository) ExpiredSagas(context.Context, int) ([]domain.ExpiredSaga, error) {
+	sagas := make([]domain.ExpiredSaga, 0, len(repository.expiredSagaIDs))
+	for _, sagaID := range repository.expiredSagaIDs {
+		sagas = append(sagas, domain.ExpiredSaga{ID: sagaID, TraceContext: domain.TraceContext{"traceparent": sagaID}})
+	}
+
+	return sagas, repository.err
 }
 
 func (repository *fakeRepository) InTransaction(_ context.Context, work func(store PlotStore) error) error {
@@ -235,4 +240,19 @@ func (spy *metricsSpy) OutboxPublished(count int) {
 
 func (spy *metricsSpy) OutboxPublishFailed(abandoned bool) {
 	spy.failures = append(spy.failures, abandoned)
+}
+
+type traceSpy struct {
+	resumed []domain.TraceContext
+	ended   int
+}
+
+func (spy *traceSpy) Resume(
+	parent context.Context,
+	traceContext domain.TraceContext,
+	_ string,
+) (context.Context, func()) {
+	spy.resumed = append(spy.resumed, traceContext)
+
+	return parent, func() { spy.ended++ }
 }

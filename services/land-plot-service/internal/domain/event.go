@@ -19,11 +19,12 @@ type PlotEvent struct {
 }
 
 type OutboxMessage struct {
-	ID         string
-	RoutingKey string
-	Payload    []byte
-	CreatedAt  time.Time
-	RequestID  string
+	ID           string
+	RoutingKey   string
+	Payload      []byte
+	CreatedAt    time.Time
+	RequestID    string
+	TraceContext TraceContext
 }
 
 func NewPlotEvent(id string, eventType PlotEventType, plot Plot) PlotEvent {

@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
@@ -123,5 +126,62 @@ func TestOutboxKeepsTheRequestIDOfTheEvent(t *testing.T) {
 
 	if len(recorder.messages) != 1 || recorder.messages[0].RequestID != "req-42" {
 		t.Fatalf("published messages = %+v", recorder.messages)
+	}
+}
+
+func spanContext(t *testing.T) context.Context {
+	t.Helper()
+
+	previous := otel.GetTextMapPropagator()
+
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(previous) })
+
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+
+	return trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled,
+	}))
+}
+
+const storedTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+func TestOutboxAndSagaKeepTheTraceContextOfTheRequest(t *testing.T) {
+	pool := openTestPool(t)
+	repository := NewPlotRepository(pool)
+	plot := storeConfirmedPlot(t, repository, uuid.NewString())
+	requestContext := spanContext(t)
+	event := domain.NewPlotEvent(uuid.NewString(), domain.PlotUpdated, plot)
+
+	err := repository.InTransaction(requestContext, func(store service.PlotStore) error {
+		if err := store.StartSaga(
+			requestContext,
+			domain.NewUpdateSaga(event.ID, plot, plot),
+			-time.Second,
+		); err != nil {
+			return err
+		}
+
+		return store.AppendEvent(requestContext, event)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &publishRecorder{}
+	publishPending(t, NewOutboxRepository(pool), recorder, 1)
+
+	if len(recorder.messages) != 1 || recorder.messages[0].TraceContext["traceparent"] != storedTraceparent {
+		t.Fatalf("published messages = %+v", recorder.messages)
+	}
+
+	expired, err := repository.ExpiredSagas(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(expired) != 1 || expired[0].ID != event.ID || expired[0].TraceContext["traceparent"] != storedTraceparent {
+		t.Fatalf("expired sagas = %+v", expired)
 	}
 }

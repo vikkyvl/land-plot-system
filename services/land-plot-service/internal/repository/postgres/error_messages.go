@@ -33,4 +33,6 @@ const (
 	wrapRecordOutboxFailure         = "record outbox failure: %w"
 	wrapScanOwnerPlot               = "scan owner plot: %w"
 	wrapUpdatePlotRow               = "update plot row: %w"
+	wrapDecodeTraceContext          = "decode trace context: %w"
+	wrapEncodeTraceContext          = "encode trace context: %w"
 )

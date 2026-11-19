@@ -281,6 +281,16 @@ make obs-check   # health of every Prometheus target and UI
   - The gateway continues the trace from an incoming `traceparent` or starts a new one, returns its ID in `X-Trace-ID` (exposed through CORS, which also allows `traceparent` and `tracestate`) and puts `trace_id` next to `request_id` in every error body of the gateway and the services.
   - Spans: one server span per request named after the route (`POST /api/v1/plots`, health checks are not traced), a client span for every call to another service, which carries `traceparent` (`otelhttp`), and a span for every PostgreSQL query (`otelpgx`, without parameters). Calls to Open-Meteo get a client span too, but no `traceparent` is sent to an external API.
   - The logger takes `trace_id` and `span_id` from the context, so in Grafana a log line opens its trace in Jaeger (derived field `trace_id`) and a span opens the logs of its trace (`{container=~".+"} | trace_id = "<id>"`).
+  - **A saga is one trace.** The trace context of the request is written with the outbox row (`outbox_events.trace_context`) and with the saga (`plot_sagas.trace_context`) in the same transaction. The relay publishes each row in a `publish <routing key>` span (producer) under that context and sends `traceparent` and `tracestate` as AMQP headers. A consumer starts `process <queue>` (consumer) as a child of the publication with a link to it; the handler, its queries and its own outbox row run in that span. Dead-lettered and requeued messages keep their headers, so the compensation stays in the trace, and the saga timeout continues the trace stored with the saga.
+
+    ```
+    api-gateway        POST /api/v1/plots
+    land-plot-service    POST /api/v1/plots → publish plot.created
+    report-service         process report.plot-events → publish plot.summary.applied
+    land-plot-service        process land-plot.saga-events (CONFIRMED)
+    ```
+
+    `make saga-trace-check` creates a plot that is confirmed and one named `FAIL…` that is cancelled through the dead letter queue, and checks in Jaeger that each saga is a single trace.
 - **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
 - **Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
 

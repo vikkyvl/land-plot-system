@@ -71,9 +71,12 @@ func (repository *PlotRepository) InTransaction(
 	return nil
 }
 
-func (repository *PlotRepository) ExpiredSagaIDs(requestContext context.Context, limit int) ([]string, error) {
+func (repository *PlotRepository) ExpiredSagas(
+	requestContext context.Context,
+	limit int,
+) ([]domain.ExpiredSaga, error) {
 	rows, err := repository.pool.Query(requestContext, `
-		SELECT id FROM plot_sagas
+		SELECT id, trace_context FROM plot_sagas
 		WHERE status = $1 AND deadline_at < now()
 		ORDER BY deadline_at
 		LIMIT $2`,
@@ -83,12 +86,25 @@ func (repository *PlotRepository) ExpiredSagaIDs(requestContext context.Context,
 		return nil, fmt.Errorf(wrapQueryExpiredSagas, err)
 	}
 
-	sagaIDs, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	sagas, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.ExpiredSaga, error) {
+		var (
+			saga         domain.ExpiredSaga
+			traceContext []byte
+		)
+
+		if err := row.Scan(&saga.ID, &traceContext); err != nil {
+			return saga, err
+		}
+
+		saga.TraceContext, err = decodeTraceContext(traceContext)
+
+		return saga, err
+	})
 	if err != nil {
 		return nil, fmt.Errorf(wrapQueryExpiredSagas, err)
 	}
 
-	return sagaIDs, nil
+	return sagas, nil
 }
 
 func (repository *PlotRepository) GetByID(requestContext context.Context, id string) (domain.Plot, error) {

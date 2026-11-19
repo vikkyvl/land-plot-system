@@ -16,7 +16,7 @@ PLOT_TEST_DATABASE_URL ?= postgres://plot_user:plot_dev_password@localhost:$(POS
 REPORT_TEST_DATABASE_URL ?= postgres://report_user:report_dev_password@localhost:$(POSTGRES_PORT)/report_db?sslmode=disable
 INTEGRATION_TEST := go test -count=1 -tags=integration ./internal/repository/postgres/...
 
-.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector obs-up obs-check cadvisor-check
+.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector obs-up obs-check cadvisor-check saga-trace-check
 
 # Formats code: gofumpt, import groups (gci) and long lines (golines).
 fmt:
@@ -99,6 +99,10 @@ obs-check:
 cadvisor-check:
 	docker compose --profile cadvisor up -d cadvisor
 	./scripts/cadvisor_check.sh
+
+# Creates a confirmed and a compensated plot through the gateway and checks in Jaeger that each saga is one trace.
+saga-trace-check:
+	./scripts/saga_trace_check.sh
 
 # Opens MCP Inspector with the MCP server over stdio; the stack must be running (docker compose up -d).
 ai-mcp-inspector:

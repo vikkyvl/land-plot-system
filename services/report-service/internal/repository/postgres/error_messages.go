@@ -29,4 +29,6 @@ const (
 	wrapUpsertPlotSummary           = "upsert plot summary: %w"
 	wrapCountReports                = "count reports: %w"
 	wrapQueryOutboxBacklog          = "query outbox backlog: %w"
+	wrapDecodeTraceContext          = "decode trace context: %w"
+	wrapEncodeTraceContext          = "encode trace context: %w"
 )

@@ -106,10 +106,17 @@ func (consumer *Consumer) handleDelivery(
 	delivery amqp.Delivery,
 	handler EventHandler,
 ) error {
-	deliveryContext := logging.WithRequestID(runContext, requestID(delivery))
+	spanContext, span := startProcessSpan(runContext, delivery, queueName)
+	outcome, failure := OutcomeAcknowledged, error(nil)
+
+	defer func() { finishSpan(span, outcome, failure) }()
+
+	deliveryContext := logging.WithRequestID(spanContext, requestID(delivery))
 
 	event, err := decodePlotMessage(delivery.Body, delivery.RoutingKey)
 	if err != nil {
+		outcome, failure = OutcomeRejected, err
+
 		consumer.logger.WarnContext(
 			deliveryContext,
 			logRejectInvalidPlotEvent,
@@ -134,12 +141,14 @@ func (consumer *Consumer) handleDelivery(
 				logging.KeyPlotID, event.PlotID,
 				logging.KeyError, err,
 			)
-			consumer.observer.DeliveryProcessed(queueName, OutcomeRejected, createdAt(delivery))
+			outcome, failure = OutcomeRejected, err
+			consumer.observer.DeliveryProcessed(queueName, outcome, createdAt(delivery))
 
 			return consumer.reject(delivery)
 		}
 
-		consumer.observer.DeliveryProcessed(queueName, OutcomeRequeued, createdAt(delivery))
+		outcome, failure = OutcomeRequeued, err
+		consumer.observer.DeliveryProcessed(queueName, outcome, createdAt(delivery))
 
 		return consumer.requeueLater(deliveryContext, delivery, event, err)
 	}

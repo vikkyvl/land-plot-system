@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
@@ -98,6 +101,45 @@ func TestReplyKeepsTheRequestIDOfTheEvent(t *testing.T) {
 	publishPending(t, NewOutboxRepository(pool), recorder, 1)
 
 	if len(recorder.messages) != 1 || recorder.messages[0].RequestID != "req-42" {
+		t.Fatalf("published messages = %+v", recorder.messages)
+	}
+}
+
+func spanContext(t *testing.T) context.Context {
+	t.Helper()
+
+	previous := otel.GetTextMapPropagator()
+
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() { otel.SetTextMapPropagator(previous) })
+
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+
+	return trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID, SpanID: spanID, TraceFlags: trace.FlagsSampled,
+	}))
+}
+
+const storedTraceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+func TestReplyKeepsTheTraceContextOfTheConsumer(t *testing.T) {
+	pool := openTestPool(t)
+	event := domain.PlotEvent{
+		ID: uuid.NewString(), Type: domain.PlotCreated, OccurredAt: time.Now(),
+		PlotID: uuid.NewString(), OwnerID: uuid.NewString(), Name: "Plot", AreaM2: 100, Version: 1,
+	}
+
+	err := NewPlotSummaryRepository(pool, "").
+		Apply(spanContext(t), event, domain.NewSummaryApplied(uuid.NewString(), event, time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &publishRecorder{}
+	publishPending(t, NewOutboxRepository(pool), recorder, 1)
+
+	if len(recorder.messages) != 1 || recorder.messages[0].TraceContext["traceparent"] != storedTraceparent {
 		t.Fatalf("published messages = %+v", recorder.messages)
 	}
 }

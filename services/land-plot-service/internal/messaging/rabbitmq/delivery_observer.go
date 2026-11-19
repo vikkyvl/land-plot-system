@@ -13,6 +13,8 @@ const (
 	OutcomeAcknowledged = "ack"
 	OutcomeRequeued     = "retry"
 	OutcomeRejected     = "reject"
+	OutcomePublished    = "published"
+	OutcomeNotPublished = "not_published"
 )
 
 type DeliveryObserver interface {

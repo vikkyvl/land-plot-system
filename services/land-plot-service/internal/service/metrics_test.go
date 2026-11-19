@@ -70,7 +70,7 @@ func TestPlotServiceCountsPreviewProblemsByCode(t *testing.T) {
 func TestSagaServiceCountsConfirmationsOnce(t *testing.T) {
 	repository, _, sagaID := createdPlotWithSaga(t)
 	metrics := &metricsSpy{}
-	sagas := NewSagaService(repository, metrics, discardLogger())
+	sagas := NewSagaService(repository, metrics, &traceSpy{}, discardLogger())
 
 	for range 2 {
 		if err := sagas.Confirm(context.Background(), sagaID); err != nil {
@@ -86,7 +86,7 @@ func TestSagaServiceCountsConfirmationsOnce(t *testing.T) {
 func TestSagaServiceCountsCancelledAndRevertedSagas(t *testing.T) {
 	repository, _, createSagaID := createdPlotWithSaga(t)
 	metrics := &metricsSpy{}
-	sagas := NewSagaService(repository, metrics, discardLogger())
+	sagas := NewSagaService(repository, metrics, &traceSpy{}, discardLogger())
 
 	plotID := uuid.NewString()
 	updates := newFakeRepository(storedPlot(plotID, domain.StatusConfirmed))
@@ -104,7 +104,7 @@ func TestSagaServiceCountsCancelledAndRevertedSagas(t *testing.T) {
 		}
 	}
 
-	err := NewSagaService(updates, metrics, discardLogger()).
+	err := NewSagaService(updates, metrics, &traceSpy{}, discardLogger()).
 		Compensate(context.Background(), updates.committed.events[0].ID, domain.ReasonTimeout)
 	if err != nil {
 		t.Fatal(err)

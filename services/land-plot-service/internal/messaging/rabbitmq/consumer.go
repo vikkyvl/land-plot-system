@@ -106,23 +106,32 @@ func (consumer *Consumer) handleDelivery(
 	delivery amqp.Delivery,
 	handler SagaHandler,
 ) error {
-	deliveryContext := logging.WithRequestID(runContext, requestID(delivery))
+	spanContext, span := startProcessSpan(runContext, delivery, sagaQueueName)
+	outcome, failure := OutcomeAcknowledged, error(nil)
+
+	defer func() { finishSpan(span, outcome, failure) }()
+
+	deliveryContext := logging.WithRequestID(spanContext, requestID(delivery))
 
 	processingContext, cancel := context.WithTimeout(deliveryContext, consumer.consumerConfig.ProcessingTimeout)
 	defer cancel()
 
 	valid, err := consumer.dispatch(processingContext, delivery, handler)
 	if err != nil {
-		consumer.observer.DeliveryProcessed(sagaQueueName, OutcomeRequeued, createdAt(delivery))
+		outcome, failure = OutcomeRequeued, err
+		consumer.observer.DeliveryProcessed(sagaQueueName, outcome, createdAt(delivery))
+
 		return consumer.retryLater(deliveryContext, delivery, err)
 	}
 
 	if !valid {
-		consumer.observer.DeliveryProcessed(sagaQueueName, OutcomeRejected, createdAt(delivery))
+		outcome = OutcomeRejected
+		consumer.observer.DeliveryProcessed(sagaQueueName, outcome, createdAt(delivery))
+
 		return reject(delivery)
 	}
 
-	consumer.observer.DeliveryProcessed(sagaQueueName, OutcomeAcknowledged, createdAt(delivery))
+	consumer.observer.DeliveryProcessed(sagaQueueName, outcome, createdAt(delivery))
 
 	if err := delivery.Ack(false); err != nil {
 		return fmt.Errorf(wrapAcknowledgeSagaMessage, err)

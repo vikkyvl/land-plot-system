@@ -23,16 +23,30 @@ func NewPublisher(brokerURL string, timeout time.Duration) *Publisher {
 }
 
 func (publisher *Publisher) Publish(publishContext context.Context, outboxMessage domain.OutboxMessage) error {
-	message := amqp.Publishing{
+	headers := messageHeaders(outboxMessage)
+	span := startPublishSpan(publishContext, outboxMessage, headers)
+
+	err := publisher.send(publishContext, outboxMessage.RoutingKey, amqp.Publishing{
 		ContentType:  contentTypeJSON,
 		DeliveryMode: amqp.Persistent,
 		MessageId:    outboxMessage.ID,
 		Type:         outboxMessage.RoutingKey,
 		Timestamp:    outboxMessage.CreatedAt,
-		Headers:      messageHeaders(outboxMessage),
+		Headers:      headers,
 		Body:         outboxMessage.Payload,
+	})
+
+	outcome := OutcomePublished
+	if err != nil {
+		outcome = OutcomeNotPublished
 	}
 
+	finishSpan(span, outcome, err)
+
+	return err
+}
+
+func (publisher *Publisher) send(publishContext context.Context, routingKey string, message amqp.Publishing) error {
 	publisher.mutex.Lock()
 	defer publisher.mutex.Unlock()
 
@@ -42,7 +56,7 @@ func (publisher *Publisher) Publish(publishContext context.Context, outboxMessag
 		}
 	}
 
-	err := publisher.publishOnce(publishContext, outboxMessage.RoutingKey, message)
+	err := publisher.publishOnce(publishContext, routingKey, message)
 	if err == nil || !publisher.session.isClosed() {
 		return err
 	}
@@ -51,7 +65,7 @@ func (publisher *Publisher) Publish(publishContext context.Context, outboxMessag
 		return err
 	}
 
-	return publisher.publishOnce(publishContext, outboxMessage.RoutingKey, message)
+	return publisher.publishOnce(publishContext, routingKey, message)
 }
 
 func (publisher *Publisher) publishOnce(

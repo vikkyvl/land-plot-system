@@ -93,7 +93,7 @@ func (repository *OutboxRepository) Backlog(requestContext context.Context) (dom
 
 func claimPending(requestContext context.Context, transaction pgx.Tx, limit int) ([]domain.OutboxMessage, error) {
 	rows, err := transaction.Query(requestContext, `
-		SELECT id, routing_key, payload, created_at, COALESCE(request_id, '') FROM outbox_events
+		SELECT id, routing_key, payload, created_at, COALESCE(request_id, ''), trace_context FROM outbox_events
 		WHERE published_at IS NULL AND failed_at IS NULL
 		ORDER BY position
 		LIMIT $1
@@ -105,9 +105,19 @@ func claimPending(requestContext context.Context, transaction pgx.Tx, limit int)
 	}
 
 	messages, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.OutboxMessage, error) {
-		var message domain.OutboxMessage
+		var (
+			message      domain.OutboxMessage
+			traceContext []byte
+		)
 
-		err := row.Scan(&message.ID, &message.RoutingKey, &message.Payload, &message.CreatedAt, &message.RequestID)
+		err := row.Scan(
+			&message.ID, &message.RoutingKey, &message.Payload, &message.CreatedAt, &message.RequestID, &traceContext,
+		)
+		if err != nil {
+			return message, err
+		}
+
+		message.TraceContext, err = decodeTraceContext(traceContext)
 
 		return message, err
 	})

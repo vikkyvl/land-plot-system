@@ -13,6 +13,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/messaging/rabbitmq"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/repository/postgres"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/service"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/tracing"
 )
 
 func Run() error {
@@ -41,7 +42,7 @@ func Run() error {
 	defer closePublisher()
 
 	plots := newPlotService(plotRepository, accuracy, serviceConfig.SagaTimeout, serviceMetrics)
-	sagas := service.NewSagaService(plotRepository, serviceMetrics, logger)
+	sagas := service.NewSagaService(plotRepository, serviceMetrics, tracing.Resumer{}, logger)
 	relay := service.NewOutboxRelay(
 		outboxRepository,
 		publisher,

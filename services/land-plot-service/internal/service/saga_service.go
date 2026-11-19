@@ -13,11 +13,15 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
 )
 
-const expiredSagaBatchSize = 50
+const (
+	expiredSagaBatchSize = 50
+	operationSagaTimeout = "saga timeout"
+)
 
 type SagaService struct {
 	repository PlotRepository
 	metrics    SagaMetrics
+	traces     TraceResumer
 	logger     *slog.Logger
 	now        func() time.Time
 }
@@ -27,8 +31,13 @@ type compensation struct {
 	result domain.PlotEventType
 }
 
-func NewSagaService(repository PlotRepository, metrics SagaMetrics, logger *slog.Logger) *SagaService {
-	return &SagaService{repository: repository, metrics: metrics, logger: logger, now: time.Now}
+func NewSagaService(
+	repository PlotRepository,
+	metrics SagaMetrics,
+	traces TraceResumer,
+	logger *slog.Logger,
+) *SagaService {
+	return &SagaService{repository: repository, metrics: metrics, traces: traces, logger: logger, now: time.Now}
 }
 
 func (sagaService *SagaService) Confirm(processingContext context.Context, sagaID string) error {
@@ -92,7 +101,7 @@ func (sagaService *SagaService) Compensate(
 }
 
 func (sagaService *SagaService) CompensateExpired(processingContext context.Context) (int, error) {
-	sagaIDs, err := sagaService.repository.ExpiredSagaIDs(processingContext, expiredSagaBatchSize)
+	sagas, err := sagaService.repository.ExpiredSagas(processingContext, expiredSagaBatchSize)
 	if err != nil {
 		return 0, fmt.Errorf(wrapCompensateExpiredSagas, err)
 	}
@@ -102,14 +111,14 @@ func (sagaService *SagaService) CompensateExpired(processingContext context.Cont
 		failures    []error
 	)
 
-	for _, sagaID := range sagaIDs {
-		started, err := sagaService.compensateInTransaction(processingContext, sagaID, domain.ReasonTimeout)
+	for _, saga := range sagas {
+		started, err := sagaService.compensateExpired(processingContext, saga)
 		if err != nil {
 			sagaService.logger.ErrorContext(
 				processingContext,
 				logCompensateExpiredSaga,
 				logging.KeySagaID,
-				sagaID,
+				saga.ID,
 				logging.KeyError,
 				err,
 			)
@@ -124,6 +133,13 @@ func (sagaService *SagaService) CompensateExpired(processingContext context.Cont
 	}
 
 	return compensated, errors.Join(failures...)
+}
+
+func (sagaService *SagaService) compensateExpired(parent context.Context, saga domain.ExpiredSaga) (bool, error) {
+	resumed, end := sagaService.traces.Resume(parent, saga.TraceContext, operationSagaTimeout)
+	defer end()
+
+	return sagaService.compensateInTransaction(resumed, saga.ID, domain.ReasonTimeout)
 }
 
 func (sagaService *SagaService) compensateInTransaction(

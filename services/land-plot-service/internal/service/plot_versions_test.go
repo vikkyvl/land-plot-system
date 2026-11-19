@@ -17,6 +17,7 @@ func TestConfirmedCreateRecordsTheFirstVersion(t *testing.T) {
 	if err := NewSagaService(
 		repository,
 		&metricsSpy{},
+		&traceSpy{},
 		discardLogger(),
 	).Confirm(context.Background(), sagaID); err != nil {
 		t.Fatalf("Confirm() error = %v", err)
@@ -36,6 +37,7 @@ func TestCompensatedCreateRecordsNoVersion(t *testing.T) {
 	err := NewSagaService(
 		repository,
 		&metricsSpy{},
+		&traceSpy{},
 		discardLogger(),
 	).Compensate(context.Background(), sagaID, domain.ReasonDeadLetter)
 	if err != nil || len(repository.committed.versions) != 0 {
@@ -59,6 +61,7 @@ func TestRestoredUpdateRecordsTheRestoredVersion(t *testing.T) {
 	err := NewSagaService(
 		repository,
 		&metricsSpy{},
+		&traceSpy{},
 		discardLogger(),
 	).Compensate(context.Background(), sagaID, domain.ReasonTimeout)
 	if err != nil {

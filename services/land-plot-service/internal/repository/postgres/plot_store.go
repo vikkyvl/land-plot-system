@@ -93,10 +93,15 @@ func (store *plotStore) StartSaga(requestContext context.Context, saga domain.Sa
 		return err
 	}
 
+	traceContext, err := currentTraceContext(requestContext)
+	if err != nil {
+		return err
+	}
+
 	_, err = store.transaction.Exec(requestContext, `
-		INSERT INTO plot_sagas (id, plot_id, kind, status, previous_state, new_version, deadline_at)
-		VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(secs => $7))`,
-		saga.ID, saga.PlotID, saga.Kind, saga.Status, previousState, saga.NewVersion, timeout.Seconds(),
+		INSERT INTO plot_sagas (id, plot_id, kind, status, previous_state, new_version, deadline_at, trace_context)
+		VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(secs => $7), $8)`,
+		saga.ID, saga.PlotID, saga.Kind, saga.Status, previousState, saga.NewVersion, timeout.Seconds(), traceContext,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertSaga, err)
@@ -135,9 +140,15 @@ func (store *plotStore) AppendEvent(requestContext context.Context, event domain
 		return err
 	}
 
+	traceContext, err := currentTraceContext(requestContext)
+	if err != nil {
+		return err
+	}
+
 	_, err = store.transaction.Exec(requestContext, `
-		INSERT INTO outbox_events (id, routing_key, payload, request_id) VALUES ($1, $2, $3, NULLIF($4, ''))`,
-		event.ID, string(event.Type), payload, logging.RequestID(requestContext),
+		INSERT INTO outbox_events (id, routing_key, payload, request_id, trace_context)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5)`,
+		event.ID, string(event.Type), payload, logging.RequestID(requestContext), traceContext,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertOutboxEvent, err)
