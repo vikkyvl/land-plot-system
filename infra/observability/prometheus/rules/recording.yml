@@ -1,5 +1,7 @@
 # Recording rules: the series the dashboards and the alerts read.
 # Health checks are left out of the per-service aggregates, so Docker and Consul probes do not hide real traffic.
+# Quantiles keep only real values (">= 0" drops NaN while there is no traffic), so averages over time stay defined,
+# and error ratios are 0 rather than missing while nothing has failed.
 
 groups:
   - name: http
@@ -12,49 +14,58 @@ groups:
 
       - record: service_route:http_server_errors:ratio_rate5m
         expr: |
-          sum by (service, route) (rate(http_server_request_duration_seconds_count{status_class="5xx"}[5m]))
+          (
+            sum by (service, route) (rate(http_server_request_duration_seconds_count{status_class="5xx"}[5m]))
+              or 0 * sum by (service, route) (rate(http_server_request_duration_seconds_count[5m]))
+          )
             / sum by (service, route) (rate(http_server_request_duration_seconds_count[5m]))
 
       - record: service:http_server_errors:ratio_rate5m
         expr: |
-          sum by (service) (rate(http_server_request_duration_seconds_count{route!="/health", status_class="5xx"}[5m]))
+          (
+            sum by (service) (rate(http_server_request_duration_seconds_count{route!="/health", status_class="5xx"}[5m]))
+              or 0 * sum by (service) (rate(http_server_request_duration_seconds_count{route!="/health"}[5m]))
+          )
             / sum by (service) (rate(http_server_request_duration_seconds_count{route!="/health"}[5m]))
 
       - record: service_route:http_server_request_duration_seconds:p50_5m
-        expr: histogram_quantile(0.50, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m])))
+        expr: histogram_quantile(0.50, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m]))) >= 0
 
       - record: service_route:http_server_request_duration_seconds:p95_5m
-        expr: histogram_quantile(0.95, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m])))
+        expr: histogram_quantile(0.95, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m]))) >= 0
 
       - record: service_route:http_server_request_duration_seconds:p99_5m
-        expr: histogram_quantile(0.99, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m])))
+        expr: histogram_quantile(0.99, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m]))) >= 0
 
       - record: service:http_server_request_duration_seconds:p50_5m
-        expr: histogram_quantile(0.50, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m])))
+        expr: histogram_quantile(0.50, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m]))) >= 0
 
       - record: service:http_server_request_duration_seconds:p95_5m
-        expr: histogram_quantile(0.95, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m])))
+        expr: histogram_quantile(0.95, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m]))) >= 0
 
       - record: service:http_server_request_duration_seconds:p99_5m
-        expr: histogram_quantile(0.99, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m])))
+        expr: histogram_quantile(0.99, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m]))) >= 0
 
       - record: upstream:gateway_upstream_request_duration_seconds:p99_5m
-        expr: histogram_quantile(0.99, sum by (le, upstream) (rate(gateway_upstream_request_duration_seconds_bucket[5m])))
+        expr: histogram_quantile(0.99, sum by (le, upstream) (rate(gateway_upstream_request_duration_seconds_bucket[5m]))) >= 0
 
       - record: service_target:http_client_errors:ratio_rate5m
         expr: |
-          sum by (service, target) (rate(http_client_request_duration_seconds_count{outcome=~"5xx|error|timeout"}[5m]))
+          (
+            sum by (service, target) (rate(http_client_request_duration_seconds_count{outcome=~"5xx|error|timeout"}[5m]))
+              or 0 * sum by (service, target) (rate(http_client_request_duration_seconds_count[5m]))
+          )
             / sum by (service, target) (rate(http_client_request_duration_seconds_count[5m]))
 
   - name: latency-baseline
     rules:
       # The baseline of the anomaly alert: the last hour of p95 without the latest 15 minutes,
-      # so a spike that lasts a few minutes does not raise its own mean and deviation.
+      # so a spike that lasts a few minutes does not raise its own mean and deviation; the subquery skips NaN.
       - record: service:http_server_request_duration_seconds:p95_5m:avg1h
-        expr: avg_over_time(service:http_server_request_duration_seconds:p95_5m[1h] offset 15m)
+        expr: avg_over_time((service:http_server_request_duration_seconds:p95_5m >= 0)[1h:1m] offset 15m)
 
       - record: service:http_server_request_duration_seconds:p95_5m:stddev1h
-        expr: stddev_over_time(service:http_server_request_duration_seconds:p95_5m[1h] offset 15m)
+        expr: stddev_over_time((service:http_server_request_duration_seconds:p95_5m >= 0)[1h:1m] offset 15m)
 
   - name: messaging
     rules:
@@ -65,7 +76,7 @@ groups:
         expr: max by (service) (outbox_pending)
 
       - record: service_queue:message_age_seconds:p95_5m
-        expr: histogram_quantile(0.95, sum by (le, service, queue) (rate(message_age_seconds_bucket[5m])))
+        expr: histogram_quantile(0.95, sum by (le, service, queue) (rate(message_age_seconds_bucket[5m]))) >= 0
 
       - record: queue:rabbitmq_messages:sum
         expr: sum by (queue) (rabbitmq_detailed_queue_messages{queue!~".*\\.dead"})

@@ -323,7 +323,23 @@ make obs-check   # health of every Prometheus target and UI
 - **Jaeger version:** Jaeger is pinned to 2.20.0 because 2.21 removed the HTTP API that the Jaeger data source of Grafana 13 uses.
 - **Ports:** the ports differ from the usual 3000, 9090 and 9093 so that other local stacks do not collide; every port can be changed in `.env`.
 
-**cAdvisor** (CPU and memory per container) runs privileged with the Docker host mounted, so it has its own `cadvisor` profile and is never started by `make obs-up`. `make cadvisor-check` starts it on `127.0.0.1:${CADVISOR_PORT:-8088}` and lists memory and CPU per compose service. If it cannot see the containers (Docker Desktop with the containerd image store), the dashboards use the process metrics of the Go services instead.
+**cAdvisor** (CPU and memory per container) runs privileged with the Docker host mounted, so it has its own `cadvisor` profile and is never started by `make obs-up`. `make cadvisor-check` starts it on `127.0.0.1:${CADVISOR_PORT:-8088}` and lists memory and CPU per compose service. With the containerd image store of Docker Desktop cAdvisor reads containers through both the Docker socket and `/run/containerd/containerd.sock`; if it still cannot see them, the dashboard uses the process metrics of the Go services instead.
+
+### Dashboard
+
+Grafana loads the dashboard «Land plot system» (`uid: land-plot-overview`, folder «Land plot system») from `infra/observability/grafana/provisioning/dashboards/land-plot-overview.json`; it cannot be changed in the UI, so edits go into the file. Open it at [http://localhost:13000/d/land-plot-overview/land-plot-system](http://localhost:13000/d/land-plot-overview/land-plot-system). The variables `service` and `route` narrow the per-service and per-route panels, and `trace_id` filters the logs.
+
+| Section | Panels |
+|---|---|
+| Cluster health | `up` of every target, dependency checks (PostgreSQL, each service reading its database), PostgreSQL connections, RabbitMQ connections, consumers and messages, firing alerts |
+| Golden signals | p50 / p95 / p99, requests per second and share of 5xx per service, p95 against the anomaly baseline, gateway p99 per route, gateway to upstream p99, 401 / 403 / 429, p99 and RPS per route |
+| Replication lag | age of the oldest outbox row, pending and failed rows, published and failed per second, queue messages with the 15-minute forecast, message age at processing, messages processed by outcome |
+| Shard distribution | share of requests and of 5xx per service, requests per second per replica, plots and reports in the databases |
+| Business | sagas by result and reason, failed calls to other services and Open-Meteo, plots created, updated and deleted, previews by problem, reports and downloads, conversions, call duration, sign-ins |
+| Resources | CPU and memory per container (cAdvisor) and of the Go processes (fallback) |
+| Logs | Loki lines of the selected services filtered by `trace_id` (a `trace_id` opens the trace in Jaeger) and log lines per service and level |
+
+The thresholds of the alerts are drawn as red lines on their panels (p99 1 s, 5xx 5 %, anomaly floor 100 ms, outbox and message age 30 s, queue 100, compensations 5, external failures 50 %), and every alert links to its panel.
 
 ### Alerts and runbook
 

@@ -411,3 +411,36 @@ tests:
         exp_samples:
           - labels: land_plot:plot_to_report:ratio_rate1h
             value: 0.5
+
+  # Recording rules: an error ratio is 0, not missing, while nothing has failed
+  - name: no failures yet
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service="land-plot-service", route="/api/v1/plots", method="GET", status_class="2xx"}'
+        values: "0+60x10"
+      - series: 'http_client_request_duration_seconds_count{service="report-service", target="open-meteo-archive", outcome="2xx"}'
+        values: "0+5x10"
+    promql_expr_test:
+      - expr: service:http_server_errors:ratio_rate5m
+        eval_time: 8m
+        exp_samples:
+          - labels: 'service:http_server_errors:ratio_rate5m{service="land-plot-service"}'
+            value: 0
+      - expr: service_target:http_client_errors:ratio_rate5m
+        eval_time: 8m
+        exp_samples:
+          - labels: 'service_target:http_client_errors:ratio_rate5m{service="report-service", target="open-meteo-archive"}'
+            value: 0
+
+  # Recording rules: no quantile is recorded while there is no traffic
+  - name: quantiles disappear without traffic
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="0.1"}'
+        values: "0+60x5 300x10"
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="+Inf"}'
+        values: "0+60x5 300x10"
+    promql_expr_test:
+      - expr: service:http_server_request_duration_seconds:p95_5m
+        eval_time: 14m
+        exp_samples: []
