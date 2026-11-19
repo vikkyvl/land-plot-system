@@ -56,8 +56,29 @@ func (stub *sagaHandlerStub) Compensate(_ context.Context, sagaID string, reason
 	return stub.err
 }
 
+type deliveryObservation struct {
+	queue     string
+	outcome   string
+	createdAt time.Time
+}
+
+type deliveryObserverStub struct {
+	observations []deliveryObservation
+}
+
+func (stub *deliveryObserverStub) DeliveryProcessed(queue, outcome string, createdAt time.Time) {
+	stub.observations = append(
+		stub.observations,
+		deliveryObservation{queue: queue, outcome: outcome, createdAt: createdAt},
+	)
+}
+
 func testConsumer() *Consumer {
-	return NewConsumer(ConsumerConfig{ProcessingTimeout: time.Second}, slog.New(slog.DiscardHandler))
+	return observedConsumer(&deliveryObserverStub{})
+}
+
+func observedConsumer(observer DeliveryObserver) *Consumer {
+	return NewConsumer(ConsumerConfig{ProcessingTimeout: time.Second}, observer, slog.New(slog.DiscardHandler))
 }
 
 func summaryAppliedBody(appliedEventID string) []byte {
@@ -132,5 +153,61 @@ func TestConsumerRequeuesWhenHandlerFails(t *testing.T) {
 
 	if !acknowledger.requeued || acknowledger.acknowledged {
 		t.Fatalf("requeued = %v, acknowledged = %v", acknowledger.requeued, acknowledger.acknowledged)
+	}
+}
+
+func TestConsumerObservesEveryOutcomeWithTheEventAge(t *testing.T) {
+	created := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	cases := []struct {
+		delivery amqp.Delivery
+		handler  *sagaHandlerStub
+		want     string
+	}{
+		{
+			delivery: amqp.Delivery{Exchange: exchangeName, Body: summaryAppliedBody(testSagaID)},
+			handler:  &sagaHandlerStub{},
+			want:     OutcomeAcknowledged,
+		},
+		{
+			delivery: amqp.Delivery{Exchange: exchangeName, Body: summaryAppliedBody("not-a-uuid")},
+			handler:  &sagaHandlerStub{},
+			want:     OutcomeRejected,
+		},
+		{
+			delivery: amqp.Delivery{Exchange: deadExchangeName, MessageId: testSagaID},
+			handler:  &sagaHandlerStub{err: errBrokerRejectedMessage},
+			want:     OutcomeRequeued,
+		},
+	}
+
+	for _, testCase := range cases {
+		observer := &deliveryObserverStub{}
+		delivery := testCase.delivery
+		delivery.Headers = amqp.Table{HeaderCreatedAt: created.UnixMilli()}
+		delivery.Acknowledger = &acknowledgerStub{}
+
+		if err := observedConsumer(
+			observer,
+		).handleDelivery(context.Background(), delivery, testCase.handler); err != nil {
+			t.Fatalf("handleDelivery() error = %v", err)
+		}
+
+		want := deliveryObservation{queue: sagaQueueName, outcome: testCase.want, createdAt: created}
+		if len(observer.observations) != 1 || observer.observations[0].queue != want.queue ||
+			observer.observations[0].outcome != want.outcome || !observer.observations[0].createdAt.Equal(created) {
+			t.Fatalf("observations = %+v, want %+v", observer.observations, want)
+		}
+	}
+}
+
+func TestConsumerFallsBackToTheAMQPTimestamp(t *testing.T) {
+	stamped := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+
+	if got := createdAt(amqp.Delivery{Timestamp: stamped}); !got.Equal(stamped) {
+		t.Fatalf("createdAt() = %v, want %v", got, stamped)
+	}
+
+	if got := createdAt(amqp.Delivery{}); !got.IsZero() {
+		t.Fatalf("createdAt() = %v, want zero", got)
 	}
 }

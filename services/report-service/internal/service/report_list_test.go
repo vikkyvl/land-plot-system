@@ -28,7 +28,13 @@ func TestListReportsBuildsTheFilter(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &reportRepositoryStub{}
 
-			if _, err := NewReportService(repository, &plotClientStub{}, &surroundingsStub{}, testInstanceID).
+			if _, err := NewReportService(
+				repository,
+				&plotClientStub{},
+				&surroundingsStub{},
+				&metricsSpy{},
+				testInstanceID,
+			).
 				List(context.Background(), "owner-1", test.query); err != nil {
 				t.Fatalf("List() error = %v", err)
 			}
@@ -46,7 +52,7 @@ func TestListReportsRejectsInvalidQueryBeforeRepository(t *testing.T) {
 	} {
 		repository := &reportRepositoryStub{}
 
-		_, err := NewReportService(repository, &plotClientStub{}, &surroundingsStub{}, testInstanceID).
+		_, err := NewReportService(repository, &plotClientStub{}, &surroundingsStub{}, &metricsSpy{}, testInstanceID).
 			List(context.Background(), "owner-1", query)
 		if !errors.Is(err, domain.ErrInvalidQuery) || repository.listed {
 			t.Fatalf("query %#v: error = %v, repository called = %v", query, err, repository.listed)

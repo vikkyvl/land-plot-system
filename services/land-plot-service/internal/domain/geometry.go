@@ -28,6 +28,15 @@ func (inspection PolygonInspection) Valid() bool {
 	return len(inspection.Errors) == 0
 }
 
+func (inspection PolygonInspection) ErrorCodes() []string {
+	codes := make([]string, 0, len(inspection.Errors))
+	for _, inspectionError := range inspection.Errors {
+		codes = append(codes, inspectionError.Code)
+	}
+
+	return codes
+}
+
 type metricPoint struct {
 	x float64
 	y float64

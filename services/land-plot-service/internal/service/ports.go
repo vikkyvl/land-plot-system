@@ -59,3 +59,18 @@ type PublishFunc func(publishContext context.Context, message domain.OutboxMessa
 type MessagePublisher interface {
 	Publish(publishContext context.Context, message domain.OutboxMessage) error
 }
+
+type PlotMetrics interface {
+	PlotChanged(eventType domain.PlotEventType)
+	PreviewInspected(problemCodes []string)
+}
+
+type SagaMetrics interface {
+	SagaConfirmed(kind domain.SagaKind)
+	SagaCompensated(kind domain.SagaKind, result domain.PlotEventType, reason domain.CompensationReason)
+}
+
+type OutboxMetrics interface {
+	OutboxPublished(count int)
+	OutboxPublishFailed(abandoned bool)
+}

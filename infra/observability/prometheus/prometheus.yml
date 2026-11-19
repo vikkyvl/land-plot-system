@@ -17,6 +17,24 @@ scrape_configs:
         type: A
         port: 9464
 
+  - job_name: identity-service
+    dns_sd_configs:
+      - names: ["identity-service"]
+        type: A
+        port: 9464
+
+  - job_name: land-plot-service
+    dns_sd_configs:
+      - names: ["land-plot-service"]
+        type: A
+        port: 9464
+
+  - job_name: report-service
+    dns_sd_configs:
+      - names: ["report-service"]
+        type: A
+        port: 9464
+
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]

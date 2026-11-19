@@ -2,10 +2,7 @@ package bootstrap
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -37,19 +34,18 @@ func Run() error {
 		return err
 	}
 
-	publisher := rabbitmq.NewPublisher(serviceConfig.RabbitMQURL, serviceConfig.RabbitMQTimeout)
-	defer func() {
-		if err := publisher.Close(); err != nil {
-			logger.Error(logCloseEventPublisher, logging.KeyError, err)
-		}
-	}()
+	outboxRepository, serviceMetrics := newMetrics(serviceConfig, pool, plotRepository)
 
-	plots := newPlotService(plotRepository, accuracy, serviceConfig.SagaTimeout)
-	sagas := service.NewSagaService(plotRepository, logger)
+	publisher, closePublisher := openPublisher(serviceConfig, logger)
+	defer closePublisher()
+
+	plots := newPlotService(plotRepository, accuracy, serviceConfig.SagaTimeout, serviceMetrics)
+	sagas := service.NewSagaService(plotRepository, serviceMetrics, logger)
 	relay := service.NewOutboxRelay(
-		postgres.NewOutboxRepository(pool),
+		outboxRepository,
 		publisher,
 		outboxRelayConfig(serviceConfig),
+		serviceMetrics,
 		logger,
 	)
 	watcher := service.NewSagaTimeoutWatcher(sagas, logger)
@@ -58,7 +54,7 @@ func Run() error {
 		ConnectionTimeout: serviceConfig.RabbitMQTimeout,
 		ProcessingTimeout: serviceConfig.ProcessingTimeout,
 		InstanceID:        serviceConfig.InstanceID,
-	}, logger)
+	}, serviceMetrics, logger)
 
 	verifier, stopVerifier, err := newTokenVerifier(serviceConfig, logger)
 	if err != nil {
@@ -67,12 +63,13 @@ func Run() error {
 	defer stopVerifier()
 
 	router := handler.NewRouter(logger, config.ServiceName, serviceConfig.InstanceID, plots, verifier)
-	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
+	server := newHTTPServer(serviceMetrics.ObserveRequests(router))
 
-	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)
+	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), logger)
 	if err != nil {
-		return fmt.Errorf(wrapListenHTTP, err)
+		return err
 	}
+	defer metricsEndpoint.stop(serviceConfig.ShutdownTimeout)
 
 	instance, err := register(serviceConfig, logger)
 	if err != nil {

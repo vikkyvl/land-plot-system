@@ -174,3 +174,24 @@ func TestLoadReadsAccuracySettings(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadReadsMetricsAddress(t *testing.T) {
+	setRequiredEnv(t)
+
+	serviceConfig, err := Load()
+	if err != nil || serviceConfig.MetricsAddress != ":9464" {
+		t.Fatalf("default MetricsAddress = %q, %v", serviceConfig.MetricsAddress, err)
+	}
+
+	t.Setenv("METRICS_ADDRESS", ":9500")
+
+	if serviceConfig, err = Load(); err != nil || serviceConfig.MetricsAddress != ":9500" {
+		t.Fatalf("MetricsAddress = %q, %v", serviceConfig.MetricsAddress, err)
+	}
+
+	t.Setenv("METRICS_ADDRESS", " ")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted an empty METRICS_ADDRESS")
+	}
+}

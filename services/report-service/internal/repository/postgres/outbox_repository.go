@@ -68,9 +68,32 @@ func (repository *OutboxRepository) DeletePublishedBefore(
 	return command.RowsAffected(), nil
 }
 
+func (repository *OutboxRepository) Backlog(requestContext context.Context) (domain.OutboxBacklog, error) {
+	var (
+		backlog   domain.OutboxBacklog
+		oldestAge float64
+	)
+
+	err := repository.pool.QueryRow(requestContext, `
+		SELECT
+			count(*) FILTER (WHERE published_at IS NULL AND failed_at IS NULL),
+			count(*) FILTER (WHERE failed_at IS NOT NULL),
+			COALESCE(EXTRACT(EPOCH FROM now() - min(created_at)
+				FILTER (WHERE published_at IS NULL AND failed_at IS NULL)), 0)::float8
+		FROM outbox_events`,
+	).Scan(&backlog.Pending, &backlog.Failed, &oldestAge)
+	if err != nil {
+		return domain.OutboxBacklog{}, fmt.Errorf(wrapQueryOutboxBacklog, err)
+	}
+
+	backlog.OldestAge = time.Duration(oldestAge * float64(time.Second))
+
+	return backlog, nil
+}
+
 func claimPending(requestContext context.Context, transaction pgx.Tx, limit int) ([]domain.OutboxMessage, error) {
 	rows, err := transaction.Query(requestContext, `
-		SELECT id, routing_key, payload FROM outbox_events
+		SELECT id, routing_key, payload, created_at FROM outbox_events
 		WHERE published_at IS NULL AND failed_at IS NULL
 		ORDER BY position
 		LIMIT $1
@@ -84,7 +107,7 @@ func claimPending(requestContext context.Context, transaction pgx.Tx, limit int)
 	messages, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.OutboxMessage, error) {
 		var message domain.OutboxMessage
 
-		err := row.Scan(&message.ID, &message.RoutingKey, &message.Payload)
+		err := row.Scan(&message.ID, &message.RoutingKey, &message.Payload, &message.CreatedAt)
 
 		return message, err
 	})

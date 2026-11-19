@@ -277,6 +277,24 @@ make obs-check   # health of every Prometheus target and UI
   | `gateway_rejected_requests_total` | `status` (`401`, `403`, `429`), `origin` (`gateway` or `upstream`) |
 
   `route` is the template of the route (`/api/v1/plots/{id}`), never the raw path; any path the gateway does not know is `unmatched`, so scanners cannot create new series. No label holds a user, plot or trace identifier.
+- **Service metrics.** `identity-service`, `land-plot-service` and `report-service` measure every request with the same `http_server_request_duration_seconds{service, route, method, status_class}`; `route` is the pattern the Go `ServeMux` matched (`/api/v1/plots/{id}`), or `unmatched`.
+
+  | Metric | Service | Meaning |
+  |---|---|---|
+  | `http_client_request_duration_seconds{target, outcome}` | report | calls to `land-plot-service`, `open-meteo-elevation` and `open-meteo-archive`; `outcome` is the status class, `error` or `timeout` |
+  | `outbox_pending`, `outbox_failed`, `outbox_oldest_age_seconds` | land-plot, report | read from `outbox_events` on every scrape; the age is the replication lag of the outbox |
+  | `outbox_published_total`, `outbox_publish_errors_total{failure}` | land-plot, report | messages confirmed by RabbitMQ; failures that are retried or abandoned |
+  | `messages_processed_total{queue, outcome}` | land-plot, report | consumed messages: `ack`, `retry` (requeued) or `reject` (dead-lettered) |
+  | `message_age_seconds{queue}` | land-plot, report | time from writing the event to the outbox until the consumer processed it (header `x-created-at-ms`, AMQP timestamp as fallback) |
+  | `plots_changed_total{change}` | land-plot | plots `created`, `updated`, `deleted` |
+  | `plot_previews_total{result}`, `plot_preview_problems_total{reason}` | land-plot | previews `valid` or `invalid`, and every problem code (`self_intersection`, `duplicate_point`, `invalid_capture`, …) |
+  | `sagas_finished_total{kind, result, reason}` | land-plot | sagas `confirmed`, `cancelled` (a create compensated) or `reverted` (an update compensated), with `dlq` or `timeout` |
+  | `plots_stored{state}`, `reports_stored{plot}` | land-plot, report | rows in the databases (`pending`, `confirmed`, `cancelled`, `deleted`; reports of `active` or `deleted` plots) |
+  | `reports_created_total`, `report_blocks_unavailable_total{block}`, `report_downloads_total{format}` | report | reports, reports whose `terrain` or `climate` source did not answer, PDF and GeoJSON files built |
+  | `identity_profiles_served_total`, `identity_users_created_total` | identity | profiles returned (one per sign-in of the web app) and users created just in time |
+  | `database_stats_up` | land-plot, report | `0` when the statistics above could not be read on that scrape |
+
+  The conversions (valid preview → saved plot, plot → report) are recording rules over these counters. Every replica reports the same database gauges, so dashboards take `max` of them, not `sum`.
 - **Jaeger version:** Jaeger is pinned to 2.20.0 because 2.21 removed the HTTP API that the Jaeger data source of Grafana 13 uses.
 - **Ports:** the ports differ from the usual 3000, 9090 and 9093 so that other local stacks do not collide; every port can be changed in `.env`.
 

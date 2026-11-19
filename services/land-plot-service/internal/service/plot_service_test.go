@@ -25,7 +25,11 @@ var testAccuracyModel = domain.AccuracyModel{
 }
 
 func newTestPlotService(repository *fakeRepository) *PlotService {
-	return NewPlotService(repository, domain.LocalEllipsoidCalculator{}, testAccuracyModel, testSagaTimeout)
+	return newMeasuredPlotService(repository, &metricsSpy{})
+}
+
+func newMeasuredPlotService(repository *fakeRepository, metrics *metricsSpy) *PlotService {
+	return NewPlotService(repository, domain.LocalEllipsoidCalculator{}, testAccuracyModel, testSagaTimeout, metrics)
 }
 
 func TestPlotServiceCreateWritesPlotSagaAndEventInOneTransaction(t *testing.T) {

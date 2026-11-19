@@ -60,6 +60,7 @@ func readOutboxRow(t *testing.T, pool *pgxpool.Pool, id string) outboxRow {
 
 type publishRecorder struct {
 	published []string
+	messages  []domain.OutboxMessage
 	failures  map[string]error
 }
 
@@ -69,6 +70,7 @@ func (recorder *publishRecorder) publish(_ context.Context, message domain.Outbo
 	}
 
 	recorder.published = append(recorder.published, message.ID)
+	recorder.messages = append(recorder.messages, message)
 
 	return nil
 }

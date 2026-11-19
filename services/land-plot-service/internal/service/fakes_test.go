@@ -199,3 +199,40 @@ func storedPlot(id string, status domain.PlotStatus) domain.Plot {
 		Status:     status,
 	}
 }
+
+type metricsSpy struct {
+	plotChanges   []domain.PlotEventType
+	previews      [][]string
+	confirmed     []domain.SagaKind
+	compensations []string
+	published     int
+	failures      []bool
+}
+
+func (spy *metricsSpy) PlotChanged(eventType domain.PlotEventType) {
+	spy.plotChanges = append(spy.plotChanges, eventType)
+}
+
+func (spy *metricsSpy) PreviewInspected(problemCodes []string) {
+	spy.previews = append(spy.previews, problemCodes)
+}
+
+func (spy *metricsSpy) SagaConfirmed(kind domain.SagaKind) {
+	spy.confirmed = append(spy.confirmed, kind)
+}
+
+func (spy *metricsSpy) SagaCompensated(
+	kind domain.SagaKind,
+	result domain.PlotEventType,
+	reason domain.CompensationReason,
+) {
+	spy.compensations = append(spy.compensations, string(kind)+" "+string(result)+" "+string(reason))
+}
+
+func (spy *metricsSpy) OutboxPublished(count int) {
+	spy.published += count
+}
+
+func (spy *metricsSpy) OutboxPublishFailed(abandoned bool) {
+	spy.failures = append(spy.failures, abandoned)
+}

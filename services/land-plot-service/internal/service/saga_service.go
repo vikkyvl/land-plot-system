@@ -17,16 +17,26 @@ const expiredSagaBatchSize = 50
 
 type SagaService struct {
 	repository PlotRepository
+	metrics    SagaMetrics
 	logger     *slog.Logger
 	now        func() time.Time
 }
 
-func NewSagaService(repository PlotRepository, logger *slog.Logger) *SagaService {
-	return &SagaService{repository: repository, logger: logger, now: time.Now}
+type compensation struct {
+	saga   domain.Saga
+	result domain.PlotEventType
+}
+
+func NewSagaService(repository PlotRepository, metrics SagaMetrics, logger *slog.Logger) *SagaService {
+	return &SagaService{repository: repository, metrics: metrics, logger: logger, now: time.Now}
 }
 
 func (sagaService *SagaService) Confirm(processingContext context.Context, sagaID string) error {
+	var finished *domain.Saga
+
 	err := sagaService.repository.InTransaction(processingContext, func(store PlotStore) error {
+		finished = nil
+
 		saga, started, err := store.FinishSaga(processingContext, SagaFinish{
 			SagaID: sagaID,
 			Status: domain.SagaCompleted,
@@ -55,10 +65,16 @@ func (sagaService *SagaService) Confirm(processingContext context.Context, sagaI
 			logging.KeyPlotID, saga.PlotID,
 		)
 
+		finished = &saga
+
 		return nil
 	})
 	if err != nil {
 		return fmt.Errorf(wrapConfirmSaga, err)
+	}
+
+	if finished != nil {
+		sagaService.metrics.SagaConfirmed(finished.Kind)
 	}
 
 	return nil
@@ -107,12 +123,12 @@ func (sagaService *SagaService) compensateInTransaction(
 	sagaID string,
 	reason domain.CompensationReason,
 ) (bool, error) {
-	var started bool
+	var done *compensation
 
 	err := sagaService.repository.InTransaction(processingContext, func(store PlotStore) error {
 		var err error
 
-		started, err = sagaService.compensate(processingContext, store, sagaID, reason)
+		done, err = sagaService.compensate(processingContext, store, sagaID, reason)
 
 		return err
 	})
@@ -120,7 +136,13 @@ func (sagaService *SagaService) compensateInTransaction(
 		return false, fmt.Errorf(wrapCompensateSaga, err)
 	}
 
-	return started, nil
+	if done == nil {
+		return false, nil
+	}
+
+	sagaService.metrics.SagaCompensated(done.saga.Kind, done.result, reason)
+
+	return true, nil
 }
 
 func (sagaService *SagaService) compensate(
@@ -128,29 +150,29 @@ func (sagaService *SagaService) compensate(
 	store PlotStore,
 	sagaID string,
 	reason domain.CompensationReason,
-) (bool, error) {
+) (*compensation, error) {
 	saga, started, err := store.FinishSaga(processingContext, SagaFinish{
 		SagaID: sagaID,
 		Status: domain.SagaCompensated,
 		Reason: reason,
 	})
 	if err != nil || !started {
-		return false, err
+		return nil, err
 	}
 
 	plot, err := store.LockPlot(processingContext, saga.PlotID)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	compensated, eventType := saga.Compensate(plot, sagaService.now())
 	if err := store.UpdatePlot(processingContext, compensated, plot.Version); err != nil {
-		return false, err
+		return nil, err
 	}
 
 	if compensated.Status == domain.StatusConfirmed {
 		if err := store.RecordVersion(processingContext, compensated.ConfirmedVersion()); err != nil {
-			return false, err
+			return nil, err
 		}
 	}
 
@@ -158,7 +180,7 @@ func (sagaService *SagaService) compensate(
 		processingContext,
 		domain.NewPlotEvent(uuid.NewString(), eventType, compensated),
 	); err != nil {
-		return false, err
+		return nil, err
 	}
 
 	sagaService.logger.Warn(
@@ -169,5 +191,5 @@ func (sagaService *SagaService) compensate(
 		logging.KeyReason, reason,
 	)
 
-	return true, nil
+	return &compensation{saga: saga, result: eventType}, nil
 }

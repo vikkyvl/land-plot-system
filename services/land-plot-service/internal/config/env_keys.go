@@ -16,6 +16,7 @@ const (
 	envDatabaseTimeout          = "DATABASE_TIMEOUT"
 	envDatabaseURL              = "DATABASE_URL"
 	envHTTPAddress              = "HTTP_ADDRESS"
+	envMetricsAddress           = "METRICS_ADDRESS"
 	envHTTPShutdownTimeout      = "HTTP_SHUTDOWN_TIMEOUT"
 	envMessageProcessingTimeout = "MESSAGE_PROCESSING_TIMEOUT"
 	envOIDCAudience             = "OIDC_AUDIENCE"

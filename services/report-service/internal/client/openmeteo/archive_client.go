@@ -44,8 +44,8 @@ type dailySeries struct {
 	Precipitation []*float64 `json:"precipitation_sum"`
 }
 
-func NewArchiveClient(endpoint string, timeout time.Duration) *ArchiveClient {
-	return &ArchiveClient{client: &http.Client{Timeout: timeout}, endpoint: endpoint}
+func NewArchiveClient(endpoint string, timeout time.Duration, transport http.RoundTripper) *ArchiveClient {
+	return &ArchiveClient{client: &http.Client{Timeout: timeout, Transport: transport}, endpoint: endpoint}
 }
 
 func (archiveClient *ArchiveClient) DailyWeather(

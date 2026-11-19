@@ -32,6 +32,24 @@ func (repository *PlotRepository) Migrate(requestContext context.Context) error 
 	return nil
 }
 
+func (repository *PlotRepository) Counts(requestContext context.Context) (domain.PlotCounts, error) {
+	var counts domain.PlotCounts
+
+	err := repository.pool.QueryRow(requestContext, `
+		SELECT
+			count(*) FILTER (WHERE deleted_at IS NULL AND status = 'PENDING'),
+			count(*) FILTER (WHERE deleted_at IS NULL AND status = 'CONFIRMED'),
+			count(*) FILTER (WHERE deleted_at IS NULL AND status = 'CANCELLED'),
+			count(*) FILTER (WHERE deleted_at IS NOT NULL)
+		FROM plots`,
+	).Scan(&counts.Pending, &counts.Confirmed, &counts.Cancelled, &counts.Deleted)
+	if err != nil {
+		return domain.PlotCounts{}, fmt.Errorf(wrapCountPlots, err)
+	}
+
+	return counts, nil
+}
+
 func (repository *PlotRepository) InTransaction(
 	requestContext context.Context,
 	work func(store service.PlotStore) error,

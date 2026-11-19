@@ -4,6 +4,7 @@ const (
 	wrapCreateTokenVerifier     = "create token verifier: %w"
 	wrapDetermineServiceAddress = "determine service address: %w"
 	wrapListenHTTP              = "listen HTTP: %w"
+	wrapListenMetrics           = "listen metrics: %w"
 	wrapLoadConfig              = "load config: %w"
 	wrapMigrateDatabase         = "migrate database: %w"
 	wrapOpenDatabasePool        = "open database pool: %w"

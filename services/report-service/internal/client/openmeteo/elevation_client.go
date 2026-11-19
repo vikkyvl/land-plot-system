@@ -38,8 +38,8 @@ type errorResponse struct {
 	Reason string `json:"reason"`
 }
 
-func NewElevationClient(endpoint string, timeout time.Duration) *ElevationClient {
-	return &ElevationClient{client: &http.Client{Timeout: timeout}, endpoint: endpoint}
+func NewElevationClient(endpoint string, timeout time.Duration, transport http.RoundTripper) *ElevationClient {
+	return &ElevationClient{client: &http.Client{Timeout: timeout, Transport: transport}, endpoint: endpoint}
 }
 
 func (elevationClient *ElevationClient) Elevations(

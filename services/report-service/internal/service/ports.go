@@ -91,3 +91,13 @@ type PublishFunc func(publishContext context.Context, message domain.OutboxMessa
 type MessagePublisher interface {
 	Publish(publishContext context.Context, message domain.OutboxMessage) error
 }
+
+type ReportMetrics interface {
+	ReportCreated(terrain, climate domain.DataStatus)
+	ReportDownloaded(extension string)
+}
+
+type OutboxMetrics interface {
+	OutboxPublished(count int)
+	OutboxPublishFailed(abandoned bool)
+}

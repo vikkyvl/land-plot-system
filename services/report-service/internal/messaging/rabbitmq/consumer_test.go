@@ -59,8 +59,29 @@ func testDelivery(body []byte, routingKey string) (amqp.Delivery, *acknowledgerS
 	return amqp.Delivery{Acknowledger: acknowledger, DeliveryTag: 1, RoutingKey: routingKey, Body: body}, acknowledger
 }
 
+type deliveryObservation struct {
+	queue     string
+	outcome   string
+	createdAt time.Time
+}
+
+type deliveryObserverStub struct {
+	observations []deliveryObservation
+}
+
+func (stub *deliveryObserverStub) DeliveryProcessed(queue, outcome string, createdAt time.Time) {
+	stub.observations = append(
+		stub.observations,
+		deliveryObservation{queue: queue, outcome: outcome, createdAt: createdAt},
+	)
+}
+
 func testConsumer() *Consumer {
-	return NewConsumer(ConsumerConfig{ProcessingTimeout: time.Second}, slog.New(slog.DiscardHandler))
+	return observedConsumer(&deliveryObserverStub{})
+}
+
+func observedConsumer(observer DeliveryObserver) *Consumer {
+	return NewConsumer(ConsumerConfig{ProcessingTimeout: time.Second}, observer, slog.New(slog.DiscardHandler))
 }
 
 func TestConsumerAcknowledgesAfterSuccessfulHandling(t *testing.T) {
@@ -135,5 +156,45 @@ func TestConsumerAcknowledgesCancellation(t *testing.T) {
 
 	if !acknowledger.acked || handler.event.Type != domain.PlotCancelled {
 		t.Fatalf("ack=%v handled=%#v", acknowledger.acked, handler.event)
+	}
+}
+
+func TestConsumerObservesEveryOutcomeWithTheEventAge(t *testing.T) {
+	created := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	message := validPlotMessage(domain.PlotCreated)
+	cases := []struct {
+		body    []byte
+		handler *eventHandlerStub
+		want    string
+	}{
+		{body: encodeMessage(t, message), handler: &eventHandlerStub{}, want: OutcomeAcknowledged},
+		{body: []byte(`{"broken":true}`), handler: &eventHandlerStub{}, want: OutcomeRejected},
+		{
+			body:    encodeMessage(t, message),
+			handler: &eventHandlerStub{err: fmt.Errorf("apply: %w", postgres.ErrSimulatedWriteFailure)},
+			want:    OutcomeRejected,
+		},
+		{
+			body:    encodeMessage(t, message),
+			handler: &eventHandlerStub{err: errors.New("database down")},
+			want:    OutcomeRequeued,
+		},
+	}
+
+	for _, testCase := range cases {
+		observer := &deliveryObserverStub{}
+		delivery, _ := testDelivery(testCase.body, message.EventType)
+		delivery.Headers = amqp.Table{HeaderCreatedAt: created.UnixMilli()}
+
+		if err := observedConsumer(
+			observer,
+		).handleDelivery(context.Background(), delivery, testCase.handler); err != nil {
+			t.Fatalf("handleDelivery() error = %v", err)
+		}
+
+		if len(observer.observations) != 1 || observer.observations[0].queue != queueName ||
+			observer.observations[0].outcome != testCase.want || !observer.observations[0].createdAt.Equal(created) {
+			t.Fatalf("observations = %+v, want outcome %s", observer.observations, testCase.want)
+		}
 	}
 }

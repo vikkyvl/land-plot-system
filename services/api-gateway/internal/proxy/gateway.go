@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -145,6 +146,10 @@ func (transport observedTransport) RoundTrip(request *http.Request) (*http.Respo
 	status := 0
 	if response != nil {
 		status = response.StatusCode
+	}
+
+	if err != nil {
+		err = errors.Join(err, context.Cause(request.Context()))
 	}
 
 	transport.observer.ObserveUpstream(target.service, status, err, time.Since(started))

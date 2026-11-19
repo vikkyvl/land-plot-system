@@ -64,6 +64,15 @@ func (stub messagePublisherStub) Publish(context.Context, domain.OutboxMessage) 
 }
 
 func newTestRelay(repository OutboxRepository, publisher MessagePublisher, logger *slog.Logger) *OutboxRelay {
+	return newMeasuredRelay(repository, publisher, &metricsSpy{}, logger)
+}
+
+func newMeasuredRelay(
+	repository OutboxRepository,
+	publisher MessagePublisher,
+	metrics *metricsSpy,
+	logger *slog.Logger,
+) *OutboxRelay {
 	return NewOutboxRelay(
 		repository,
 		publisher,
@@ -73,6 +82,7 @@ func newTestRelay(repository OutboxRepository, publisher MessagePublisher, logge
 			CleanupInterval: time.Minute,
 			Retention:       testRetention,
 		},
+		metrics,
 		logger,
 	)
 }

@@ -35,6 +35,22 @@ func NewReportRepository(pool *pgxpool.Pool) *ReportRepository {
 	return &ReportRepository{pool: pool}
 }
 
+func (repository *ReportRepository) Counts(requestContext context.Context) (domain.ReportCounts, error) {
+	var counts domain.ReportCounts
+
+	err := repository.pool.QueryRow(requestContext, `
+		SELECT
+			count(*) FILTER (WHERE plot_deleted_at IS NULL),
+			count(*) FILTER (WHERE plot_deleted_at IS NOT NULL)
+		FROM reports`,
+	).Scan(&counts.ActivePlots, &counts.DeletedPlots)
+	if err != nil {
+		return domain.ReportCounts{}, fmt.Errorf(wrapCountReports, err)
+	}
+
+	return counts, nil
+}
+
 func (repository *ReportRepository) Create(requestContext context.Context, report domain.Report) error {
 	snapshot, err := encodeSnapshot(report)
 	if err != nil {

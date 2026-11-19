@@ -14,7 +14,11 @@ import (
 func TestConfirmedCreateRecordsTheFirstVersion(t *testing.T) {
 	repository, plot, sagaID := createdPlotWithSaga(t)
 
-	if err := NewSagaService(repository, discardLogger()).Confirm(context.Background(), sagaID); err != nil {
+	if err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).Confirm(context.Background(), sagaID); err != nil {
 		t.Fatalf("Confirm() error = %v", err)
 	}
 
@@ -29,7 +33,11 @@ func TestConfirmedCreateRecordsTheFirstVersion(t *testing.T) {
 func TestCompensatedCreateRecordsNoVersion(t *testing.T) {
 	repository, _, sagaID := createdPlotWithSaga(t)
 
-	err := NewSagaService(repository, discardLogger()).Compensate(context.Background(), sagaID, domain.ReasonDeadLetter)
+	err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).Compensate(context.Background(), sagaID, domain.ReasonDeadLetter)
 	if err != nil || len(repository.committed.versions) != 0 {
 		t.Fatalf("Compensate() error = %v, versions = %#v", err, repository.committed.versions)
 	}
@@ -48,7 +56,11 @@ func TestRestoredUpdateRecordsTheRestoredVersion(t *testing.T) {
 
 	sagaID := repository.committed.events[0].ID
 
-	err := NewSagaService(repository, discardLogger()).Compensate(context.Background(), sagaID, domain.ReasonTimeout)
+	err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).Compensate(context.Background(), sagaID, domain.ReasonTimeout)
 	if err != nil {
 		t.Fatalf("Compensate() error = %v", err)
 	}

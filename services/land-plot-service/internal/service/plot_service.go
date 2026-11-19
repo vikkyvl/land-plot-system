@@ -15,6 +15,7 @@ type PlotService struct {
 	calculator  domain.AreaCalculator
 	accuracy    domain.AccuracyModel
 	sagaTimeout time.Duration
+	metrics     PlotMetrics
 	now         func() time.Time
 }
 
@@ -23,12 +24,14 @@ func NewPlotService(
 	calculator domain.AreaCalculator,
 	accuracy domain.AccuracyModel,
 	sagaTimeout time.Duration,
+	metrics PlotMetrics,
 ) *PlotService {
 	return &PlotService{
 		repository:  repository,
 		calculator:  calculator,
 		accuracy:    accuracy,
 		sagaTimeout: sagaTimeout,
+		metrics:     metrics,
 		now:         time.Now,
 	}
 }
@@ -53,6 +56,8 @@ func (plotService *PlotService) Create(requestContext context.Context, draft dom
 		return domain.Plot{}, fmt.Errorf(wrapCreatePlot, err)
 	}
 
+	plotService.metrics.PlotChanged(domain.PlotCreated)
+
 	return plotService.withAccuracy(plot), nil
 }
 
@@ -61,10 +66,13 @@ func (plotService *PlotService) Preview(
 	survey domain.Survey,
 ) (domain.PolygonInspection, error) {
 	if err := survey.Validate(len(points)); err != nil {
+		plotService.metrics.PreviewInspected(domain.ErrorCodes(err))
 		return domain.PolygonInspection{}, err
 	}
 
 	inspection := domain.InspectPolygon(points, plotService.calculator)
+	plotService.metrics.PreviewInspected(inspection.ErrorCodes())
+
 	if inspection.Valid() {
 		accuracy := plotService.accuracy.Estimate(points, inspection.Area.AreaM2, survey)
 		inspection.Accuracy = &accuracy
@@ -164,6 +172,8 @@ func (plotService *PlotService) Delete(requestContext context.Context, ownerID, 
 		return fmt.Errorf(wrapDeletePlot, err)
 	}
 
+	plotService.metrics.PlotChanged(domain.PlotDeleted)
+
 	return nil
 }
 
@@ -195,6 +205,8 @@ func (plotService *PlotService) Update(
 	if err != nil {
 		return domain.Plot{}, fmt.Errorf(wrapUpdatePlot, err)
 	}
+
+	plotService.metrics.PlotChanged(domain.PlotUpdated)
 
 	return plotService.withAccuracy(updated), nil
 }

@@ -27,7 +27,7 @@ func TestDailyWeatherAsksForTheSeriesAndSkipsGaps(t *testing.T) {
 
 	server := elevationServer(t, http.StatusOK, testArchiveBody, &rawQuery)
 
-	days, err := NewArchiveClient(server.URL, testTimeout).
+	days, err := NewArchiveClient(server.URL, testTimeout, http.DefaultTransport).
 		DailyWeather(context.Background(), testArchivePoint, testArchiveFrom, testArchiveTo)
 	if err != nil {
 		t.Fatalf("DailyWeather() error = %v", err)
@@ -79,7 +79,7 @@ func TestDailyWeatherRejectsBadSeries(t *testing.T) {
 	for title, body := range tests {
 		server := elevationServer(t, http.StatusOK, body, nil)
 
-		_, err := NewArchiveClient(server.URL, testTimeout).
+		_, err := NewArchiveClient(server.URL, testTimeout, http.DefaultTransport).
 			DailyWeather(context.Background(), testArchivePoint, testArchiveFrom, testArchiveTo)
 		if !errors.Is(err, ErrUnexpectedResponse) {
 			t.Errorf("%s: error = %v, want ErrUnexpectedResponse", title, err)

@@ -21,15 +21,17 @@ type sessionStub struct {
 	closed      bool
 	publishErr  error
 	published   []string
+	messages    []amqp.Publishing
 	closeCalled bool
 }
 
-func (stub *sessionStub) publish(_ context.Context, routingKey string, _ amqp.Publishing) error {
+func (stub *sessionStub) publish(_ context.Context, routingKey string, message amqp.Publishing) error {
 	if stub.publishErr != nil {
 		return stub.publishErr
 	}
 
 	stub.published = append(stub.published, routingKey)
+	stub.messages = append(stub.messages, message)
 
 	return nil
 }
@@ -163,5 +165,21 @@ func TestPublisherRetriesOnlyOnce(t *testing.T) {
 	err := newTestPublisher(brokenSession, dialer).Publish(context.Background(), testMessage())
 	if !errors.Is(err, errSessionClosed) || dialer.calls != 1 {
 		t.Fatalf("Publish() error = %v, dial calls = %d", err, dialer.calls)
+	}
+}
+
+func TestPublisherSendsWhenTheEventWasCreated(t *testing.T) {
+	session := &sessionStub{}
+	created := time.Date(2026, 11, 19, 10, 0, 0, 250_000_000, time.UTC)
+	message := testMessage()
+	message.CreatedAt = created
+
+	if err := newTestPublisher(session, &dialerStub{}).Publish(context.Background(), message); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+
+	published := session.messages[0]
+	if published.Headers[HeaderCreatedAt] != created.UnixMilli() || !published.Timestamp.Equal(created) {
+		t.Fatalf("headers = %v, timestamp = %v", published.Headers, published.Timestamp)
 	}
 }

@@ -38,7 +38,11 @@ func TestElevationsSendsCoordinatesAndReadsValues(t *testing.T) {
 
 	server := elevationServer(t, http.StatusOK, `{"elevation":[2025.0, 169.5]}`, &query)
 
-	elevations, err := NewElevationClient(server.URL, testTimeout).Elevations(context.Background(), testPoints)
+	elevations, err := NewElevationClient(
+		server.URL,
+		testTimeout,
+		http.DefaultTransport,
+	).Elevations(context.Background(), testPoints)
 	if err != nil || !reflect.DeepEqual(elevations, []float64{2025, 169.5}) {
 		t.Fatalf("Elevations() = %v, %v", elevations, err)
 	}
@@ -63,7 +67,11 @@ func TestElevationsRejectsBadResponses(t *testing.T) {
 	for title, test := range tests {
 		server := elevationServer(t, test.status, test.body, nil)
 
-		_, err := NewElevationClient(server.URL, testTimeout).Elevations(context.Background(), testPoints)
+		_, err := NewElevationClient(
+			server.URL,
+			testTimeout,
+			http.DefaultTransport,
+		).Elevations(context.Background(), testPoints)
 		if !errors.Is(err, ErrUnexpectedResponse) {
 			t.Errorf("%s: error = %v, want ErrUnexpectedResponse", title, err)
 		}
@@ -79,7 +87,11 @@ func TestElevationsGiveUpAfterTimeout(t *testing.T) {
 
 	started := time.Now()
 
-	_, err := NewElevationClient(server.URL, 50*time.Millisecond).Elevations(context.Background(), testPoints)
+	_, err := NewElevationClient(
+		server.URL,
+		50*time.Millisecond,
+		http.DefaultTransport,
+	).Elevations(context.Background(), testPoints)
 	if err == nil || time.Since(started) > 150*time.Millisecond || strings.Contains(err.Error(), "latitude=") {
 		t.Fatalf("error = %v after %v", err, time.Since(started))
 	}
@@ -88,7 +100,11 @@ func TestElevationsGiveUpAfterTimeout(t *testing.T) {
 func TestElevationsRefuseMoreThanTheLimit(t *testing.T) {
 	points := make([]domain.Coordinate, MaximumElevationPoints+1)
 
-	_, err := NewElevationClient("http://127.0.0.1:1", testTimeout).Elevations(context.Background(), points)
+	_, err := NewElevationClient(
+		"http://127.0.0.1:1",
+		testTimeout,
+		http.DefaultTransport,
+	).Elevations(context.Background(), points)
 	if !errors.Is(err, ErrTooManyElevationPoints) {
 		t.Fatalf("error = %v, want ErrTooManyElevationPoints", err)
 	}

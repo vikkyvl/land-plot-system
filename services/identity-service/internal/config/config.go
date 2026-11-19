@@ -14,6 +14,7 @@ const ServiceName = "identity-service"
 
 const (
 	defaultHTTPAddress     = ":8081"
+	defaultMetricsAddress  = ":9464"
 	defaultOIDCAudience    = "land-plot-api"
 	defaultOIDCTimeout     = 5 * time.Second
 	defaultConsulAddress   = "http://localhost:8500"
@@ -27,6 +28,7 @@ var errInvalidPort = errors.New(envHTTPAddress + " must contain a valid port")
 
 type Config struct {
 	HTTPAddress     string
+	MetricsAddress  string
 	HTTPPort        int
 	ShutdownTimeout time.Duration
 	ConsulAddress   string
@@ -44,6 +46,7 @@ type Config struct {
 func Load() (Config, error) {
 	serviceConfig := Config{
 		HTTPAddress:    stringOrDefault(envHTTPAddress, defaultHTTPAddress),
+		MetricsAddress: stringOrDefault(envMetricsAddress, defaultMetricsAddress),
 		ConsulAddress:  stringOrDefault(envConsulAddress, defaultConsulAddress),
 		ServiceAddress: os.Getenv(envServiceAddress),
 		InstanceID:     os.Getenv(envServiceInstanceID),
@@ -103,6 +106,7 @@ func (serviceConfig *Config) validate() error {
 		value string
 	}{
 		{envHTTPAddress, serviceConfig.HTTPAddress},
+		{envMetricsAddress, serviceConfig.MetricsAddress},
 		{envConsulAddress, serviceConfig.ConsulAddress},
 		{envOIDCIssuer, serviceConfig.OIDCIssuer},
 		{envOIDCJWKSURL, serviceConfig.OIDCJWKSURL},

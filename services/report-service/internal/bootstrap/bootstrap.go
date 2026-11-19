@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,6 +13,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/messaging/rabbitmq"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/metrics"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/repository/postgres"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/service"
 )
@@ -33,27 +32,32 @@ func Run() error {
 	}
 	defer pool.Close()
 
+	reportRepository := postgres.NewReportRepository(pool)
+	outboxRepository := postgres.NewOutboxRepository(pool)
+	serviceMetrics := metrics.New(config.ServiceName, metrics.Stats{
+		Backlog: outboxRepository,
+		Reports: reportRepository,
+		Timeout: serviceConfig.DatabaseTimeout,
+	})
+
 	consumer := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
 		URL:               serviceConfig.RabbitMQURL,
 		ConnectionTimeout: serviceConfig.RabbitMQTimeout,
 		ProcessingTimeout: serviceConfig.ProcessingTimeout,
 		Prefetch:          serviceConfig.EventPrefetch,
 		InstanceID:        serviceConfig.InstanceID,
-	}, logger)
+	}, serviceMetrics, logger)
 
-	publisher := rabbitmq.NewPublisher(serviceConfig.RabbitMQURL, serviceConfig.RabbitMQTimeout)
-	defer func() {
-		if err := publisher.Close(); err != nil {
-			logger.Error(logCloseEventPublisher, logging.KeyError, err)
-		}
-	}()
+	publisher, closePublisher := openPublisher(serviceConfig, logger)
+	defer closePublisher()
 
-	reports := newReportService(serviceConfig, pool, logger)
+	reports := newReportService(serviceConfig, pool, serviceMetrics, logger)
 	projection := service.NewPlotProjection(postgres.NewPlotSummaryRepository(pool, serviceConfig.FailNamePrefix))
 	relay := service.NewOutboxRelay(
-		postgres.NewOutboxRepository(pool),
+		outboxRepository,
 		publisher,
 		outboxRelayConfig(serviceConfig),
+		serviceMetrics,
 		logger,
 	)
 
@@ -63,14 +67,15 @@ func Run() error {
 	}
 	defer stopVerifier()
 
-	exports := service.NewExportService(reports, document.Renderer{})
+	exports := service.NewExportService(reports, document.Renderer{}, serviceMetrics)
 	router := handler.NewRouter(logger, config.ServiceName, reports, exports, verifier)
-	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
+	server := newHTTPServer(serviceMetrics.ObserveRequests(router))
 
-	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)
+	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), logger)
 	if err != nil {
-		return fmt.Errorf(wrapListenHTTP, err)
+		return err
 	}
+	defer metricsEndpoint.stop(serviceConfig.ShutdownTimeout)
 
 	instance, err := register(serviceConfig, logger)
 	if err != nil {

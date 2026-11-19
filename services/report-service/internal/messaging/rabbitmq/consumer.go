@@ -33,11 +33,12 @@ type ConsumerConfig struct {
 
 type Consumer struct {
 	consumerConfig ConsumerConfig
+	observer       DeliveryObserver
 	logger         *slog.Logger
 }
 
-func NewConsumer(consumerConfig ConsumerConfig, logger *slog.Logger) *Consumer {
-	return &Consumer{consumerConfig: consumerConfig, logger: logger}
+func NewConsumer(consumerConfig ConsumerConfig, observer DeliveryObserver, logger *slog.Logger) *Consumer {
+	return &Consumer{consumerConfig: consumerConfig, observer: observer, logger: logger}
 }
 
 func (consumer *Consumer) Run(runContext context.Context, handler EventHandler) {
@@ -112,6 +113,7 @@ func (consumer *Consumer) handleDelivery(
 			logging.KeyRoutingKey, delivery.RoutingKey,
 			logging.KeyError, err,
 		)
+		consumer.observer.DeliveryProcessed(queueName, OutcomeRejected, createdAt(delivery))
 
 		return consumer.reject(delivery)
 	}
@@ -128,12 +130,17 @@ func (consumer *Consumer) handleDelivery(
 				logging.KeyPlotID, event.PlotID,
 				logging.KeyError, err,
 			)
+			consumer.observer.DeliveryProcessed(queueName, OutcomeRejected, createdAt(delivery))
 
 			return consumer.reject(delivery)
 		}
 
+		consumer.observer.DeliveryProcessed(queueName, OutcomeRequeued, createdAt(delivery))
+
 		return consumer.requeueLater(runContext, delivery, event, err)
 	}
+
+	consumer.observer.DeliveryProcessed(queueName, OutcomeAcknowledged, createdAt(delivery))
 
 	if err := delivery.Ack(false); err != nil {
 		return fmt.Errorf(wrapAcknowledgePlotEvent, err)

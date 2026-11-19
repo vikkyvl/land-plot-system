@@ -49,6 +49,7 @@ func newPlotService(
 	repository service.PlotRepository,
 	accuracy domain.AccuracyModel,
 	sagaTimeout time.Duration,
+	metrics service.PlotMetrics,
 ) *service.PlotService {
-	return service.NewPlotService(repository, domain.LocalEllipsoidCalculator{}, accuracy, sagaTimeout)
+	return service.NewPlotService(repository, domain.LocalEllipsoidCalculator{}, accuracy, sagaTimeout, metrics)
 }

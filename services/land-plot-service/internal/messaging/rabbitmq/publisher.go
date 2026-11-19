@@ -28,6 +28,8 @@ func (publisher *Publisher) Publish(publishContext context.Context, outboxMessag
 		DeliveryMode: amqp.Persistent,
 		MessageId:    outboxMessage.ID,
 		Type:         outboxMessage.RoutingKey,
+		Timestamp:    outboxMessage.CreatedAt,
+		Headers:      amqp.Table{HeaderCreatedAt: outboxMessage.CreatedAt.UnixMilli()},
 		Body:         outboxMessage.Payload,
 	}
 

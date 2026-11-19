@@ -21,6 +21,7 @@ type OutboxRelay struct {
 	repository  OutboxRepository
 	publisher   MessagePublisher
 	relayConfig OutboxRelayConfig
+	metrics     OutboxMetrics
 	logger      *slog.Logger
 }
 
@@ -28,9 +29,16 @@ func NewOutboxRelay(
 	repository OutboxRepository,
 	publisher MessagePublisher,
 	relayConfig OutboxRelayConfig,
+	metrics OutboxMetrics,
 	logger *slog.Logger,
 ) *OutboxRelay {
-	return &OutboxRelay{repository: repository, publisher: publisher, relayConfig: relayConfig, logger: logger}
+	return &OutboxRelay{
+		repository:  repository,
+		publisher:   publisher,
+		relayConfig: relayConfig,
+		metrics:     metrics,
+		logger:      logger,
+	}
 }
 
 func (relay *OutboxRelay) Run(runContext context.Context) {
@@ -64,10 +72,12 @@ func (relay *OutboxRelay) relayOnce(runContext context.Context) {
 	}
 
 	if result.Published > 0 {
+		relay.metrics.OutboxPublished(result.Published)
 		relay.logger.Info(logOutboxMessagesPublished, logging.KeyCount, result.Published)
 	}
 
 	if result.Abandoned != nil {
+		relay.metrics.OutboxPublishFailed(true)
 		relay.logger.Error(
 			logOutboxMessageAbandoned,
 			logging.KeyMessageID, result.Abandoned.ID,
@@ -80,6 +90,7 @@ func (relay *OutboxRelay) relayOnce(runContext context.Context) {
 	}
 
 	if result.PublishErr != nil {
+		relay.metrics.OutboxPublishFailed(false)
 		relay.logger.Warn(logRelayOutboxMessages, logging.KeyError, result.PublishErr)
 	}
 }

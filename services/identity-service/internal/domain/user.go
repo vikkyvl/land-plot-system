@@ -22,3 +22,7 @@ func NewUser(principal Principal, now time.Time) User {
 		UpdatedAt: now,
 	}
 }
+
+func (user User) IsNew() bool {
+	return user.CreatedAt.Equal(user.UpdatedAt)
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/config"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/logging"
+	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/metrics"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/repository/postgres"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/service"
 )
@@ -36,7 +37,8 @@ func Run() error {
 		return err
 	}
 
-	identity := service.NewIdentityService(userRepository)
+	serviceMetrics := metrics.New(config.ServiceName)
+	identity := service.NewIdentityService(userRepository, serviceMetrics)
 
 	verifier, stopVerifier, err := newTokenVerifier(serviceConfig, logger)
 	if err != nil {
@@ -45,12 +47,19 @@ func Run() error {
 	defer stopVerifier()
 
 	router := handler.NewRouter(logger, config.ServiceName, identity, verifier)
-	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
+	server := &http.Server{Handler: serviceMetrics.ObserveRequests(router), ReadHeaderTimeout: readHeaderTimeout}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)
 	if err != nil {
 		return fmt.Errorf(wrapListenHTTP, err)
 	}
+
+	metricsEndpoint, err := startMetricsServer(serviceConfig.MetricsAddress, serviceMetrics.Handler(), logger)
+	if err != nil {
+		_ = listener.Close()
+		return err
+	}
+	defer metricsEndpoint.stop(serviceConfig.ShutdownTimeout)
 
 	instance, err := register(serviceConfig, logger)
 	if err != nil {

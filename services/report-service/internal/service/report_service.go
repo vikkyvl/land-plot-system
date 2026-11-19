@@ -20,6 +20,7 @@ type ReportService struct {
 	repository   ReportRepository
 	plots        PlotClient
 	surroundings Surroundings
+	metrics      ReportMetrics
 	instanceID   string
 	now          func() time.Time
 }
@@ -28,12 +29,14 @@ func NewReportService(
 	repository ReportRepository,
 	plots PlotClient,
 	surroundings Surroundings,
+	metrics ReportMetrics,
 	instanceID string,
 ) *ReportService {
 	return &ReportService{
 		repository:   repository,
 		plots:        plots,
 		surroundings: surroundings,
+		metrics:      metrics,
 		instanceID:   instanceID,
 		now:          time.Now,
 	}
@@ -67,6 +70,8 @@ func (reportService *ReportService) Create(
 	if err := reportService.repository.Create(requestContext, report); err != nil {
 		return domain.Report{}, fmt.Errorf(wrapCreateReport, err)
 	}
+
+	reportService.metrics.ReportCreated(terrain.Status, climate.Status)
 
 	return report, nil
 }

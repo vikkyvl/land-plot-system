@@ -14,6 +14,7 @@ const ServiceName = "land-plot-service"
 
 const (
 	defaultHTTPAddress     = ":8082"
+	defaultMetricsAddress  = ":9464"
 	defaultConsulAddress   = "http://localhost:8500"
 	defaultShutdownTimeout = 10 * time.Second
 	defaultConsulTimeout   = 3 * time.Second
@@ -47,6 +48,7 @@ var errInvalidPort = errors.New(envHTTPAddress + " must contain a valid port")
 
 type Config struct {
 	HTTPAddress     string
+	MetricsAddress  string
 	HTTPPort        int
 	ShutdownTimeout time.Duration
 	ConsulAddress   string
@@ -89,6 +91,7 @@ type AccuracyConfig struct {
 func Load() (Config, error) {
 	serviceConfig := Config{
 		HTTPAddress:    stringOrDefault(envHTTPAddress, defaultHTTPAddress),
+		MetricsAddress: stringOrDefault(envMetricsAddress, defaultMetricsAddress),
 		ConsulAddress:  stringOrDefault(envConsulAddress, defaultConsulAddress),
 		ServiceAddress: os.Getenv(envServiceAddress),
 		InstanceID:     os.Getenv(envServiceInstanceID),
@@ -197,6 +200,7 @@ func (serviceConfig *Config) validate() error {
 		value string
 	}{
 		{envHTTPAddress, serviceConfig.HTTPAddress},
+		{envMetricsAddress, serviceConfig.MetricsAddress},
 		{envConsulAddress, serviceConfig.ConsulAddress},
 		{envDatabaseURL, serviceConfig.DatabaseURL},
 		{envRabbitMQURL, serviceConfig.RabbitMQURL},

@@ -12,11 +12,12 @@ import (
 
 type IdentityService struct {
 	repository UserRepository
+	metrics    IdentityMetrics
 	now        func() time.Time
 }
 
-func NewIdentityService(repository UserRepository) *IdentityService {
-	return &IdentityService{repository: repository, now: time.Now}
+func NewIdentityService(repository UserRepository, metrics IdentityMetrics) *IdentityService {
+	return &IdentityService{repository: repository, metrics: metrics, now: time.Now}
 }
 
 func (identityService *IdentityService) Profile(
@@ -34,6 +35,8 @@ func (identityService *IdentityService) Profile(
 	if err != nil {
 		return domain.User{}, fmt.Errorf(wrapSaveUser, err)
 	}
+
+	identityService.metrics.ProfileServed(user.IsNew())
 
 	return user, nil
 }

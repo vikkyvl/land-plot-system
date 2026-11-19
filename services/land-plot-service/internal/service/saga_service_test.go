@@ -26,7 +26,11 @@ func createdPlotWithSaga(t *testing.T) (*fakeRepository, domain.Plot, string) {
 func TestSagaServiceConfirmCompletesSagaAndConfirmsPlot(t *testing.T) {
 	repository, plot, sagaID := createdPlotWithSaga(t)
 
-	if err := NewSagaService(repository, discardLogger()).Confirm(context.Background(), sagaID); err != nil {
+	if err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).Confirm(context.Background(), sagaID); err != nil {
 		t.Fatalf("Confirm() error = %v", err)
 	}
 
@@ -42,7 +46,11 @@ func TestSagaServiceConfirmCompletesSagaAndConfirmsPlot(t *testing.T) {
 func TestSagaServiceIgnoresConfirmationOfUnknownSaga(t *testing.T) {
 	repository, plot, _ := createdPlotWithSaga(t)
 
-	if err := NewSagaService(repository, discardLogger()).Confirm(context.Background(), uuid.NewString()); err != nil {
+	if err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).Confirm(context.Background(), uuid.NewString()); err != nil {
 		t.Fatalf("Confirm() error = %v", err)
 	}
 
@@ -54,7 +62,11 @@ func TestSagaServiceIgnoresConfirmationOfUnknownSaga(t *testing.T) {
 func TestSagaServiceCompensatesCreateFromDeadLetter(t *testing.T) {
 	repository, plot, sagaID := createdPlotWithSaga(t)
 
-	err := NewSagaService(repository, discardLogger()).Compensate(context.Background(), sagaID, domain.ReasonDeadLetter)
+	err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).Compensate(context.Background(), sagaID, domain.ReasonDeadLetter)
 	if err != nil {
 		t.Fatalf("Compensate() error = %v", err)
 	}
@@ -77,7 +89,7 @@ func TestSagaServiceCompensatesCreateFromDeadLetter(t *testing.T) {
 
 func TestSagaServiceRepeatedCompensationChangesNothing(t *testing.T) {
 	repository, plot, sagaID := createdPlotWithSaga(t)
-	sagas := NewSagaService(repository, discardLogger())
+	sagas := NewSagaService(repository, &metricsSpy{}, discardLogger())
 
 	for range 2 {
 		if err := sagas.Compensate(context.Background(), sagaID, domain.ReasonDeadLetter); err != nil {
@@ -92,7 +104,7 @@ func TestSagaServiceRepeatedCompensationChangesNothing(t *testing.T) {
 
 func TestSagaServiceIgnoresConfirmationAfterCompensation(t *testing.T) {
 	repository, plot, sagaID := createdPlotWithSaga(t)
-	sagas := NewSagaService(repository, discardLogger())
+	sagas := NewSagaService(repository, &metricsSpy{}, discardLogger())
 
 	if err := sagas.Compensate(context.Background(), sagaID, domain.ReasonTimeout); err != nil {
 		t.Fatalf("Compensate() error = %v", err)
@@ -125,7 +137,11 @@ func TestSagaServiceCompensatesUpdateByRestoringPreviousState(t *testing.T) {
 
 	sagaID := repository.committed.events[0].ID
 
-	err = NewSagaService(repository, discardLogger()).Compensate(context.Background(), sagaID, domain.ReasonDeadLetter)
+	err = NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).Compensate(context.Background(), sagaID, domain.ReasonDeadLetter)
 	if err != nil {
 		t.Fatalf("Compensate() error = %v", err)
 	}
@@ -145,7 +161,11 @@ func TestSagaServiceCompensatesExpiredSagasWithTimeoutReason(t *testing.T) {
 	repository, plot, sagaID := createdPlotWithSaga(t)
 	repository.expiredSagaIDs = []string{sagaID}
 
-	compensated, err := NewSagaService(repository, discardLogger()).CompensateExpired(context.Background())
+	compensated, err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).CompensateExpired(context.Background())
 	if err != nil || compensated != 1 {
 		t.Fatalf("CompensateExpired() = %d, %v", compensated, err)
 	}
@@ -180,7 +200,11 @@ func TestSagaServiceCompensatesEachExpiredSagaSeparately(t *testing.T) {
 	repository.expiredSagaIDs = sagaIDs
 	repository.failSagaID = sagaIDs[1]
 
-	compensated, err := NewSagaService(repository, discardLogger()).CompensateExpired(context.Background())
+	compensated, err := NewSagaService(
+		repository,
+		&metricsSpy{},
+		discardLogger(),
+	).CompensateExpired(context.Background())
 	if !errors.Is(err, errSagaStore) || compensated != 2 {
 		t.Fatalf("CompensateExpired() = %d, %v, want 2 and the store error", compensated, err)
 	}
@@ -195,7 +219,7 @@ func TestSagaServiceCompensatesEachExpiredSagaSeparately(t *testing.T) {
 func TestSagaServiceSkipsExpiredSagaFinishedElsewhere(t *testing.T) {
 	repository := newFakeRepository()
 	sagaIDs := createSagas(t, repository, 2)
-	sagas := NewSagaService(repository, discardLogger())
+	sagas := NewSagaService(repository, &metricsSpy{}, discardLogger())
 
 	if err := sagas.Confirm(context.Background(), sagaIDs[0]); err != nil {
 		t.Fatalf("Confirm() error = %v", err)

@@ -14,6 +14,10 @@ import (
 
 const readHeaderTimeout = 5 * time.Second
 
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: readHeaderTimeout}
+}
+
 func serve(
 	runContext context.Context,
 	server *http.Server,

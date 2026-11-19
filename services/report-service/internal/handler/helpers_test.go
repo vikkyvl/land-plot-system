@@ -84,7 +84,7 @@ func (stub verifierStub) Verify(string) (domain.Principal, error) {
 }
 
 func newTestRouterWithVerifier(reports ReportService, verifier middleware.TokenVerifier) http.Handler {
-	exports := service.NewExportService(reports, documentsStub{})
+	exports := service.NewExportService(reports, documentsStub{}, reportMetricsStub{})
 
 	return NewRouter(slog.New(slog.DiscardHandler), testServiceName, reports, exports, verifier)
 }
@@ -117,3 +117,9 @@ func decodeBody[T any](t *testing.T, response *httptest.ResponseRecorder) T {
 
 	return body
 }
+
+type reportMetricsStub struct{}
+
+func (reportMetricsStub) ReportCreated(domain.DataStatus, domain.DataStatus) {}
+
+func (reportMetricsStub) ReportDownloaded(string) {}

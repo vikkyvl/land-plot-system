@@ -33,11 +33,12 @@ type ConsumerConfig struct {
 
 type Consumer struct {
 	consumerConfig ConsumerConfig
+	observer       DeliveryObserver
 	logger         *slog.Logger
 }
 
-func NewConsumer(consumerConfig ConsumerConfig, logger *slog.Logger) *Consumer {
-	return &Consumer{consumerConfig: consumerConfig, logger: logger}
+func NewConsumer(consumerConfig ConsumerConfig, observer DeliveryObserver, logger *slog.Logger) *Consumer {
+	return &Consumer{consumerConfig: consumerConfig, observer: observer, logger: logger}
 }
 
 func (consumer *Consumer) Run(runContext context.Context, handler SagaHandler) {
@@ -110,12 +111,16 @@ func (consumer *Consumer) handleDelivery(
 
 	valid, err := consumer.dispatch(processingContext, delivery, handler)
 	if err != nil {
+		consumer.observer.DeliveryProcessed(sagaQueueName, OutcomeRequeued, createdAt(delivery))
 		return consumer.retryLater(runContext, delivery, err)
 	}
 
 	if !valid {
+		consumer.observer.DeliveryProcessed(sagaQueueName, OutcomeRejected, createdAt(delivery))
 		return reject(delivery)
 	}
+
+	consumer.observer.DeliveryProcessed(sagaQueueName, OutcomeAcknowledged, createdAt(delivery))
 
 	if err := delivery.Ack(false); err != nil {
 		return fmt.Errorf(wrapAcknowledgeSagaMessage, err)

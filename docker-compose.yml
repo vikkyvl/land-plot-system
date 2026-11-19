@@ -175,10 +175,12 @@ services:
     environment:
       <<: *go-environment
       HTTP_ADDRESS: :8081
+      METRICS_ADDRESS: :9464
       DATABASE_URL: postgres://${IDENTITY_DB_USER:-identity_user}:${IDENTITY_DB_PASSWORD:-identity_dev_password}@postgres:5432/${IDENTITY_DB_NAME:-identity_db}?sslmode=disable
       DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
     expose:
       - "8081"
+      - "9464"
     depends_on:
       keycloak:
         condition: service_healthy
@@ -194,6 +196,7 @@ services:
     environment:
       <<: *go-environment
       HTTP_ADDRESS: :8082
+      METRICS_ADDRESS: :9464
       DATABASE_URL: postgres://${PLOT_DB_USER:-plot_user}:${PLOT_DB_PASSWORD:-plot_dev_password}@postgres:5432/${PLOT_DB_NAME:-plot_db}?sslmode=disable
       DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-land_app}:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672/
@@ -206,6 +209,7 @@ services:
       MESSAGE_PROCESSING_TIMEOUT: ${MESSAGE_PROCESSING_TIMEOUT:-5s}
     expose:
       - "8082"
+      - "9464"
     depends_on:
       keycloak:
         condition: service_healthy
@@ -223,6 +227,7 @@ services:
     environment:
       <<: *go-environment
       HTTP_ADDRESS: :8083
+      METRICS_ADDRESS: :9464
       DATABASE_URL: postgres://${REPORT_DB_USER:-report_user}:${REPORT_DB_PASSWORD:-report_dev_password}@postgres:5432/${REPORT_DB_NAME:-report_db}?sslmode=disable
       DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
       UPSTREAM_TIMEOUT: ${UPSTREAM_TIMEOUT:-5s}
@@ -241,6 +246,7 @@ services:
       OPEN_METEO_TIMEOUT: ${OPEN_METEO_TIMEOUT:-3s}
     expose:
       - "8083"
+      - "9464"
     depends_on:
       keycloak:
         condition: service_healthy

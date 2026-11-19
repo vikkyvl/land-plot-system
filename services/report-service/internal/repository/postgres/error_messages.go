@@ -27,4 +27,6 @@ const (
 	wrapSimulatedWriteFailure       = "%w for plot %q"
 	wrapSimulatedWriteFailureCause  = "%w: simulated plot summary write failure"
 	wrapUpsertPlotSummary           = "upsert plot summary: %w"
+	wrapCountReports                = "count reports: %w"
+	wrapQueryOutboxBacklog          = "query outbox backlog: %w"
 )

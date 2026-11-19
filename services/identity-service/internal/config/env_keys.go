@@ -6,6 +6,7 @@ const (
 	envDatabaseTimeout     = "DATABASE_TIMEOUT"
 	envDatabaseURL         = "DATABASE_URL"
 	envHTTPAddress         = "HTTP_ADDRESS"
+	envMetricsAddress      = "METRICS_ADDRESS"
 	envHTTPShutdownTimeout = "HTTP_SHUTDOWN_TIMEOUT"
 	envServiceAddress      = "SERVICE_ADDRESS"
 	envServiceInstanceID   = "SERVICE_INSTANCE_ID"

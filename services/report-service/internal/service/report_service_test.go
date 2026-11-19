@@ -80,7 +80,7 @@ func TestReportServiceCreatesSnapshotFromPlotService(t *testing.T) {
 		ID: plotID, OwnerID: testCaller.UserID, Name: "Plot", AreaM2: 10_000, PerimeterM: 400, Version: 2,
 		Status: domain.PlotStatusConfirmed,
 	}}
-	reports := NewReportService(repository, plots, &surroundingsStub{}, testInstanceID)
+	reports := NewReportService(repository, plots, &surroundingsStub{}, &metricsSpy{}, testInstanceID)
 	fixedNow := time.Date(2026, time.October, 26, 12, 0, 0, 0, time.UTC)
 	reports.now = func() time.Time { return fixedNow }
 
@@ -105,7 +105,7 @@ func TestReportServiceRejectsInvalidPlotIDBeforeCallingPlotService(t *testing.T)
 	_, err := NewReportService(
 		&reportRepositoryStub{},
 		plots,
-		&surroundingsStub{}, testInstanceID,
+		&surroundingsStub{}, &metricsSpy{}, testInstanceID,
 	).Create(context.Background(), testCaller, "bad")
 
 	if !errors.Is(err, domain.ErrInvalidPlotID) || plots.plotID != "" {
@@ -129,7 +129,7 @@ func TestReportServiceRejectsForeignPlot(t *testing.T) {
 	_, err := NewReportService(
 		&reportRepositoryStub{},
 		plots,
-		&surroundingsStub{}, testInstanceID,
+		&surroundingsStub{}, &metricsSpy{}, testInstanceID,
 	).Create(context.Background(), testCaller, plotID)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("Create() error = %v, want ErrForbidden", err)
@@ -143,7 +143,7 @@ func TestReportServiceProtectsStoredReport(t *testing.T) {
 	_, err := NewReportService(
 		repository,
 		&plotClientStub{},
-		&surroundingsStub{}, testInstanceID,
+		&surroundingsStub{}, &metricsSpy{}, testInstanceID,
 	).Get(context.Background(), "owner-2", reportID)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("Get() error = %v, want ErrForbidden", err)
@@ -152,7 +152,7 @@ func TestReportServiceProtectsStoredReport(t *testing.T) {
 
 func TestReportServiceBuildsDiagnosticPath(t *testing.T) {
 	plots := &plotClientStub{}
-	reports := NewReportService(&reportRepositoryStub{}, plots, &surroundingsStub{}, testInstanceID)
+	reports := NewReportService(&reportRepositoryStub{}, plots, &surroundingsStub{}, &metricsSpy{}, testInstanceID)
 
 	trace, err := reports.Trace(context.Background(), testCaller, "gateway-1", "hello")
 	if err != nil {
@@ -181,6 +181,7 @@ func TestReportServiceRejectsPlotWaitingForConfirmation(t *testing.T) {
 		repository,
 		plots,
 		&surroundingsStub{},
+		&metricsSpy{},
 		testInstanceID,
 	).Create(context.Background(), testCaller, plotID)
 	if !errors.Is(err, domain.ErrPlotNotConfirmed) || repository.created.ID != "" {
@@ -198,7 +199,13 @@ func TestReportServiceStoresAccuracyTerrainAndClimate(t *testing.T) {
 	}
 	surroundings := &surroundingsStub{}
 
-	report, err := NewReportService(repository, &plotClientStub{plot: plot}, surroundings, testInstanceID).
+	report, err := NewReportService(
+		repository,
+		&plotClientStub{plot: plot},
+		surroundings,
+		&metricsSpy{},
+		testInstanceID,
+	).
 		Create(context.Background(), testCaller, plotID)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)

@@ -1,5 +1,7 @@
 package domain
 
+import "errors"
+
 type ErrorKind int
 
 const (
@@ -39,4 +41,17 @@ func (domainError *Error) Is(target error) bool {
 	targetError, ok := target.(*Error)
 
 	return ok && targetError.Kind == domainError.Kind && targetError.Code == domainError.Code
+}
+
+func ErrorCodes(errs ...error) []string {
+	codes := make([]string, 0, len(errs))
+
+	for _, err := range errs {
+		var domainError *Error
+		if errors.As(err, &domainError) {
+			codes = append(codes, domainError.Code)
+		}
+	}
+
+	return codes
 }

@@ -10,10 +10,11 @@ import (
 type ExportService struct {
 	reports   ReportReader
 	documents ReportDocuments
+	metrics   ReportMetrics
 }
 
-func NewExportService(reports ReportReader, documents ReportDocuments) *ExportService {
-	return &ExportService{reports: reports, documents: documents}
+func NewExportService(reports ReportReader, documents ReportDocuments, metrics ReportMetrics) *ExportService {
+	return &ExportService{reports: reports, documents: documents, metrics: metrics}
 }
 
 func (exportService *ExportService) PDF(
@@ -34,6 +35,8 @@ func (exportService *ExportService) PDF(
 	if err != nil {
 		return domain.ReportFile{}, fmt.Errorf(wrapRenderPDF, err)
 	}
+
+	exportService.metrics.ReportDownloaded(domain.ExtensionPDF)
 
 	return domain.ReportFile{
 		Name:        report.FileName(language.ReportFilePrefix(), domain.ExtensionPDF),
@@ -60,6 +63,8 @@ func (exportService *ExportService) GeoJSON(
 	if err != nil {
 		return domain.ReportFile{}, err
 	}
+
+	exportService.metrics.ReportDownloaded(domain.ExtensionGeoJSON)
 
 	return domain.ReportFile{
 		Name:        report.FileName(language.ReportFilePrefix(), domain.ExtensionGeoJSON),
