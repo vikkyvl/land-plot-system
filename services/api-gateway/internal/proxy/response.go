@@ -3,12 +3,15 @@ package proxy
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
 )
 
 type errorResponse struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
 	RequestID string `json:"request_id"`
+	TraceID   string `json:"trace_id,omitempty"`
 }
 
 func WriteJSON(response http.ResponseWriter, status int, body any) error {
@@ -23,5 +26,6 @@ func WriteError(response http.ResponseWriter, request *http.Request, gatewayErro
 		Code:      gatewayError.Code,
 		Message:   gatewayError.Message,
 		RequestID: request.Header.Get(HeaderRequestID),
+		TraceID:   logging.TraceID(request.Context()),
 	})
 }

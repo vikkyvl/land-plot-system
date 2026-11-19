@@ -13,7 +13,6 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/messaging/rabbitmq"
-	"github.com/vleshchenko/land-plot-system/services/report-service/internal/metrics"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/repository/postgres"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/service"
 )
@@ -25,6 +24,7 @@ func Run() error {
 	}
 
 	logger := logging.NewLogger(os.Stdout, config.ServiceName, slog.LevelInfo)
+	defer startTracing(serviceConfig, logger)()
 
 	pool, err := openDatabase(serviceConfig.DatabaseURL, serviceConfig.DatabaseTimeout)
 	if err != nil {
@@ -32,13 +32,7 @@ func Run() error {
 	}
 	defer pool.Close()
 
-	reportRepository := postgres.NewReportRepository(pool)
-	outboxRepository := postgres.NewOutboxRepository(pool)
-	serviceMetrics := metrics.New(config.ServiceName, metrics.Stats{
-		Backlog: outboxRepository,
-		Reports: reportRepository,
-		Timeout: serviceConfig.DatabaseTimeout,
-	})
+	outboxRepository, serviceMetrics := newMetrics(serviceConfig, pool)
 
 	consumer := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
 		URL:               serviceConfig.RabbitMQURL,
@@ -68,8 +62,11 @@ func Run() error {
 	defer stopVerifier()
 
 	exports := service.NewExportService(reports, document.Renderer{}, serviceMetrics)
-	router := handler.NewRouter(logger, config.ServiceName, reports, exports, verifier)
-	server := newHTTPServer(logging.AccessLog(logger, logging.PatternRoute, serviceMetrics.ObserveRequests(router)))
+	server := newHTTPServer(
+		handler.NewRouter(logger, config.ServiceName, reports, exports, verifier),
+		serviceMetrics,
+		logger,
+	)
 
 	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), logger)
 	if err != nil {

@@ -25,7 +25,7 @@ func NewRouter(
 
 	logged := logging.AccessLog(logger, routeTemplate, withCORS(allowedOrigins, protected))
 
-	return observeRequests(observer, withRequestID(logged))
+	return withTraceID(observeRequests(observer, withRequestID(logged)))
 }
 
 func routeTemplate(request *http.Request) string {

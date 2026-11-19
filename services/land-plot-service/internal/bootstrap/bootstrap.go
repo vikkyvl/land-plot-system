@@ -22,6 +22,7 @@ func Run() error {
 	}
 
 	logger := logging.NewLogger(os.Stdout, config.ServiceName, slog.LevelInfo)
+	defer startTracing(serviceConfig, logger)()
 
 	pool, err := openDatabase(serviceConfig.DatabaseURL, serviceConfig.DatabaseTimeout)
 	if err != nil {
@@ -62,8 +63,11 @@ func Run() error {
 	}
 	defer stopVerifier()
 
-	router := handler.NewRouter(logger, config.ServiceName, serviceConfig.InstanceID, plots, verifier)
-	server := newHTTPServer(logging.AccessLog(logger, logging.PatternRoute, serviceMetrics.ObserveRequests(router)))
+	server := newHTTPServer(
+		handler.NewRouter(logger, config.ServiceName, serviceConfig.InstanceID, plots, verifier),
+		serviceMetrics,
+		logger,
+	)
 
 	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), logger)
 	if err != nil {

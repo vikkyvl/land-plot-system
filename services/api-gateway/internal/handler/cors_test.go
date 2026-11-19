@@ -38,7 +38,9 @@ func TestPreflightFromAnAllowedOriginNeedsNoToken(t *testing.T) {
 	if response.Code != http.StatusNoContent ||
 		headers.Get("Access-Control-Allow-Origin") != allowedOrigin ||
 		headers.Get("Access-Control-Allow-Methods") != "GET, POST, PATCH, DELETE, OPTIONS" ||
-		headers.Get("Access-Control-Allow-Headers") != "Authorization, Content-Type, X-Request-ID" ||
+		headers.Get(
+			"Access-Control-Allow-Headers",
+		) != "Authorization, Content-Type, X-Request-ID, traceparent, tracestate" ||
 		headers.Get("Access-Control-Max-Age") != "600" ||
 		headers.Get("Vary") != "Origin" ||
 		headers.Get("Access-Control-Allow-Credentials") != "" ||
@@ -89,7 +91,9 @@ func TestRequestFromAnAllowedOriginGetsOneSetOfHeaders(t *testing.T) {
 
 	if response.Code != http.StatusOK || len(response.Header().Values("Access-Control-Allow-Origin")) != 1 ||
 		response.Header().Get("Access-Control-Allow-Origin") != allowedOrigin ||
-		response.Header().Get("Access-Control-Expose-Headers") != "X-Request-ID, Retry-After, Content-Disposition" {
+		response.Header().
+			Get("Access-Control-Expose-Headers") !=
+			"X-Request-ID, X-Trace-ID, Retry-After, Content-Disposition" {
 		t.Fatalf("status = %d, headers = %#v", response.Code, response.Header())
 	}
 }

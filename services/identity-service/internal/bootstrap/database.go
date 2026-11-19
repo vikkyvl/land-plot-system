@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/tracing"
 )
 
 type migrator interface {
@@ -16,7 +18,14 @@ func openDatabase(databaseURL string, timeout time.Duration) (*pgxpool.Pool, err
 	timeoutContext, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	pool, err := pgxpool.New(timeoutContext, databaseURL)
+	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf(wrapOpenDatabasePool, err)
+	}
+
+	tracing.TraceDatabase(poolConfig)
+
+	pool, err := pgxpool.NewWithConfig(timeoutContext, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf(wrapOpenDatabasePool, err)
 	}

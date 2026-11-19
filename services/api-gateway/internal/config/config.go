@@ -32,6 +32,7 @@ type Config struct {
 	HTTPAddress               string
 	HTTPPort                  int
 	MetricsAddress            string
+	OTLPEndpoint              string
 	ShutdownTimeout           time.Duration
 	ConsulAddress             string
 	ConsulTimeout             time.Duration
@@ -50,6 +51,7 @@ func Load() (Config, error) {
 	serviceConfig := Config{
 		HTTPAddress:    stringOrDefault(envHTTPAddress, defaultHTTPAddress),
 		MetricsAddress: stringOrDefault(envMetricsAddress, defaultMetricsAddress),
+		OTLPEndpoint:   os.Getenv(envOTLPEndpoint),
 		ConsulAddress:  stringOrDefault(envConsulAddress, defaultConsulAddress),
 		ServiceAddress: os.Getenv(envServiceAddress),
 		InstanceID:     os.Getenv(envServiceInstanceID),

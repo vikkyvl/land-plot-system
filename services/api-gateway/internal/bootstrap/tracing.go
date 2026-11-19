@@ -1,0 +1,30 @@
+package bootstrap
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/config"
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/tracing"
+)
+
+func startTracing(serviceConfig config.Config, logger *slog.Logger) func() {
+	stop := tracing.Start(
+		context.Background(),
+		tracing.Config{ServiceName: config.ServiceName, Endpoint: serviceConfig.OTLPEndpoint},
+		logger,
+	)
+
+	return func() {
+		stopContext, cancel := context.WithTimeout(context.Background(), serviceConfig.ShutdownTimeout)
+		defer cancel()
+
+		stop(stopContext)
+	}
+}
+
+func gatewayRoute(request *http.Request) string {
+	return proxy.RouteTemplate(request.URL.Path)
+}

@@ -33,6 +33,16 @@ func withRequestID(next http.Handler) http.Handler {
 	})
 }
 
+func withTraceID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if traceID := logging.TraceID(request.Context()); traceID != "" {
+			response.Header().Set(proxy.HeaderTraceID, traceID)
+		}
+
+		next.ServeHTTP(response, request)
+	})
+}
+
 func sanitizeUserHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		for name := range request.Header {

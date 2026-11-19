@@ -44,5 +44,6 @@ func (writer Writer) Error(response http.ResponseWriter, request *http.Request, 
 		Code:      code,
 		Message:   message,
 		RequestID: request.Header.Get(RequestIDHeader),
+		TraceID:   logging.TraceID(request.Context()),
 	})
 }

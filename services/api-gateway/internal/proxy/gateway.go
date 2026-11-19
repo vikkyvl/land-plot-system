@@ -13,6 +13,7 @@ import (
 
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/discovery"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/tracing"
 )
 
 type ServiceResolver interface {
@@ -60,7 +61,7 @@ func NewGateway(
 	}
 	gateway.proxy = &httputil.ReverseProxy{
 		Director:       direct,
-		Transport:      observedTransport{base: http.DefaultTransport, observer: observer},
+		Transport:      observedTransport{base: tracing.Transport(http.DefaultTransport), observer: observer},
 		ModifyResponse: removeUpstreamCORSHeaders,
 		ErrorHandler:   gateway.handleProxyError,
 	}

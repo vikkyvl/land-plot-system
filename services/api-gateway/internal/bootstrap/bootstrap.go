@@ -18,6 +18,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/metrics"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/ratelimit"
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/tracing"
 )
 
 func Run() error {
@@ -27,6 +28,8 @@ func Run() error {
 	}
 
 	logger := logging.NewLogger(os.Stdout, config.ServiceName, slog.LevelInfo)
+	defer startTracing(serviceConfig, logger)()
+
 	gatewayMetrics := metrics.NewGateway(config.ServiceName)
 
 	resolver := consul.NewResolver(serviceConfig.ConsulAddress, &http.Client{Timeout: serviceConfig.ConsulTimeout})
@@ -54,7 +57,10 @@ func Run() error {
 		serviceConfig.AllowedOrigins,
 		gatewayMetrics,
 	)
-	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
+	server := &http.Server{
+		Handler:           tracing.Server(tracing.NameByRoute(gatewayRoute, router)),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)
 	if err != nil {

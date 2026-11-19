@@ -277,6 +277,10 @@ make obs-check   # health of every Prometheus target and UI
   ```
   {service="land-plot-service"} | json | request_id="lab6-step4-bc584dac"
   ```
+- **Tracing** (OpenTelemetry, W3C Trace Context). Every Go service starts the SDK and exports spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_ENDPOINT` (`http://otel-collector:4318`; empty turns tracing off, and an unreachable collector is only logged at `debug`).
+  - The gateway continues the trace from an incoming `traceparent` or starts a new one, returns its ID in `X-Trace-ID` (exposed through CORS, which also allows `traceparent` and `tracestate`) and puts `trace_id` next to `request_id` in every error body of the gateway and the services.
+  - Spans: one server span per request named after the route (`POST /api/v1/plots`, health checks are not traced), a client span for every call to another service, which carries `traceparent` (`otelhttp`), and a span for every PostgreSQL query (`otelpgx`, without parameters). Calls to Open-Meteo get a client span too, but no `traceparent` is sent to an external API.
+  - The logger takes `trace_id` and `span_id` from the context, so in Grafana a log line opens its trace in Jaeger (derived field `trace_id`) and a span opens the logs of its trace (`{container=~".+"} | trace_id = "<id>"`).
 - **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
 - **Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
 
@@ -668,7 +672,7 @@ Every service keeps its route-to-scope rules in one table (`protectedRoutes` in 
 The gateway lets the department site `https://cad.kpi.ua` and the local frontends call the API from a browser. Its CORS middleware runs before authentication, so a preflight `OPTIONS` request without a token is answered with `204` instead of `401`.
 
 - Allowed origins come from `CORS_ALLOWED_ORIGINS` (by default `https://cad.kpi.ua,http://localhost:5173,http://localhost:4173`) and are compared exactly; `*` is never used, and `https://cad.kpi.ua.evil.com` is not allowed.
-- An allowed origin gets `Access-Control-Allow-Origin: <origin>`, `Vary: Origin` and `Access-Control-Expose-Headers: X-Request-ID, Retry-After`, so the browser can read the request ID and the wait after `429`. A preflight also gets `Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`, `Allow-Headers: Authorization, Content-Type, X-Request-ID`, `Max-Age: 600` and, when the browser asks for it, `Access-Control-Allow-Private-Network: true`, because a public page calls `localhost`.
+- An allowed origin gets `Access-Control-Allow-Origin: <origin>`, `Vary: Origin` and `Access-Control-Expose-Headers: X-Request-ID, X-Trace-ID, Retry-After, Content-Disposition`, so the browser can read the request and trace IDs, the wait after `429` and the file name of a download. A preflight also gets `Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`, `Allow-Headers: Authorization, Content-Type, X-Request-ID, traceparent, tracestate`, `Max-Age: 600` and, when the browser asks for it, `Access-Control-Allow-Private-Network: true`, because a public page calls `localhost`.
 - `Access-Control-Allow-Credentials` is not sent: the token travels in the `Authorization` header, not in a cookie.
 - A foreign origin gets no `Access-Control-*` headers, and its preflight gets `403 origin_not_allowed`.
 - The gateway removes `Access-Control-*` headers that a service might return (`ReverseProxy.ModifyResponse`), so each response carries exactly one set.

@@ -17,6 +17,7 @@ const (
 	envDatabaseURL              = "DATABASE_URL"
 	envHTTPAddress              = "HTTP_ADDRESS"
 	envMetricsAddress           = "METRICS_ADDRESS"
+	envOTLPEndpoint             = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envHTTPShutdownTimeout      = "HTTP_SHUTDOWN_TIMEOUT"
 	envMessageProcessingTimeout = "MESSAGE_PROCESSING_TIMEOUT"
 	envOIDCAudience             = "OIDC_AUDIENCE"

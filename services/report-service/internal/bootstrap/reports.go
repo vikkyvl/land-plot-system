@@ -14,6 +14,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/metrics"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/repository/postgres"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/service"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/tracing"
 )
 
 func newReportService(
@@ -27,7 +28,7 @@ func newReportService(
 		resolver,
 		&http.Client{
 			Timeout:   serviceConfig.UpstreamTimeout,
-			Transport: serviceMetrics.Transport(metrics.TargetLandPlot, http.DefaultTransport),
+			Transport: serviceMetrics.Transport(metrics.TargetLandPlot, tracing.Transport(http.DefaultTransport)),
 		},
 		serviceConfig.PlotServiceName,
 	)
@@ -52,7 +53,10 @@ func newSurroundings(
 		openmeteo.NewElevationClient(
 			openMeteo.ElevationURL,
 			openMeteo.Timeout,
-			serviceMetrics.Transport(metrics.TargetOpenMeteoElevation, http.DefaultTransport),
+			serviceMetrics.Transport(
+				metrics.TargetOpenMeteoElevation,
+				tracing.TransportWithoutPropagation(http.DefaultTransport),
+			),
 		),
 		domain.TerrainSettings{
 			GridSide:     serviceConfig.Terrain.GridSide,
@@ -64,7 +68,10 @@ func newSurroundings(
 		openmeteo.NewArchiveClient(
 			openMeteo.ArchiveURL,
 			openMeteo.Timeout,
-			serviceMetrics.Transport(metrics.TargetOpenMeteoArchive, http.DefaultTransport),
+			serviceMetrics.Transport(
+				metrics.TargetOpenMeteoArchive,
+				tracing.TransportWithoutPropagation(http.DefaultTransport),
+			),
 		),
 		postgres.NewClimateCacheRepository(pool),
 		service.ClimateSettings{Years: serviceConfig.Climate.Years, CacheTTL: serviceConfig.Climate.CacheTTL},

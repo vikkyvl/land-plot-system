@@ -13,6 +13,7 @@ x-go-service: &go-service
     OIDC_JWKS_URL: http://keycloak:8080/realms/land-plot/protocol/openid-connect/certs
     OIDC_AUDIENCE: ${OIDC_AUDIENCE:-land-plot-api}
     OIDC_TIMEOUT: ${OIDC_TIMEOUT:-5s}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4318}
 
 x-ai-service: &ai-service
   profiles: ["ai"]

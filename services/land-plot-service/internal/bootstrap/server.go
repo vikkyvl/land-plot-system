@@ -10,12 +10,17 @@ import (
 	"time"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/metrics"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/tracing"
 )
 
 const readHeaderTimeout = 5 * time.Second
 
-func newHTTPServer(handler http.Handler) *http.Server {
-	return &http.Server{Handler: handler, ReadHeaderTimeout: readHeaderTimeout}
+func newHTTPServer(router http.Handler, serviceMetrics *metrics.Service, logger *slog.Logger) *http.Server {
+	named := tracing.NameByRoute(logging.PatternRoute, router)
+	logged := logging.AccessLog(logger, logging.PatternRoute, serviceMetrics.ObserveRequests(named))
+
+	return &http.Server{Handler: tracing.Server(logged), ReadHeaderTimeout: readHeaderTimeout}
 }
 
 func serve(

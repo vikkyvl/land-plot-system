@@ -22,6 +22,7 @@ type ErrorResponse struct {
 	Message   string `json:"message"`
 	Details   any    `json:"details,omitempty"`
 	RequestID string `json:"request_id"`
+	TraceID   string `json:"trace_id,omitempty"`
 }
 
 type Writer struct {

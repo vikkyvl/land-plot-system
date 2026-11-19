@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const requestIDBytes = 16
@@ -30,4 +32,13 @@ func NewRequestID() string {
 	_, _ = rand.Read(value[:])
 
 	return hex.EncodeToString(value[:])
+}
+
+func TraceID(source context.Context) string {
+	spanContext := trace.SpanContextFromContext(source)
+	if !spanContext.IsValid() {
+		return ""
+	}
+
+	return spanContext.TraceID().String()
 }

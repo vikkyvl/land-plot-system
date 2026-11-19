@@ -16,6 +16,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/metrics"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/repository/postgres"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/service"
+	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/tracing"
 )
 
 func Run() error {
@@ -25,6 +26,7 @@ func Run() error {
 	}
 
 	logger := logging.NewLogger(os.Stdout, config.ServiceName, slog.LevelInfo)
+	defer startTracing(serviceConfig, logger)()
 
 	pool, err := openDatabase(serviceConfig.DatabaseURL, serviceConfig.DatabaseTimeout)
 	if err != nil {
@@ -48,7 +50,11 @@ func Run() error {
 
 	router := handler.NewRouter(logger, config.ServiceName, identity, verifier)
 	server := &http.Server{
-		Handler:           logging.AccessLog(logger, logging.PatternRoute, serviceMetrics.ObserveRequests(router)),
+		Handler: tracing.Server(logging.AccessLog(
+			logger,
+			logging.PatternRoute,
+			serviceMetrics.ObserveRequests(tracing.NameByRoute(logging.PatternRoute, router)),
+		)),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
