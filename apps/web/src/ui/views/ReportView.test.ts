@@ -273,5 +273,49 @@ describe('ReportView', () => {
     expect(service.create).toHaveBeenCalledWith('plot-1')
     expect(router.currentRoute.value.fullPath).toBe('/reports/report-new')
   })
+
+  it('explains why an older report has no GeoJSON and still downloads its PDF', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:report')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const { wrapper, service } = await mountReport({ report, plot: { version: 1 } as Plot, points, obstructions: [] })
+
+    expect(wrapper.get('.report__boundary-note').text()).toBe(
+      'Цей звіт створено до збереження меж у звіті. Натисніть «Оновити звіт», щоб завантажити PDF і GeoJSON',
+    )
+    const geoJson = button(wrapper, 'Завантажити GeoJSON')
+    expect(geoJson?.attributes('disabled')).toBeDefined()
+    expect(geoJson?.attributes('aria-describedby')).toBe('report-boundary-note')
+
+    await button(wrapper, 'Завантажити PDF')?.trigger('click')
+    await flushPromises()
+    expect(service.download).toHaveBeenCalledWith(report.id, 'pdf', 'uk')
+    expect(wrapper.find('.report__failure').exists()).toBe(false)
+  })
+
+  it('says the boundary is unavailable for an older report of a deleted plot', async () => {
+    const { wrapper } = await mountReport({
+      report: { ...report, plotDeleted: true },
+      plot: null,
+      points: null,
+      obstructions: [],
+    })
+
+    expect(wrapper.get('.report__boundary-note').text()).toBe('Межа цього звіту недоступна')
+    expect(button(wrapper, 'Завантажити GeoJSON')?.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.report__refresh').exists()).toBe(false)
+  })
+
+  it('shows no note when the report keeps its boundary', async () => {
+    const { wrapper } = await mountReport({
+      report: { ...report, boundary: points },
+      plot: { version: 1 } as Plot,
+      points,
+      obstructions: [],
+    })
+
+    expect(wrapper.find('.report__boundary-note').exists()).toBe(false)
+    expect(button(wrapper, 'Завантажити GeoJSON')?.attributes('disabled')).toBeUndefined()
+  })
 })
 

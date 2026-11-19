@@ -91,6 +91,13 @@ async function refresh(): Promise<void> {
 }
 
 const downloading = ref<ReportFormat | null>(null)
+const boundaryNote = computed(() => {
+  if (report.value === null || report.value.boundary.length > 0) {
+    return null
+  }
+
+  return deleted.value ? t('report.boundaryUnavailable') : t('report.boundaryNotStored')
+})
 const newer = computed(() => (report.value !== null && hasNewerReport(report.value) ? report.value.latest : null))
 const createdLine = computed(() => {
   if (report.value === null) {
@@ -202,8 +209,8 @@ async function share(): Promise<void> {
           <button
             type="button"
             class="report__button report__download ui-secondary"
-            :disabled="downloading !== null || report.boundary.length === 0"
-            :title="report.boundary.length === 0 ? $t('report.noBoundary') : undefined"
+            :disabled="downloading !== null || boundaryNote !== null"
+            :aria-describedby="boundaryNote ? 'report-boundary-note' : undefined"
             :aria-busy="downloading === 'geojson'"
             @click="download('geojson')"
           >
@@ -219,6 +226,13 @@ async function share(): Promise<void> {
           </button>
         </div>
       </header>
+      <p
+        v-if="boundaryNote"
+        id="report-boundary-note"
+        class="report__boundary-note"
+      >
+        {{ boundaryNote }}
+      </p>
 
       <div
         v-if="canReport && !deleted"
@@ -467,6 +481,12 @@ async function share(): Promise<void> {
 
 .report__sources a {
   color: inherit;
+}
+
+.report__boundary-note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
 }
 
 .report__refresh {

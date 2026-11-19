@@ -197,7 +197,6 @@
     "toPlot": "Back to the plot",
     "number": "Report No. {number}",
     "title": "Report · {name}",
-    "noBoundary": "The plot boundary is unavailable",
     "geojson": "Download GeoJSON",
     "shareLink": "Share link",
     "shareReport": "Share report",
@@ -224,7 +223,9 @@
     "climateFrom": "climate for {from}–{to}",
     "newer": "A newer report from {date} exists",
     "refreshHint": "Creates a new report with current data; this one stays unchanged",
-    "fallbackFileName": "Report-{number}"
+    "fallbackFileName": "Report-{number}",
+    "boundaryNotStored": "This report was created before boundaries were stored in reports. Click «Update report» to download the PDF and GeoJSON",
+    "boundaryUnavailable": "The boundary of this report is not available"
   },
   "confirmations": {
     "saved": "Plot “{name}” saved",

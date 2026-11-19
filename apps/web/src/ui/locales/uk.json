@@ -197,7 +197,6 @@
     "toPlot": "До ділянки",
     "number": "Звіт № {number}",
     "title": "Звіт · {name}",
-    "noBoundary": "Контур ділянки недоступний",
     "geojson": "Завантажити GeoJSON",
     "shareLink": "Поділитися посиланням",
     "shareReport": "Поділитися звітом",
@@ -224,7 +223,9 @@
     "climateFrom": "клімат за {from}–{to}",
     "newer": "Є новіший звіт від {date}",
     "refreshHint": "Створить новий звіт з актуальними даними, цей лишиться без змін",
-    "fallbackFileName": "Звіт-{number}"
+    "fallbackFileName": "Звіт-{number}",
+    "boundaryNotStored": "Цей звіт створено до збереження меж у звіті. Натисніть «Оновити звіт», щоб завантажити PDF і GeoJSON",
+    "boundaryUnavailable": "Межа цього звіту недоступна"
   },
   "confirmations": {
     "saved": "Ділянку «{name}» збережено",
