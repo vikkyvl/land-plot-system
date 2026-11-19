@@ -248,7 +248,9 @@ The **Exchanges** tab contains `land.events` and `land.events.dead`. The **Queue
 
 ### Observability stack
 
-Metrics, logs and traces run in the `observability` profile, so the system also starts without them. The Grafana admin password has no default: set `GRAFANA_ADMIN_PASSWORD` in `.env` (`.env.example` has a placeholder). Docker Compose checks the variable for every command, also without the profile.
+Metrics, logs and traces run in the `observability` profile, so the system also starts without them.
+
+> **`GRAFANA_ADMIN_PASSWORD` is required even without the `observability` profile.** It has no default, and Docker Compose resolves the variables of every service before it does anything, so without it in `.env` every `docker compose` command fails, including `docker compose up` of the main system and the demos. `.env.example` has the placeholder `change-me`; replace it in `.env` (for example with `openssl rand -hex 16`).
 
 ```sh
 make obs-up      # docker compose --profile observability up -d --wait
@@ -738,7 +740,7 @@ All settings come from environment variables. `docker-compose.yml` sets developm
 - Keycloak: port, database, bootstrap admin, test user passwords and the `land-plot-ai` client secret,
 - token verification (`OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_TIMEOUT`), the CORS origins (`CORS_ALLOWED_ORIGINS`) and the preview limit (`PREVIEW_RATE_LIMIT_PER_MINUTE`),
 - the Mailpit web UI port (`MAILPIT_UI_PORT`),
-- the observability stack: ports, Prometheus and Jaeger retention, the Grafana admin (`GRAFANA_ADMIN_PASSWORD` is required) and the cAdvisor port,
+- the observability stack: ports, Prometheus and Jaeger retention, the Grafana admin (`GRAFANA_ADMIN_PASSWORD` is required for every compose command, also without the profile) and the cAdvisor port,
 - the web app container: port, the gateway and Keycloak addresses built into the bundle and the CSP origins (`WEB_*`, see [`apps/web/README.md`](apps/web/README.md)),
 - the Google client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, only in `.env`),
 - PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch,
