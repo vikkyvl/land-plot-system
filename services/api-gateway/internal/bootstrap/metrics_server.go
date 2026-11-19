@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/faults"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
 )
 
@@ -19,7 +20,12 @@ type metricsServer struct {
 	logger *slog.Logger
 }
 
-func startMetricsServer(address string, metrics http.Handler, logger *slog.Logger) (*metricsServer, error) {
+func startMetricsServer(
+	address string,
+	metrics http.Handler,
+	faultSwitch *faults.Switch,
+	logger *slog.Logger,
+) (*metricsServer, error) {
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf(wrapListenMetrics, err)
@@ -27,6 +33,7 @@ func startMetricsServer(address string, metrics http.Handler, logger *slog.Logge
 
 	router := http.NewServeMux()
 	router.Handle(http.MethodGet+" "+metricsPath, metrics)
+	faultSwitch.Register(router)
 
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 

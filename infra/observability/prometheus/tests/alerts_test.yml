@@ -79,6 +79,33 @@ tests:
         alertname: ServiceDown
         exp_alerts: []
 
+  # ServiceUnhealthy
+  - name: a service reports itself unhealthy and is restarted
+    interval: 1m
+    input_series:
+      - series: 'service_health_status{service="report-service", job="report-service", instance="10.0.0.5:9464"}'
+        values: "1 1 0 0 1 1 1 1"
+      - series: 'service_health_status{service="land-plot-service", job="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "1x8"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ServiceUnhealthy
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: ServiceUnhealthy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: report-service
+            exp_annotations:
+              summary: report-service reports itself unhealthy
+              description: /health of report-service answered 503 within the last minute; autoheal restarts a container that stays unhealthy.
+              runbook: README.md#serviceunhealthy
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=6
+      - eval_time: 6m
+        alertname: ServiceUnhealthy
+        exp_alerts: []
+
   # HighLatencyP99
   - name: every request takes between 1 and 2.5 seconds
     interval: 1m

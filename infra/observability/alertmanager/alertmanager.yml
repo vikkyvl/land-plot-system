@@ -1,9 +1,20 @@
+# Every alert goes to the incident workflow of n8n, firing and resolved. The bearer token comes from the
+# compose secret alertmanager_webhook_token (ALERTMANAGER_WEBHOOK_TOKEN in .env); n8n answers 401 without it.
+# repeat_interval also retries a ticket that Jira could not create: the workflow creates it on the next repeat.
+
 route:
-  receiver: none
+  receiver: n8n
   group_by: ["alertname", "service"]
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
+  group_wait: 15s
+  group_interval: 1m
+  repeat_interval: 1h
 
 receivers:
-  - name: none
+  - name: n8n
+    webhook_configs:
+      - url: http://n8n:5678/webhook/alertmanager
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /run/secrets/alertmanager_webhook_token

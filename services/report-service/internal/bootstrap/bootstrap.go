@@ -32,7 +32,7 @@ func Run() error {
 	}
 	defer pool.Close()
 
-	outboxRepository, serviceMetrics := newMetrics(serviceConfig, pool)
+	outboxRepository, serviceMetrics, faultSwitch := newMetrics(serviceConfig, pool, logger)
 
 	consumer := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
 		URL:               serviceConfig.RabbitMQURL,
@@ -63,12 +63,12 @@ func Run() error {
 
 	exports := service.NewExportService(reports, document.Renderer{}, serviceMetrics)
 	server := newHTTPServer(
-		handler.NewRouter(logger, config.ServiceName, reports, exports, verifier),
+		faultSwitch.GuardHealth(handler.NewRouter(logger, config.ServiceName, reports, exports, verifier)),
 		serviceMetrics,
 		logger,
 	)
 
-	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), logger)
+	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), faultSwitch, logger)
 	if err != nil {
 		return err
 	}

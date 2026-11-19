@@ -3,6 +3,8 @@ name: land-plot-system
 x-go-service: &go-service
   restart: unless-stopped
   init: true
+  labels:
+    autoheal: "true"
   networks:
     - land-network
   environment: &go-environment
@@ -14,6 +16,7 @@ x-go-service: &go-service
     OIDC_AUDIENCE: ${OIDC_AUDIENCE:-land-plot-api}
     OIDC_TIMEOUT: ${OIDC_TIMEOUT:-5s}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4318}
+    DEMO_FAULTS_ENABLED: ${DEMO_FAULTS_ENABLED:-false}
 
 x-ai-service: &ai-service
   profiles: ["ai"]
@@ -402,6 +405,8 @@ services:
     volumes:
       - ./infra/observability/alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager
+    secrets:
+      - alertmanager_webhook_token
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/ready"]
       interval: 10s
@@ -504,9 +509,84 @@ services:
       postgres:
         condition: service_healthy
 
+  autoheal:
+    <<: *observability-service
+    image: willfarrell/autoheal:1.2.0@sha256:a2e5e76d239b127081f8f96041a21f9747015b23af439c23ee60de0350c06880
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: ${AUTOHEAL_INTERVAL:-10}
+      AUTOHEAL_START_PERIOD: 30
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  n8n-import:
+    <<: *observability-service
+    image: n8nio/n8n:2.46.6
+    restart: "no"
+    entrypoint: ["/bin/sh", "/import/import.sh"]
+    environment:
+      N8N_ENCRYPTION_KEY_FILE: /run/secrets/n8n_encryption_key
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      JIRA_BASE_URL: ${JIRA_BASE_URL:?set JIRA_BASE_URL in .env}
+      JIRA_EMAIL: ${JIRA_EMAIL:?set JIRA_EMAIL in .env}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:?set JIRA_API_TOKEN in .env}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    volumes:
+      - ./infra/observability/n8n:/import:ro
+      - n8n-data:/home/node/.n8n
+    secrets:
+      - n8n_encryption_key
+
+  n8n:
+    <<: *observability-service
+    image: n8nio/n8n:2.46.6
+    environment:
+      N8N_ENCRYPTION_KEY_FILE: /run/secrets/n8n_encryption_key
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_EDITOR_BASE_URL: http://localhost:${N8N_PORT:-5678}
+      WEBHOOK_URL: http://localhost:${N8N_PORT:-5678}/
+      N8N_SECURE_COOKIE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Kyiv}
+      ALERTMANAGER_WEBHOOK_TOKEN: ${ALERTMANAGER_WEBHOOK_TOKEN:?set ALERTMANAGER_WEBHOOK_TOKEN in .env}
+      JIRA_BASE_URL: ${JIRA_BASE_URL:?set JIRA_BASE_URL in .env}
+      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-INC}
+      LLM_MODEL: ${LLM_MODEL:-gemini-3.5-flash-lite}
+      INCIDENT_MAIL_TO: ${INCIDENT_MAIL_TO:-incidents@land-plot.local}
+      GRAFANA_URL: http://localhost:${GRAFANA_PORT:-13000}
+      JAEGER_URL: http://localhost:${JAEGER_UI_PORT:-16686}
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    secrets:
+      - n8n_encryption_key
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5678/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      n8n-import:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+
 networks:
   land-network:
     driver: bridge
+
+secrets:
+  alertmanager_webhook_token:
+    environment: ALERTMANAGER_WEBHOOK_TOKEN
+  n8n_encryption_key:
+    environment: N8N_ENCRYPTION_KEY
 
 volumes:
   postgres-data:
@@ -515,3 +595,4 @@ volumes:
   grafana-data:
   loki-data:
   jaeger-data:
+  n8n-data:

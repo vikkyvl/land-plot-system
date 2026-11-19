@@ -13,6 +13,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/balancer"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/config"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/discovery/consul"
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/faults"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/metrics"
@@ -31,6 +32,8 @@ func Run() error {
 	defer startTracing(serviceConfig, logger)()
 
 	gatewayMetrics := metrics.NewGateway(config.ServiceName)
+	faultSwitch := faults.NewSwitch(serviceConfig.DemoFaultsEnabled, logger)
+	gatewayMetrics.ObserveHealth(faultSwitch.Healthy)
 
 	resolver := consul.NewResolver(serviceConfig.ConsulAddress, &http.Client{Timeout: serviceConfig.ConsulTimeout})
 	gateway := proxy.NewGateway(
@@ -58,7 +61,7 @@ func Run() error {
 		gatewayMetrics,
 	)
 	server := &http.Server{
-		Handler:           tracing.Server(tracing.NameByRoute(gatewayRoute, router)),
+		Handler:           tracing.Server(tracing.NameByRoute(gatewayRoute, faultSwitch.GuardHealth(router))),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
@@ -67,7 +70,12 @@ func Run() error {
 		return fmt.Errorf(wrapListenHTTP, err)
 	}
 
-	metricsEndpoint, err := startMetricsServer(serviceConfig.MetricsAddress, gatewayMetrics.Handler(), logger)
+	metricsEndpoint, err := startMetricsServer(
+		serviceConfig.MetricsAddress,
+		gatewayMetrics.Handler(),
+		faultSwitch,
+		logger,
+	)
 	if err != nil {
 		_ = listener.Close()
 		return err

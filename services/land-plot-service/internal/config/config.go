@@ -47,22 +47,23 @@ const (
 var errInvalidPort = errors.New(envHTTPAddress + " must contain a valid port")
 
 type Config struct {
-	HTTPAddress     string
-	MetricsAddress  string
-	OTLPEndpoint    string
-	HTTPPort        int
-	ShutdownTimeout time.Duration
-	ConsulAddress   string
-	ConsulTimeout   time.Duration
-	ServiceAddress  string
-	InstanceID      string
-	DatabaseURL     string
-	DatabaseTimeout time.Duration
-	RabbitMQURL     string
-	RabbitMQTimeout time.Duration
-	OutboxInterval  time.Duration
-	SagaTimeout     time.Duration
-	OutboxAttempts  int
+	HTTPAddress       string
+	MetricsAddress    string
+	OTLPEndpoint      string
+	DemoFaultsEnabled bool
+	HTTPPort          int
+	ShutdownTimeout   time.Duration
+	ConsulAddress     string
+	ConsulTimeout     time.Duration
+	ServiceAddress    string
+	InstanceID        string
+	DatabaseURL       string
+	DatabaseTimeout   time.Duration
+	RabbitMQURL       string
+	RabbitMQTimeout   time.Duration
+	OutboxInterval    time.Duration
+	SagaTimeout       time.Duration
+	OutboxAttempts    int
 
 	OutboxCleanupInterval time.Duration
 	OutboxRetention       time.Duration
@@ -131,6 +132,10 @@ func Load() (Config, error) {
 		if serviceConfig.InstanceID, err = defaultInstanceID(); err != nil {
 			return Config{}, err
 		}
+	}
+
+	if serviceConfig.DemoFaultsEnabled, err = demoFaultsEnabled(); err != nil {
+		return Config{}, err
 	}
 
 	return serviceConfig, nil

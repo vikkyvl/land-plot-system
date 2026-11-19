@@ -36,20 +36,14 @@ func Run() error {
 		return err
 	}
 
-	outboxRepository, serviceMetrics := newMetrics(serviceConfig, pool, plotRepository)
+	outboxRepository, serviceMetrics, faultSwitch := newMetrics(serviceConfig, pool, plotRepository, logger)
 
 	publisher, closePublisher := openPublisher(serviceConfig, logger)
 	defer closePublisher()
 
 	plots := newPlotService(plotRepository, accuracy, serviceConfig.SagaTimeout, serviceMetrics)
 	sagas := service.NewSagaService(plotRepository, serviceMetrics, tracing.Resumer{}, logger)
-	relay := service.NewOutboxRelay(
-		outboxRepository,
-		publisher,
-		outboxRelayConfig(serviceConfig),
-		serviceMetrics,
-		logger,
-	)
+	relay := newOutboxRelay(serviceConfig, outboxRepository, publisher, serviceMetrics, logger)
 	watcher := service.NewSagaTimeoutWatcher(sagas, logger)
 	consumer := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
 		URL:               serviceConfig.RabbitMQURL,
@@ -65,12 +59,14 @@ func Run() error {
 	defer stopVerifier()
 
 	server := newHTTPServer(
-		handler.NewRouter(logger, config.ServiceName, serviceConfig.InstanceID, plots, verifier),
+		faultSwitch.GuardHealth(
+			handler.NewRouter(logger, config.ServiceName, serviceConfig.InstanceID, plots, verifier),
+		),
 		serviceMetrics,
 		logger,
 	)
 
-	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), logger)
+	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), faultSwitch, logger)
 	if err != nil {
 		return err
 	}

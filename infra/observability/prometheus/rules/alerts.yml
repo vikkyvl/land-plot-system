@@ -30,6 +30,19 @@ groups:
           runbook: README.md#servicedown
           dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=1
 
+      # /health of a Go service answered 503 within the last minute while the process still runs and serves
+      # /metrics (service_health_status is 0). No `for`: autoheal restarts an unhealthy container within about
+      # 40 seconds, and the 1-minute window keeps the alert active long enough to be sent and then resolved.
+      - alert: ServiceUnhealthy
+        expr: min by (service) (min_over_time(service_health_status[1m])) == 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} reports itself unhealthy"
+          description: "/health of {{ $labels.service }} answered 503 within the last minute; autoheal restarts a container that stays unhealthy."
+          runbook: README.md#serviceunhealthy
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=6
+
   - name: golden-signals
     rules:
       # p99 of a service above 1 second for 5 minutes.

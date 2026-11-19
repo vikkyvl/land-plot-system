@@ -44,6 +44,7 @@ var (
 )
 
 type Gateway struct {
+	serviceName      string
 	registry         *prometheus.Registry
 	requestDuration  *prometheus.HistogramVec
 	upstreamDuration *prometheus.HistogramVec
@@ -55,7 +56,8 @@ func NewGateway(serviceName string) *Gateway {
 	serviceLabel := prometheus.Labels{labelService: serviceName}
 
 	gateway := &Gateway{
-		registry: registry,
+		serviceName: serviceName,
+		registry:    registry,
 		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "http_server_request_duration_seconds",
 			Help:        "Duration of HTTP requests served by the gateway, by route template.",
@@ -124,4 +126,18 @@ func (gateway *Gateway) Handler() http.Handler {
 
 func StatusClass(status int) string {
 	return strconv.Itoa(status/statusClassDivisor) + statusClassSuffix
+}
+
+func (gateway *Gateway) ObserveHealth(healthy func() bool) {
+	gateway.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name:        "service_health_status",
+		Help:        "1 while /health reports the service healthy, 0 while it does not.",
+		ConstLabels: prometheus.Labels{labelService: gateway.serviceName},
+	}, func() float64 {
+		if healthy() {
+			return 1
+		}
+
+		return 0
+	}))
 }

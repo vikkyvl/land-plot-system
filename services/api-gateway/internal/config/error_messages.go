@@ -7,4 +7,5 @@ const (
 	formatMustBeAPositiveInteger  = "%s must be a positive integer"
 	wrapGetHostname               = "get hostname: %w"
 	wrapParse                     = "parse %s: %w"
+	formatMustBeABoolean          = "%s must be true or false"
 )

@@ -43,6 +43,7 @@ type Stats struct {
 }
 
 type Service struct {
+	serviceName       string
 	registry          *prometheus.Registry
 	requestDuration   *prometheus.HistogramVec
 	clientDuration    *prometheus.HistogramVec
@@ -66,6 +67,7 @@ func New(serviceName string, stats Stats) *Service {
 	}
 
 	service := &Service{
+		serviceName:     serviceName,
 		registry:        prometheus.NewRegistry(),
 		requestDuration: newRequestDuration(serviceLabel),
 		clientDuration:  newClientDuration(serviceLabel),
@@ -161,4 +163,18 @@ func (service *Service) DeliveryProcessed(queue, outcome string, createdAt time.
 	if !createdAt.IsZero() {
 		service.messageAge.WithLabelValues(queue).Observe(max(0, service.now().Sub(createdAt).Seconds()))
 	}
+}
+
+func (service *Service) ObserveHealth(healthy func() bool) {
+	service.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name:        "service_health_status",
+		Help:        "1 while /health reports the service healthy, 0 while it does not.",
+		ConstLabels: prometheus.Labels{labelService: service.serviceName},
+	}, func() float64 {
+		if healthy() {
+			return 1
+		}
+
+		return 0
+	}))
 }

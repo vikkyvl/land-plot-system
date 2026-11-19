@@ -349,11 +349,12 @@ The thresholds of the alerts are drawn as red lines on their panels (p99 1 s, 5x
 
 Prometheus records the series the dashboards and alerts read (`infra/observability/prometheus/rules/recording.yml`): p50, p95 and p99, requests per second and the share of 5xx per service and per route (health checks left out of the per-service series), the p99 of the gateway to each upstream, the share of failed calls to each external target, the outbox and queue backlog, compensated sagas in 10 minutes and two conversions over the last hour, `land_plot:preview_to_plot:ratio_rate1h` (valid previews that became plots) and `land_plot:plot_to_report:ratio_rate1h` (reports per created plot).
 
-The alerts are in `infra/observability/prometheus/rules/alerts.yml`. Each has `for`, `severity`, `service`, a summary, a description, the runbook section below and the dashboard panel. The thresholds are the numbers in `expr` and `for`, each named in a comment above its rule; after changing one run `make rules-check` and restart Prometheus. `make rules-check` (part of `make check`) runs `promtool check config` and `promtool test rules` from the pinned `prom/prometheus` image; `infra/observability/prometheus/tests/alerts_test.yml` has a case where each alert fires and one where it stays quiet. Alertmanager groups by `alertname` and `service` and has no receiver yet.
+The alerts are in `infra/observability/prometheus/rules/alerts.yml`. Each has `for`, `severity`, `service`, a summary, a description, the runbook section below and the dashboard panel. The thresholds are the numbers in `expr` and `for`, each named in a comment above its rule; after changing one run `make rules-check` and restart Prometheus. `make rules-check` (part of `make check`) runs `promtool check config` and `promtool test rules` from the pinned `prom/prometheus` image; `infra/observability/prometheus/tests/alerts_test.yml` has a case where each alert fires and one where it stays quiet. Alertmanager groups by `alertname` and `service` and sends every alert, firing and resolved, to n8n (see [Incident response](#incident-response)).
 
 | Alert | Fires when | Severity |
 |---|---|---|
 | `ServiceDown` | a Go service, RabbitMQ or PostgreSQL target is `up == 0`, or a Go service has no target at all (its container is stopped), for 1 minute | critical |
+| `ServiceUnhealthy` | `/health` of a Go service answered 503 within the last minute while the process still serves `/metrics` (`service_health_status` is 0); no `for`, because autoheal restarts the container within about 40 seconds | warning |
 | `HighLatencyP99` | p99 of a service above 1 s for 5 minutes | warning |
 | `HighErrorRate` | more than 5 % of the requests of a service end with 5xx for 5 minutes, at 0.05 requests per second or more | critical |
 | `LatencyAnomaly` | p95 more than three standard deviations above its mean of the previous hour (the last 15 minutes left out of the baseline) and above 100 ms, for 5 minutes | warning |
@@ -364,7 +365,10 @@ The alerts are in `infra/observability/prometheus/rules/alerts.yml`. Each has `f
 | `ExternalDependencyDown` | more than 50 % of the calls to an Open-Meteo API fail or time out for 5 minutes | warning |
 
 #### ServiceDown
-Check `docker compose ps` and `docker compose logs --tail 100 <service>`: a crash, a failed health check, or PostgreSQL, RabbitMQ, Consul or Keycloak not ready at start. The Go services restart on their own (`restart: unless-stopped`); if the container stays stopped, start it with `docker compose up -d <service>`. The alert resolves once Prometheus scrapes the service again.
+Check `docker compose ps` and `docker compose logs --tail 100 <service>`: a crash, a failed health check, or PostgreSQL, RabbitMQ, Consul or Keycloak not ready at start. The Go services restart on their own (`restart: unless-stopped`); if the container stays stopped, start it with `docker compose up -d <service>`. The alert resolves once Prometheus scrapes the service again. A stopped container is not restarted by autoheal, which acts only on running containers that are unhealthy.
+
+#### ServiceUnhealthy
+The process runs but `/health` answers 503, so Docker marks the container unhealthy after three failed checks and autoheal restarts it. Read the logs from before the restart (Loki keeps them; the ticket names the restart). If the service becomes unhealthy again after the restart, the cause is not transient: look at its dependencies and at the latest deployment.
 
 #### HighLatencyP99
 Find the slow route on the dashboard and a slow trace in Jaeger (sort by duration): a slow PostgreSQL query, a slow upstream (`gateway_upstream_request_duration_seconds`) or Open-Meteo. **Roll back** when the spike started right after a deployment of that service and nothing outside it changed: redeploy the previous image (`docker compose up -d <service>` after checking out the previous commit, or the previous image tag) and watch p99 fall back within 5–10 minutes. Do not roll back for a slow external API or a database problem; that is fixed where it happens.
@@ -389,6 +393,37 @@ Many plots are cancelled or their changes reverted. Look at `reason` on the dash
 
 #### ExternalDependencyDown
 Open-Meteo does not answer. Reports are still created with the terrain or climate block `unavailable`, and «Оновити звіт» tries again later. Check that `api.open-meteo.com` answers from the host, the `OPEN_METEO_*` settings and the outgoing network; nothing needs to be restarted.
+
+### Incident response
+
+Alertmanager posts every alert group, firing and resolved, to the n8n workflow «Incident response» (`infra/observability/n8n/incident-response.json`) at `http://n8n:5678/webhook/alertmanager` with `Authorization: Bearer <ALERTMANAGER_WEBHOOK_TOKEN>`; the token reaches Alertmanager as the compose secret `alertmanager_webhook_token`, and the workflow answers `401` to a request without it or with another one. n8n listens on `127.0.0.1:${N8N_PORT:-5678}`, keeps its data in the `n8n-data` volume and reads its encryption key from the compose secret `n8n_encryption_key` (`N8N_ENCRYPTION_KEY` in `.env`), so neither secret is an environment variable of a container.
+
+For every alert of a notification the workflow:
+
+1. looks for an open ticket with the label `fp-<fingerprint>` in the Jira project `JIRA_PROJECT_KEY` (JQL), so one incident is one ticket;
+2. for a new incident reads the alert expression over the last 30 minutes from Prometheus, the last errors and warnings of the service with their `trace_id` from Loki and, for `ServiceDown` and `ServiceUnhealthy`, whether the process restarted (`changes(process_start_time_seconds)`) and whether autoheal did it (its log lines in Loki);
+3. asks the AI Agent (Gemini, the `LLM_API_KEY` of the AI agents) for «What happened», «Probable cause» and «First steps» from the runbook; when the model does not answer, a template with the runbook steps is used, and the ticket says which one it got;
+4. creates a `Bug` named `[severity] alertname — service` with the priority Highest, High or Medium for critical, warning or info, the labels `incident`, `service-<name>` and `fp-<fingerprint>`, the start time, the analysis, the metric, the errors with links to their traces in Jaeger and the link to the Grafana panel;
+5. mails the ticket link to Mailpit (`INCIDENT_MAIL_TO`, by default `incidents@land-plot.local`, at `http://localhost:8025`). If Jira does not answer after three tries the mail is still sent, and the ticket is created when Alertmanager repeats the notification (`repeat_interval: 1h`);
+6. on resolved adds a comment with the duration (and the restart facts) and moves the ticket to Done, then mails that too.
+
+The one-off service `n8n-import` runs before n8n on every `docker compose --profile observability up`: `infra/observability/n8n/credentials.js` builds the credentials from `.env` inside the container (Jira Software Cloud: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`; Google Gemini: `LLM_API_KEY`; SMTP to Mailpit) into a temporary file, and `import.sh` imports them and the workflow and publishes it; nothing with a credential is written to the repository. The workflow reads only non-secret settings and the webhook token from the environment (`N8N_BLOCK_ENV_ACCESS_IN_NODE=false`).
+
+n8n needs an owner account for its UI. Open `http://localhost:5678` once and create it; the workflow runs without it. (n8n can also take the owner from `N8N_INSTANCE_OWNER_*`, but only with a bcrypt hash of the password, which is not set up here.)
+
+### Autoheal and demo faults
+
+`autoheal` (`willfarrell/autoheal:1.2.0`, pinned by digest; its only numbered release, July 2021, because `latest` is rebuilt every day) restarts containers with the label `autoheal=true` that Docker marks unhealthy. Only the four Go services carry the label; their image health check calls `/health` every 10 seconds and fails after three misses.
+
+To show it without breaking anything, a Go service started with `DEMO_FAULTS_ENABLED=true` (default `false`) adds `POST /debug/unhealthy` to its internal metrics port `:9464`, which is not published and not routed by the gateway. The call makes `/health` answer 503 while the rest of the API keeps working; the state lives in memory, so the restart by autoheal clears it. `service_health_status` reports it to Prometheus.
+
+```sh
+DEMO_FAULTS_ENABLED=true docker compose up -d report-service
+docker compose exec report-service wget -qO- --post-data= http://127.0.0.1:9464/debug/unhealthy
+docker compose up -d report-service   # back to the normal configuration
+```
+
+**Risks.** autoheal and Grafana Alloy mount `/var/run/docker.sock`; `:ro` does not make the Docker API read-only, so whoever controls either container controls Docker on the host. Both are images pinned by digest or version and run only in the `observability` profile. While `DEMO_FAULTS_ENABLED=true`, any container of the network can make that service unhealthy, so the flag is for demonstrations only.
 
 Stop the stack with `docker compose down`. Add `-v` to also delete the database volume.
 

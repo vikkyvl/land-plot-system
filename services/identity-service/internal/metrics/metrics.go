@@ -9,6 +9,7 @@ import (
 )
 
 type Service struct {
+	serviceName     string
 	registry        *prometheus.Registry
 	requestDuration *prometheus.HistogramVec
 	profiles        prometheus.Counter
@@ -19,6 +20,7 @@ func New(serviceName string) *Service {
 	serviceLabel := prometheus.Labels{labelService: serviceName}
 
 	service := &Service{
+		serviceName:     serviceName,
 		registry:        prometheus.NewRegistry(),
 		requestDuration: newRequestDuration(serviceLabel),
 		profiles: prometheus.NewCounter(prometheus.CounterOpts{
@@ -58,4 +60,18 @@ func (service *Service) ProfileServed(newUser bool) {
 	if newUser {
 		service.newUsers.Inc()
 	}
+}
+
+func (service *Service) ObserveHealth(healthy func() bool) {
+	service.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name:        "service_health_status",
+		Help:        "1 while /health reports the service healthy, 0 while it does not.",
+		ConstLabels: prometheus.Labels{labelService: service.serviceName},
+	}, func() float64 {
+		if healthy() {
+			return 1
+		}
+
+		return 0
+	}))
 }

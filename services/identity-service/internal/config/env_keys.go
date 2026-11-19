@@ -7,6 +7,7 @@ const (
 	envDatabaseURL         = "DATABASE_URL"
 	envHTTPAddress         = "HTTP_ADDRESS"
 	envMetricsAddress      = "METRICS_ADDRESS"
+	envDemoFaultsEnabled   = "DEMO_FAULTS_ENABLED"
 	envOTLPEndpoint        = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envHTTPShutdownTimeout = "HTTP_SHUTDOWN_TIMEOUT"
 	envServiceAddress      = "SERVICE_ADDRESS"

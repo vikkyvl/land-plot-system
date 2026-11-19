@@ -126,7 +126,7 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 12,
+        "w": 10,
         "x": 0,
         "y": 1
       },
@@ -197,6 +197,87 @@
       }
     },
     {
+      "id": 6,
+      "type": "stat",
+      "title": "Service health (/health)",
+      "description": "What /health of each Go service answers. ServiceUnhealthy fires on 0; autoheal restarts a container that stays unhealthy.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 10,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min by (service) (service_health_status)",
+          "legendFormat": "{{service}}",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "UNHEALTHY",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "wideLayout": true
+      }
+    },
+    {
       "id": 2,
       "type": "stat",
       "title": "Dependency checks",
@@ -207,8 +288,8 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 16,
         "y": 1
       },
       "targets": [
@@ -494,7 +575,7 @@
       "type": "row",
       "title": "Golden signals",
       "collapsed": false,
-      "id": 106,
+      "id": 107,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1216,7 +1297,7 @@
       "type": "row",
       "title": "Replication lag",
       "collapsed": false,
-      "id": 116,
+      "id": 117,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1710,7 +1791,7 @@
       "type": "row",
       "title": "Shard distribution",
       "collapsed": false,
-      "id": 123,
+      "id": 124,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -2021,7 +2102,7 @@
       "type": "row",
       "title": "Business",
       "collapsed": false,
-      "id": 129,
+      "id": 130,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -2678,7 +2759,7 @@
       "type": "row",
       "title": "Resources",
       "collapsed": false,
-      "id": 138,
+      "id": 139,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -2833,7 +2914,7 @@
       "type": "row",
       "title": "Logs",
       "collapsed": false,
-      "id": 141,
+      "id": 142,
       "gridPos": {
         "h": 1,
         "w": 24,

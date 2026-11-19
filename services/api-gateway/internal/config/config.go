@@ -33,6 +33,7 @@ type Config struct {
 	HTTPPort                  int
 	MetricsAddress            string
 	OTLPEndpoint              string
+	DemoFaultsEnabled         bool
 	ShutdownTimeout           time.Duration
 	ConsulAddress             string
 	ConsulTimeout             time.Duration
@@ -90,6 +91,10 @@ func Load() (Config, error) {
 		if serviceConfig.InstanceID, err = defaultInstanceID(); err != nil {
 			return Config{}, err
 		}
+	}
+
+	if serviceConfig.DemoFaultsEnabled, err = demoFaultsEnabled(); err != nil {
+		return Config{}, err
 	}
 
 	return serviceConfig, nil

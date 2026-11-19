@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/config"
+	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/faults"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/identity-service/internal/metrics"
@@ -48,7 +49,9 @@ func Run() error {
 	}
 	defer stopVerifier()
 
-	router := handler.NewRouter(logger, config.ServiceName, identity, verifier)
+	faultSwitch := faults.NewSwitch(serviceConfig.DemoFaultsEnabled, logger)
+	serviceMetrics.ObserveHealth(faultSwitch.Healthy)
+	router := faultSwitch.GuardHealth(handler.NewRouter(logger, config.ServiceName, identity, verifier))
 	server := &http.Server{
 		Handler: tracing.Server(logging.AccessLog(
 			logger,
@@ -63,7 +66,12 @@ func Run() error {
 		return fmt.Errorf(wrapListenHTTP, err)
 	}
 
-	metricsEndpoint, err := startMetricsServer(serviceConfig.MetricsAddress, serviceMetrics.Handler(), logger)
+	metricsEndpoint, err := startMetricsServer(
+		serviceConfig.MetricsAddress,
+		serviceMetrics.Handler(),
+		faultSwitch,
+		logger,
+	)
 	if err != nil {
 		_ = listener.Close()
 		return err
