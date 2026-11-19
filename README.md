@@ -150,12 +150,15 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── Makefile                    # fmt / lint / test / vet / compose checks, demos
 ├── deploy/postgres/            # creates per-service databases and roles
 ├── infra/keycloak/            # Keycloak realm land-plot (imported on the first start) and the Arqetra login theme
+├── infra/observability/       # Prometheus, Alertmanager, Grafana, Loki, Alloy, OpenTelemetry Collector and Jaeger configuration
 ├── postman/                   # Postman collection with OAuth 2.0 Authorization Code + PKCE
 ├── scripts/demo.sh             # end-to-end demo against the running stack
 ├── scripts/demo_lr3.sh         # transactional outbox and saga demo
 ├── scripts/demo_lr4.sh         # function calling, MCP and A2A demo
 ├── scripts/demo_lr5.sh         # CORS, Keycloak tokens, scopes and Zero Trust demo
 ├── scripts/demo_web.sh         # preview, deletion, history, report list, Mailpit, accuracy, terrain, climate, PDF, GeoJSON and rate limit demo
+├── scripts/observability_check.sh # health of the Prometheus targets and the observability UIs
+├── scripts/cadvisor_check.sh   # checks that cAdvisor sees the containers of the project
 ├── scripts/keycloak_idp.sh     # adds the Google login to Keycloak
 ├── scripts/keycloak_realm.sh   # applies realm settings to a running Keycloak
 ├── tools/stripcomments/        # comment check used by make lint
@@ -242,6 +245,31 @@ Open [http://localhost:15672](http://localhost:15672) in a browser and sign in w
 The port and credentials can be changed through `RABBITMQ_MANAGEMENT_PORT`, `RABBITMQ_USER`, and `RABBITMQ_PASSWORD` in `.env`.
 
 The **Exchanges** tab contains `land.events` and `land.events.dead`. The **Queues and Streams** tab contains `report.plot-events` and `report.plot-events.dead`, where message counts, consumers, bindings, acknowledgements, and dead-lettered messages can be inspected.
+
+### Observability stack
+
+Metrics, logs and traces run in the `observability` profile, so the system also starts without them. The Grafana admin password has no default: set `GRAFANA_ADMIN_PASSWORD` in `.env` (`.env.example` has a placeholder). Docker Compose checks the variable for every command, also without the profile.
+
+```sh
+make obs-up      # docker compose --profile observability up -d --wait
+make obs-check   # health of every Prometheus target and UI
+```
+
+| URL (127.0.0.1 only)         | What |
+|------------------------------|------|
+| `http://localhost:13000`     | Grafana (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`); data sources Prometheus, Loki, Jaeger and Alertmanager come from `infra/observability/grafana/provisioning` |
+| `http://localhost:19090`     | Prometheus |
+| `http://localhost:19093`     | Alertmanager |
+| `http://localhost:16686`     | Jaeger, traces kept for `JAEGER_RETENTION` (72 h) in Badger on the `jaeger-data` volume |
+| `127.0.0.1:4317`, `:4318`    | OTLP gRPC and HTTP of the OpenTelemetry Collector for programs started on the host |
+
+- **Traces:** OTLP → OpenTelemetry Collector → Jaeger.
+- **Logs:** Grafana Alloy reads the stdout of every container of the project through the Docker socket and sends it to Loki with the labels `container`, `service` and `level`; `trace_id`, `span_id` and `request_id` of JSON logs go to structured metadata. In Grafana a `trace_id` in a log line opens the trace in Jaeger, and a span opens its logs.
+- **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter) and the stack itself.
+- **Jaeger version:** Jaeger is pinned to 2.20.0 because 2.21 removed the HTTP API that the Jaeger data source of Grafana 13 uses.
+- **Ports:** the ports differ from the usual 3000, 9090 and 9093 so that other local stacks do not collide; every port can be changed in `.env`.
+
+**cAdvisor** (CPU and memory per container) runs privileged with the Docker host mounted, so it has its own `cadvisor` profile and is never started by `make obs-up`. `make cadvisor-check` starts it on `127.0.0.1:${CADVISOR_PORT:-8088}` and lists memory and CPU per compose service. If it cannot see the containers (Docker Desktop with the containerd image store), the dashboards use the process metrics of the Go services instead.
 
 Stop the stack with `docker compose down`. Add `-v` to also delete the database volume.
 
@@ -710,6 +738,7 @@ All settings come from environment variables. `docker-compose.yml` sets developm
 - Keycloak: port, database, bootstrap admin, test user passwords and the `land-plot-ai` client secret,
 - token verification (`OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_TIMEOUT`), the CORS origins (`CORS_ALLOWED_ORIGINS`) and the preview limit (`PREVIEW_RATE_LIMIT_PER_MINUTE`),
 - the Mailpit web UI port (`MAILPIT_UI_PORT`),
+- the observability stack: ports, Prometheus and Jaeger retention, the Grafana admin (`GRAFANA_ADMIN_PASSWORD` is required) and the cAdvisor port,
 - the web app container: port, the gateway and Keycloak addresses built into the bundle and the CSP origins (`WEB_*`, see [`apps/web/README.md`](apps/web/README.md)),
 - the Google client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, only in `.env`),
 - PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch,
