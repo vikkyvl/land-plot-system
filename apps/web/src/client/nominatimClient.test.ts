@@ -95,3 +95,13 @@ describe('NominatimClient', () => {
     expect(server.requests).toHaveLength(0)
   })
 })
+
+describe('NominatimClient trace context', () => {
+  it('never sends traceparent to the external geocoder', async () => {
+    const server = new FakeServer().reply({ status: 200, body: [bilaTserkva] })
+
+    await client(server).search('Біла Церква')
+
+    expect(server.traceparents).toEqual([null])
+  })
+})

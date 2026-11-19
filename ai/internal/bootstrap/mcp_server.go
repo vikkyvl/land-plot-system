@@ -33,6 +33,7 @@ func RunMCPServer(runContext context.Context, arguments []string, stderr io.Writ
 	}
 
 	logger := newLogger(stderr, mcpService, slog.LevelInfo)
+	defer startTracing(mcpService, logger)()
 
 	gateway, err := config.LoadGateway()
 	if err != nil {
@@ -103,12 +104,8 @@ func runMCPHTTP(runContext context.Context, toolset *tools.Toolset, logger *slog
 
 	server := mcpserver.New(toolset, mcpserver.Options{RateLimitPerMinute: settings.RateLimitPerMinute}, logger)
 	httpServer := &http.Server{
-		Addr: settings.HTTPAddress,
-		Handler: logging.AccessLog(
-			logger,
-			logging.PatternRoute,
-			mcpserver.NewHTTPHandler(server, settings.AccessToken),
-		),
+		Addr:              settings.HTTPAddress,
+		Handler:           tracedHandler(logger, mcpserver.NewHTTPHandler(server, settings.AccessToken)),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

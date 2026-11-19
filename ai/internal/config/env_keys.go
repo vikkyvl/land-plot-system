@@ -22,6 +22,7 @@ const (
 	envMCPAccessToken        = "MCP_ACCESS_TOKEN"
 	envMCPHTTPAddress        = "MCP_HTTP_ADDR"
 	envMCPRateLimitPerMinute = "MCP_RATE_LIMIT_PER_MINUTE"
+	envOTLPEndpoint          = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envProducerAgentURL      = "PRODUCER_AGENT_URL"
 	envToolResultMaxBytes    = "TOOL_RESULT_MAX_BYTES"
 	envUserInputMaxChars     = "USER_INPUT_MAX_CHARS"

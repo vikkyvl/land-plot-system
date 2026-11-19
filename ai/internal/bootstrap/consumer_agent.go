@@ -20,6 +20,7 @@ const (
 
 func RunConsumerAgent(runContext context.Context, stderr io.Writer) int {
 	logger := newLogger(stderr, consumerService, slog.LevelInfo)
+	defer startTracing(consumerService, logger)()
 
 	settings, err := loadAgentSettings(consumerAddress, consumerPublicURL)
 	if err != nil {
@@ -54,11 +55,7 @@ func RunConsumerAgent(runContext context.Context, stderr io.Writer) int {
 	return serveAgent(
 		runContext,
 		settings.server,
-		logging.AccessLog(
-			logger,
-			logging.PatternRoute,
-			a2aagent.NewHandler(a2aagent.ConsumerCard(settings.server.PublicURL), executor),
-		),
+		tracedHandler(logger, a2aagent.NewHandler(a2aagent.ConsumerCard(settings.server.PublicURL), executor)),
 		logger,
 	)
 }

@@ -29,6 +29,7 @@ type agentSettings struct {
 
 func RunProducerAgent(runContext context.Context, stderr io.Writer) int {
 	logger := newLogger(stderr, producerService, slog.LevelInfo)
+	defer startTracing(producerService, logger)()
 
 	settings, err := loadAgentSettings(producerAddress, producerPublicURL)
 	if err != nil {
@@ -51,11 +52,7 @@ func RunProducerAgent(runContext context.Context, stderr io.Writer) int {
 	return serveAgent(
 		runContext,
 		settings.server,
-		logging.AccessLog(
-			logger,
-			logging.PatternRoute,
-			a2aagent.NewHandler(a2aagent.ProducerCard(settings.server.PublicURL), executor),
-		),
+		tracedHandler(logger, a2aagent.NewHandler(a2aagent.ProducerCard(settings.server.PublicURL), executor)),
 		logger,
 	)
 }

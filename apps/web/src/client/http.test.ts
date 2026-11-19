@@ -195,3 +195,29 @@ class GatedSession extends FakeSession {
     this.release()
   }
 }
+
+describe('HttpClient trace context', () => {
+  const traceparentFormat = /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/u
+
+  it('starts a new W3C trace for every request to the gateway', async () => {
+    const server = new FakeServer().reply({ status: 200, body: {} }, { status: 200, body: {} })
+
+    await server.client().request('GET', '/plots')
+    await server.client().request('POST', '/plots/preview', { body: {}, authenticated: false })
+
+    const [first, second] = server.traceparents
+    expect(first).toMatch(traceparentFormat)
+    expect(second).toMatch(traceparentFormat)
+    expect(first?.slice(3, 35)).not.toBe(second?.slice(3, 35))
+  })
+
+  it('keeps the trace when it repeats a request after renewing the token', async () => {
+    const session = new FakeSession(firstToken, renewedToken)
+    const server = new FakeServer().reply({ status: 401, body: { code: 'unauthorized' } }, { status: 200, body: [] })
+
+    await server.client(session).request('GET', '/plots')
+
+    expect(server.traceparents).toHaveLength(2)
+    expect(server.traceparents[0]).toBe(server.traceparents[1])
+  })
+})

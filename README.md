@@ -291,6 +291,7 @@ make obs-check   # health of every Prometheus target and UI
     ```
 
     `make saga-trace-check` creates a plot that is confirmed and one named `FAIL…` that is cancelled through the dead letter queue, and checks in Jaeger that each saga is a single trace.
+  - **Traces start in the browser and in the AI agents.** The web app has no tracing SDK: for every request to the gateway it creates a W3C `traceparent` (a new trace ID, kept when the request is repeated after a token renewal), so the trace in Jaeger starts with the gateway span whose parent is the browser. Nominatim and the map tiles never get `traceparent`. The AI programs run the same SDK as the services: `mcp-server`, `producer-agent` and `consumer-agent` continue an incoming trace, and their calls to the gateway and from the consumer to the producer (A2A) carry `traceparent` and `X-Request-ID`, so an MCP tool call or a delegated task is one trace with the gateway and the services.
 - **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
 - **Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
 

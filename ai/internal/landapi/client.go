@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/vleshchenko/land-plot-system/ai/internal/logging"
+	"github.com/vleshchenko/land-plot-system/ai/internal/tracing"
 )
 
 const (
@@ -46,7 +47,7 @@ type request struct {
 func New(clientConfig Config) *Client {
 	return &Client{
 		baseURL:     clientConfig.BaseURL,
-		httpClient:  &http.Client{Timeout: clientConfig.Timeout},
+		httpClient:  &http.Client{Timeout: clientConfig.Timeout, Transport: tracing.Transport(http.DefaultTransport)},
 		credentials: clientConfig.Credentials,
 		now:         time.Now,
 	}

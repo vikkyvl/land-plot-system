@@ -111,3 +111,23 @@ func accessLevel(route string, status int) slog.Level {
 		return slog.LevelInfo
 	}
 }
+
+type requestIDTransport struct {
+	base http.RoundTripper
+}
+
+func ForwardRequestID(base http.RoundTripper) http.RoundTripper {
+	return requestIDTransport{base: base}
+}
+
+func (transport requestIDTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	requestID := RequestID(request.Context())
+	if requestID == "" || request.Header.Get(HeaderRequestID) != "" {
+		return transport.base.RoundTrip(request)
+	}
+
+	forwarded := request.Clone(request.Context())
+	forwarded.Header.Set(HeaderRequestID, requestID)
+
+	return transport.base.RoundTrip(forwarded)
+}

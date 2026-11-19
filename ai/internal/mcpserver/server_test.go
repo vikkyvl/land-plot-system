@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vleshchenko/land-plot-system/ai/internal/landapi"
+	"github.com/vleshchenko/land-plot-system/ai/internal/logging"
 	"github.com/vleshchenko/land-plot-system/ai/internal/tools"
 )
 
@@ -24,11 +25,16 @@ const (
 )
 
 type fakeLandAPI struct {
-	plots   []landapi.Plot
-	creates int
+	plots     []landapi.Plot
+	creates   int
+	requestID string
+	traceID   string
 }
 
-func (api *fakeLandAPI) ListPlots(context.Context) ([]landapi.Plot, error) {
+func (api *fakeLandAPI) ListPlots(callContext context.Context) ([]landapi.Plot, error) {
+	api.requestID = logging.RequestID(callContext)
+	api.traceID = logging.TraceID(callContext)
+
 	return api.plots, nil
 }
 

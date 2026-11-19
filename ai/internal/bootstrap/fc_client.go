@@ -53,6 +53,7 @@ func RunFCClient(runContext context.Context, arguments []string, stdout, stderr 
 	}
 
 	logger := newLogger(stderr, fcClientService, level)
+	defer startTracing(fcClientService, logger)()
 
 	landClient := newLandClient(settings.gateway)
 	if err := landClient.Authenticate(runContext); err != nil {

@@ -41,6 +41,7 @@ export class FakeSession implements AccessTokenProvider {
 
 export class FakeServer {
   readonly requests: RecordedRequest[] = []
+  readonly traceparents: (string | null)[] = []
   private readonly replies: FakeReply[] = []
 
   reply(...replies: FakeReply[]): this {
@@ -51,6 +52,7 @@ export class FakeServer {
 
   readonly fetch = async (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
     const headers = new Headers(init.headers)
+    this.traceparents.push(headers.get('traceparent'))
     this.requests.push({
       method: init.method ?? 'GET',
       url: String(input),

@@ -183,3 +183,33 @@ func TestAccessLogNeverWritesCredentialsOrBodies(t *testing.T) {
 		}
 	}
 }
+
+func TestForwardRequestIDAddsTheIDWithoutOverwriting(t *testing.T) {
+	received := make(chan string, 2)
+
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		received <- request.Header.Get(HeaderRequestID)
+	}))
+	defer server.Close()
+
+	client := &http.Client{Transport: ForwardRequestID(http.DefaultTransport)}
+	requestContext := WithRequestID(context.Background(), "req-42")
+
+	for _, preset := range []string{"", "caller-id"} {
+		request, _ := http.NewRequestWithContext(requestContext, http.MethodGet, server.URL, http.NoBody)
+		if preset != "" {
+			request.Header.Set(HeaderRequestID, preset)
+		}
+
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_ = response.Body.Close()
+	}
+
+	if first, second := <-received, <-received; first != "req-42" || second != "caller-id" {
+		t.Fatalf("request IDs = %q, %q", first, second)
+	}
+}

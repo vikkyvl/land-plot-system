@@ -1,6 +1,7 @@
 import type { AccessTokenProvider } from '../port/authSession'
 
 import { networkError, toDomainError } from './errors'
+import { newTraceparent, traceparentHeader } from './traceparent'
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
 
@@ -15,6 +16,12 @@ export interface RequestOptions {
 export interface DownloadedFile {
   readonly content: Blob
   readonly fileName: string | null
+}
+
+interface OutgoingRequest {
+  readonly body: unknown
+  readonly token: string | null
+  readonly traceparent: string
 }
 
 export interface HttpClientOptions {
@@ -64,12 +71,13 @@ export class HttpClient {
     const authenticated = options.authenticated ?? true
     const url = this.url(path, options.query)
     const token = authenticated ? await this.session.accessToken() : null
-    let response = await this.send(method, url, options.body, token)
+    const traceparent = newTraceparent()
+    let response = await this.send(method, url, { body: options.body, token, traceparent })
 
     if (response.status === statusUnauthorized && authenticated) {
       const freshToken = await this.freshToken(token)
       if (freshToken !== null) {
-        response = await this.send(method, url, options.body, freshToken)
+        response = await this.send(method, url, { body: options.body, token: freshToken, traceparent })
       }
     }
 
@@ -113,8 +121,9 @@ export class HttpClient {
     return url.toString()
   }
 
-  private async send(method: HttpMethod, url: string, body: unknown, token: string | null): Promise<Response> {
-    const headers = new Headers({ Accept: 'application/json' })
+  private async send(method: HttpMethod, url: string, outgoing: OutgoingRequest): Promise<Response> {
+    const { body, token, traceparent } = outgoing
+    const headers = new Headers({ Accept: 'application/json', [traceparentHeader]: traceparent })
     if (body !== undefined) {
       headers.set('Content-Type', 'application/json')
     }

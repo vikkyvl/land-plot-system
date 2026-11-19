@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -150,6 +151,10 @@ func LoadLimits() (Limits, error) {
 	}
 
 	return limits, nil
+}
+
+func LoadOTLPEndpoint() string {
+	return os.Getenv(envOTLPEndpoint)
 }
 
 func LoadMCP() (MCP, error) {

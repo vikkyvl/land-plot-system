@@ -34,6 +34,7 @@ x-ai-service: &ai-service
     AI_CLIENT_ID: ${AI_CLIENT_ID:-land-plot-ai}
     AI_CLIENT_SECRET: ${AI_CLIENT_SECRET:-local_development_ai_client_secret}
     TOOL_RESULT_MAX_BYTES: ${TOOL_RESULT_MAX_BYTES:-4000}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4318}
 
 x-agent-environment: &agent-environment
   <<: *ai-environment

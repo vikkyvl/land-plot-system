@@ -12,6 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
 	"github.com/vleshchenko/land-plot-system/ai/internal/logging"
 )
 
@@ -343,5 +347,36 @@ func TestClientForwardsTheRequestIDFromTheContext(t *testing.T) {
 
 	if first, second := <-received, <-received; first != "req-42" || second != "" {
 		t.Fatalf("request IDs = %q, %q", first, second)
+	}
+}
+
+func TestClientSendsTheCurrentTraceToTheGateway(t *testing.T) {
+	previousProvider, previousPropagator := otel.GetTracerProvider(), otel.GetTextMapPropagator()
+
+	otel.SetTracerProvider(sdktrace.NewTracerProvider())
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		otel.SetTextMapPropagator(previousPropagator)
+	})
+
+	gateway := newFakeGateway()
+	received := make(chan string, 1)
+
+	gateway.mux.HandleFunc("GET /api/v1/plots", func(response http.ResponseWriter, request *http.Request) {
+		received <- request.Header.Get("traceparent")
+
+		writeJSON(response, http.StatusOK, []Plot{})
+	})
+
+	callContext, span := otel.Tracer("test").Start(context.Background(), "tool call")
+	defer span.End()
+
+	if _, err := gateway.start(t).ListPlots(callContext); err != nil {
+		t.Fatal(err)
+	}
+
+	if traceparent := <-received; !strings.Contains(traceparent, span.SpanContext().TraceID().String()) {
+		t.Fatalf("traceparent = %q, want trace %s", traceparent, span.SpanContext().TraceID())
 	}
 }

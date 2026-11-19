@@ -20,6 +20,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/ai/internal/guard"
 	"github.com/vleshchenko/land-plot-system/ai/internal/llm"
 	"github.com/vleshchenko/land-plot-system/ai/internal/logging"
+	"github.com/vleshchenko/land-plot-system/ai/internal/tracing"
 )
 
 const (
@@ -50,7 +51,14 @@ type ProducerDelegate struct {
 }
 
 func NewProducerDelegate(producerURL string, timeout time.Duration, logger *slog.Logger) *ProducerDelegate {
-	return &ProducerDelegate{producerURL: producerURL, httpClient: &http.Client{Timeout: timeout}, logger: logger}
+	return &ProducerDelegate{
+		producerURL: producerURL,
+		httpClient: &http.Client{
+			Timeout:   timeout,
+			Transport: tracing.Transport(logging.ForwardRequestID(http.DefaultTransport)),
+		},
+		logger: logger,
+	}
 }
 
 func (delegate *ProducerDelegate) Tool() agent.Tool {
