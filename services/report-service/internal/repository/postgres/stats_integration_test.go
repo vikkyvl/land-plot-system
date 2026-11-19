@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 )
 
 func TestOutboxBacklogCountsPendingAndFailedRows(t *testing.T) {
@@ -77,5 +78,26 @@ func TestReportCountsByPlotState(t *testing.T) {
 
 	if counts != (domain.ReportCounts{ActivePlots: 2, DeletedPlots: 1}) {
 		t.Fatalf("Counts() = %+v", counts)
+	}
+}
+
+func TestReplyKeepsTheRequestIDOfTheEvent(t *testing.T) {
+	pool := openTestPool(t)
+	event := domain.PlotEvent{
+		ID: uuid.NewString(), Type: domain.PlotCreated, OccurredAt: time.Now(),
+		PlotID: uuid.NewString(), OwnerID: uuid.NewString(), Name: "Plot", AreaM2: 100, Version: 1,
+	}
+	reply := domain.NewSummaryApplied(uuid.NewString(), event, time.Now())
+
+	err := NewPlotSummaryRepository(pool, "").Apply(logging.WithRequestID(context.Background(), "req-42"), event, reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &publishRecorder{}
+	publishPending(t, NewOutboxRepository(pool), recorder, 1)
+
+	if len(recorder.messages) != 1 || recorder.messages[0].RequestID != "req-42" {
+		t.Fatalf("published messages = %+v", recorder.messages)
 	}
 }

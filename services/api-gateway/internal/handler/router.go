@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
 )
 
@@ -22,5 +23,11 @@ func NewRouter(
 
 	protected := sanitizeUserHeaders(limitRequests(limiter, authenticate(verifier, router)))
 
-	return observeRequests(observer, withRequestID(withCORS(allowedOrigins, protected)))
+	logged := logging.AccessLog(logger, routeTemplate, withCORS(allowedOrigins, protected))
+
+	return observeRequests(observer, withRequestID(logged))
+}
+
+func routeTemplate(request *http.Request) string {
+	return proxy.RouteTemplate(request.URL.Path)
 }

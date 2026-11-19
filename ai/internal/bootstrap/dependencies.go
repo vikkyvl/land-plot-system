@@ -14,8 +14,8 @@ import (
 
 const defaultShutdownTimeout = 10 * time.Second
 
-func newLogger(output io.Writer, level slog.Level) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{Level: level}))
+func newLogger(output io.Writer, serviceName string, level slog.Level) *slog.Logger {
+	return logging.NewLogger(output, serviceName, level)
 }
 
 func newLandClient(gateway config.Gateway) *landapi.Client {

@@ -17,6 +17,7 @@ type OutboxMessage struct {
 	RoutingKey string
 	Payload    []byte
 	CreatedAt  time.Time
+	RequestID  string
 }
 
 func NewSummaryApplied(id string, applied PlotEvent, now time.Time) SummaryApplied {

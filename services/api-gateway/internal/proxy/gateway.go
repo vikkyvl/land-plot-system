@@ -98,11 +98,11 @@ func (gateway *Gateway) ServeHTTP(response http.ResponseWriter, request *http.Re
 func (gateway *Gateway) selectInstance(request *http.Request, service string) (discovery.Instance, bool) {
 	instances, err := gateway.resolver.Resolve(request.Context(), service)
 	if err != nil {
-		gateway.logger.Error(
+		gateway.logger.ErrorContext(
+			request.Context(),
 			logResolveService,
 			logging.KeyServiceName, service,
 			logging.KeyError, err,
-			logging.KeyRequestID, request.Header.Get(HeaderRequestID),
 		)
 
 		return discovery.Instance{}, false
@@ -123,12 +123,12 @@ func direct(request *http.Request) {
 
 func (gateway *Gateway) handleProxyError(response http.ResponseWriter, request *http.Request, err error) {
 	target, _ := request.Context().Value(upstreamContextKey{}).(upstream)
-	gateway.logger.Error(
+	gateway.logger.ErrorContext(
+		request.Context(),
 		logProxyUpstreamRequest,
 		logging.KeyServiceName, target.service,
 		logging.KeyInstanceID, target.instance.ID,
 		logging.KeyError, err,
-		logging.KeyRequestID, request.Header.Get(HeaderRequestID),
 	)
 	WriteError(response, request, ErrBadGateway)
 }

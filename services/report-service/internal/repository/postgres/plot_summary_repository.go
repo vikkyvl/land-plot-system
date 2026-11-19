@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 )
 
 type PlotSummaryRepository struct {
@@ -145,8 +146,8 @@ func appendReply(processingContext context.Context, transaction pgx.Tx, reply do
 	}
 
 	_, err = transaction.Exec(processingContext, `
-		INSERT INTO outbox_events (id, routing_key, payload) VALUES ($1, $2, $3)`,
-		reply.ID, domain.SummaryAppliedEvent, payload,
+		INSERT INTO outbox_events (id, routing_key, payload, request_id) VALUES ($1, $2, $3, NULLIF($4, ''))`,
+		reply.ID, domain.SummaryAppliedEvent, payload, logging.RequestID(processingContext),
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertOutboxEvent, err)

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/vleshchenko/land-plot-system/ai/internal/logging"
 )
 
 const (
@@ -140,6 +142,10 @@ func (client *Client) newHTTPRequest(
 
 	if token != "" {
 		httpRequest.Header.Set("Authorization", bearerPrefix+token)
+	}
+
+	if requestID := logging.RequestID(requestContext); requestID != "" {
+		httpRequest.Header.Set(logging.HeaderRequestID, requestID)
 	}
 
 	return httpRequest, nil

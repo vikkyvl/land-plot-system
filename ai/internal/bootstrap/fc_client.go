@@ -18,6 +18,8 @@ const (
 	ExitOK    = 0
 	ExitError = 1
 	ExitUsage = 2
+
+	fcClientService = "fc-client"
 )
 
 type fcOptions struct {
@@ -50,7 +52,7 @@ func RunFCClient(runContext context.Context, arguments []string, stdout, stderr 
 		level = slog.LevelInfo
 	}
 
-	logger := newLogger(stderr, level)
+	logger := newLogger(stderr, fcClientService, level)
 
 	landClient := newLandClient(settings.gateway)
 	if err := landClient.Authenticate(runContext); err != nil {

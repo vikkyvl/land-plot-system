@@ -59,7 +59,8 @@ func (sagaService *SagaService) Confirm(processingContext context.Context, sagaI
 			return err
 		}
 
-		sagaService.logger.Info(
+		sagaService.logger.InfoContext(
+			processingContext,
 			logSagaCompleted,
 			logging.KeySagaID, saga.ID,
 			logging.KeyPlotID, saga.PlotID,
@@ -104,7 +105,14 @@ func (sagaService *SagaService) CompensateExpired(processingContext context.Cont
 	for _, sagaID := range sagaIDs {
 		started, err := sagaService.compensateInTransaction(processingContext, sagaID, domain.ReasonTimeout)
 		if err != nil {
-			sagaService.logger.Error(logCompensateExpiredSaga, logging.KeySagaID, sagaID, logging.KeyError, err)
+			sagaService.logger.ErrorContext(
+				processingContext,
+				logCompensateExpiredSaga,
+				logging.KeySagaID,
+				sagaID,
+				logging.KeyError,
+				err,
+			)
 			failures = append(failures, err)
 
 			continue
@@ -183,7 +191,8 @@ func (sagaService *SagaService) compensate(
 		return nil, err
 	}
 
-	sagaService.logger.Warn(
+	sagaService.logger.WarnContext(
+		processingContext,
 		logSagaCompensated,
 		logging.KeySagaID, saga.ID,
 		logging.KeyPlotID, saga.PlotID,

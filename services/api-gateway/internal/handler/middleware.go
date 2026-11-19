@@ -1,12 +1,11 @@
 package handler
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
 )
 
@@ -15,7 +14,6 @@ const (
 	HeaderUserEmail          = "X-User-Email"
 	userHeaderPrefix         = "x-user-"
 	bearerScheme             = "Bearer"
-	requestIDBytes           = 16
 	authorizationHeaderParts = 2
 	rejectedRequestChallenge = `Bearer error="invalid_token"`
 	formatInsufficientScope  = `Bearer error="insufficient_scope", scope="%s"`
@@ -26,12 +24,12 @@ func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		requestID := request.Header.Get(proxy.HeaderRequestID)
 		if requestID == "" {
-			requestID = newRequestID()
+			requestID = logging.NewRequestID()
 			request.Header.Set(proxy.HeaderRequestID, requestID)
 		}
 
 		response.Header().Set(proxy.HeaderRequestID, requestID)
-		next.ServeHTTP(response, request)
+		next.ServeHTTP(response, request.WithContext(logging.WithRequestID(request.Context(), requestID)))
 	})
 }
 
@@ -89,12 +87,4 @@ func verifyBearerToken(verifier TokenVerifier, header string) (proxy.Principal, 
 	}
 
 	return verifier.Verify(parts[1])
-}
-
-func newRequestID() string {
-	var value [requestIDBytes]byte
-
-	_, _ = rand.Read(value[:])
-
-	return hex.EncodeToString(value[:])
 }

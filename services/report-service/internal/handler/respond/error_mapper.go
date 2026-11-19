@@ -34,10 +34,10 @@ func (writer Writer) Error(response http.ResponseWriter, request *http.Request, 
 	}
 
 	if status >= http.StatusInternalServerError {
-		writer.logger.Error(
+		writer.logger.ErrorContext(
+			request.Context(),
 			logHandleRequest,
 			logging.KeyError, err,
-			logging.KeyRequestID, request.Header.Get(RequestIDHeader),
 		)
 	}
 

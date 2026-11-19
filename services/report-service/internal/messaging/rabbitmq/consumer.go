@@ -106,9 +106,12 @@ func (consumer *Consumer) handleDelivery(
 	delivery amqp.Delivery,
 	handler EventHandler,
 ) error {
+	deliveryContext := logging.WithRequestID(runContext, requestID(delivery))
+
 	event, err := decodePlotMessage(delivery.Body, delivery.RoutingKey)
 	if err != nil {
-		consumer.logger.Warn(
+		consumer.logger.WarnContext(
+			deliveryContext,
 			logRejectInvalidPlotEvent,
 			logging.KeyRoutingKey, delivery.RoutingKey,
 			logging.KeyError, err,
@@ -118,12 +121,13 @@ func (consumer *Consumer) handleDelivery(
 		return consumer.reject(delivery)
 	}
 
-	processingContext, cancel := context.WithTimeout(runContext, consumer.consumerConfig.ProcessingTimeout)
+	processingContext, cancel := context.WithTimeout(deliveryContext, consumer.consumerConfig.ProcessingTimeout)
 	defer cancel()
 
 	if err := handler.Handle(processingContext, event); err != nil {
 		if errors.Is(err, domain.ErrRejectedEvent) {
-			consumer.logger.Error(
+			consumer.logger.ErrorContext(
+				deliveryContext,
 				logProcessPlotEvent,
 				logging.KeyEventID, event.ID,
 				logging.KeyEventType, event.Type,
@@ -137,7 +141,7 @@ func (consumer *Consumer) handleDelivery(
 
 		consumer.observer.DeliveryProcessed(queueName, OutcomeRequeued, createdAt(delivery))
 
-		return consumer.requeueLater(runContext, delivery, event, err)
+		return consumer.requeueLater(deliveryContext, delivery, event, err)
 	}
 
 	consumer.observer.DeliveryProcessed(queueName, OutcomeAcknowledged, createdAt(delivery))
@@ -146,7 +150,8 @@ func (consumer *Consumer) handleDelivery(
 		return fmt.Errorf(wrapAcknowledgePlotEvent, err)
 	}
 
-	consumer.logger.Info(
+	consumer.logger.InfoContext(
+		deliveryContext,
 		logPlotEventProcessed,
 		logging.KeyEventID, event.ID,
 		logging.KeyEventType, event.Type,
@@ -163,7 +168,8 @@ func (consumer *Consumer) requeueLater(
 	event domain.PlotEvent,
 	cause error,
 ) error {
-	consumer.logger.Warn(
+	consumer.logger.WarnContext(
+		runContext,
 		logRequeuePlotEvent,
 		logging.KeyEventID, event.ID,
 		logging.KeyEventType, event.Type,

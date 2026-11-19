@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/service"
 )
 
@@ -135,8 +136,8 @@ func (store *plotStore) AppendEvent(requestContext context.Context, event domain
 	}
 
 	_, err = store.transaction.Exec(requestContext, `
-		INSERT INTO outbox_events (id, routing_key, payload) VALUES ($1, $2, $3)`,
-		event.ID, string(event.Type), payload,
+		INSERT INTO outbox_events (id, routing_key, payload, request_id) VALUES ($1, $2, $3, NULLIF($4, ''))`,
+		event.ID, string(event.Type), payload, logging.RequestID(requestContext),
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertOutboxEvent, err)

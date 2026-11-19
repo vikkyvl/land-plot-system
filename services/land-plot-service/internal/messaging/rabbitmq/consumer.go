@@ -106,13 +106,15 @@ func (consumer *Consumer) handleDelivery(
 	delivery amqp.Delivery,
 	handler SagaHandler,
 ) error {
-	processingContext, cancel := context.WithTimeout(runContext, consumer.consumerConfig.ProcessingTimeout)
+	deliveryContext := logging.WithRequestID(runContext, requestID(delivery))
+
+	processingContext, cancel := context.WithTimeout(deliveryContext, consumer.consumerConfig.ProcessingTimeout)
 	defer cancel()
 
 	valid, err := consumer.dispatch(processingContext, delivery, handler)
 	if err != nil {
 		consumer.observer.DeliveryProcessed(sagaQueueName, OutcomeRequeued, createdAt(delivery))
-		return consumer.retryLater(runContext, delivery, err)
+		return consumer.retryLater(deliveryContext, delivery, err)
 	}
 
 	if !valid {
@@ -136,7 +138,7 @@ func (consumer *Consumer) dispatch(
 ) (bool, error) {
 	if delivery.Exchange == deadExchangeName {
 		if !isUUID(delivery.MessageId) {
-			consumer.logInvalid(delivery, errInvalidEventID)
+			consumer.logInvalid(processingContext, delivery, errInvalidEventID)
 			return false, nil
 		}
 
@@ -145,7 +147,7 @@ func (consumer *Consumer) dispatch(
 
 	message, err := decodeSummaryApplied(delivery.Body)
 	if err != nil {
-		consumer.logInvalid(delivery, err)
+		consumer.logInvalid(processingContext, delivery, err)
 		return false, nil
 	}
 
@@ -153,7 +155,8 @@ func (consumer *Consumer) dispatch(
 }
 
 func (consumer *Consumer) retryLater(runContext context.Context, delivery amqp.Delivery, cause error) error {
-	consumer.logger.Error(
+	consumer.logger.ErrorContext(
+		runContext,
 		logProcessSagaMessage,
 		logging.KeyMessageID, delivery.MessageId,
 		logging.KeyRoutingKey, delivery.RoutingKey,
@@ -172,8 +175,9 @@ func (consumer *Consumer) retryLater(runContext context.Context, delivery amqp.D
 	return nil
 }
 
-func (consumer *Consumer) logInvalid(delivery amqp.Delivery, cause error) {
-	consumer.logger.Warn(
+func (consumer *Consumer) logInvalid(logContext context.Context, delivery amqp.Delivery, cause error) {
+	consumer.logger.WarnContext(
+		logContext,
 		logRejectInvalidSagaMessage,
 		logging.KeyMessageID, delivery.MessageId,
 		logging.KeyRoutingKey, delivery.RoutingKey,

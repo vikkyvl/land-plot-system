@@ -23,6 +23,7 @@ type OutboxMessage struct {
 	RoutingKey string
 	Payload    []byte
 	CreatedAt  time.Time
+	RequestID  string
 }
 
 func NewPlotEvent(id string, eventType PlotEventType, plot Plot) PlotEvent {

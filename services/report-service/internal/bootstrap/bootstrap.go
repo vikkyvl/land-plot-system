@@ -24,7 +24,7 @@ func Run() error {
 		return fmt.Errorf(wrapLoadConfig, err)
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(logging.KeyService, config.ServiceName)
+	logger := logging.NewLogger(os.Stdout, config.ServiceName, slog.LevelInfo)
 
 	pool, err := openDatabase(serviceConfig.DatabaseURL, serviceConfig.DatabaseTimeout)
 	if err != nil {
@@ -69,7 +69,7 @@ func Run() error {
 
 	exports := service.NewExportService(reports, document.Renderer{}, serviceMetrics)
 	router := handler.NewRouter(logger, config.ServiceName, reports, exports, verifier)
-	server := newHTTPServer(serviceMetrics.ObserveRequests(router))
+	server := newHTTPServer(logging.AccessLog(logger, logging.PatternRoute, serviceMetrics.ObserveRequests(router)))
 
 	listener, metricsEndpoint, err := listen(serviceConfig, serviceMetrics.Handler(), logger)
 	if err != nil {

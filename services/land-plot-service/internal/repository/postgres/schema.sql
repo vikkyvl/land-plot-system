@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 
 ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ NULL;
 
+ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS request_id TEXT NULL;
+
 DROP INDEX IF EXISTS outbox_events_unpublished_idx;
 
 CREATE INDEX IF NOT EXISTS outbox_events_pending_idx

@@ -8,6 +8,7 @@ import (
 
 const (
 	HeaderCreatedAt = "x-created-at-ms"
+	HeaderRequestID = "x-request-id"
 
 	OutcomeAcknowledged = "ack"
 	OutcomeRequeued     = "retry"
@@ -24,4 +25,10 @@ func createdAt(delivery amqp.Delivery) time.Time {
 	}
 
 	return delivery.Timestamp
+}
+
+func requestID(delivery amqp.Delivery) string {
+	value, _ := delivery.Headers[HeaderRequestID].(string)
+
+	return value
 }

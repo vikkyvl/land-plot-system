@@ -9,6 +9,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
 )
 
 const (
@@ -38,14 +39,17 @@ func (stub *acknowledgerStub) Reject(uint64, bool) error {
 }
 
 type sagaHandlerStub struct {
+	requestID   string
 	confirmed   []string
 	compensated []string
 	reason      domain.CompensationReason
 	err         error
 }
 
-func (stub *sagaHandlerStub) Confirm(_ context.Context, sagaID string) error {
+func (stub *sagaHandlerStub) Confirm(processingContext context.Context, sagaID string) error {
+	stub.requestID = logging.RequestID(processingContext)
 	stub.confirmed = append(stub.confirmed, sagaID)
+
 	return stub.err
 }
 
@@ -209,5 +213,19 @@ func TestConsumerFallsBackToTheAMQPTimestamp(t *testing.T) {
 
 	if got := createdAt(amqp.Delivery{}); !got.IsZero() {
 		t.Fatalf("createdAt() = %v, want zero", got)
+	}
+}
+
+func TestConsumerHandsTheRequestIDToTheHandler(t *testing.T) {
+	handler := &sagaHandlerStub{}
+
+	handle(t, amqp.Delivery{
+		Exchange: exchangeName,
+		Headers:  amqp.Table{HeaderRequestID: "req-42"},
+		Body:     summaryAppliedBody(testSagaID),
+	}, handler)
+
+	if handler.requestID != "req-42" {
+		t.Fatalf("request ID in the handler = %q", handler.requestID)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/repository/postgres"
 )
 
@@ -45,12 +46,15 @@ func (stub *acknowledgerStub) deadLettered() bool {
 }
 
 type eventHandlerStub struct {
-	event domain.PlotEvent
-	err   error
+	requestID string
+	event     domain.PlotEvent
+	err       error
 }
 
-func (stub *eventHandlerStub) Handle(_ context.Context, event domain.PlotEvent) error {
+func (stub *eventHandlerStub) Handle(processingContext context.Context, event domain.PlotEvent) error {
+	stub.requestID = logging.RequestID(processingContext)
 	stub.event = event
+
 	return stub.err
 }
 
@@ -196,5 +200,20 @@ func TestConsumerObservesEveryOutcomeWithTheEventAge(t *testing.T) {
 			observer.observations[0].outcome != testCase.want || !observer.observations[0].createdAt.Equal(created) {
 			t.Fatalf("observations = %+v, want outcome %s", observer.observations, testCase.want)
 		}
+	}
+}
+
+func TestConsumerHandsTheRequestIDToTheHandler(t *testing.T) {
+	message := validPlotMessage(domain.PlotCreated)
+	delivery, _ := testDelivery(encodeMessage(t, message), message.EventType)
+	delivery.Headers = amqp.Table{HeaderRequestID: "req-42"}
+	handler := &eventHandlerStub{}
+
+	if err := testConsumer().handleDelivery(context.Background(), delivery, handler); err != nil {
+		t.Fatal(err)
+	}
+
+	if handler.requestID != "req-42" {
+		t.Fatalf("request ID in the handler = %q", handler.requestID)
 	}
 }

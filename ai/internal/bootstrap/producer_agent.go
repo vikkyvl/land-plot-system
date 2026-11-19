@@ -28,7 +28,7 @@ type agentSettings struct {
 }
 
 func RunProducerAgent(runContext context.Context, stderr io.Writer) int {
-	logger := newLogger(stderr, slog.LevelInfo).With(logging.KeyService, producerService)
+	logger := newLogger(stderr, producerService, slog.LevelInfo)
 
 	settings, err := loadAgentSettings(producerAddress, producerPublicURL)
 	if err != nil {
@@ -51,7 +51,11 @@ func RunProducerAgent(runContext context.Context, stderr io.Writer) int {
 	return serveAgent(
 		runContext,
 		settings.server,
-		a2aagent.NewHandler(a2aagent.ProducerCard(settings.server.PublicURL), executor),
+		logging.AccessLog(
+			logger,
+			logging.PatternRoute,
+			a2aagent.NewHandler(a2aagent.ProducerCard(settings.server.PublicURL), executor),
+		),
 		logger,
 	)
 }

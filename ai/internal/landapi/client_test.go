@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vleshchenko/land-plot-system/ai/internal/logging"
 )
 
 const (
@@ -317,5 +319,29 @@ func TestClientStopsAtTimeout(t *testing.T) {
 	_, err := client.ListPlots(context.Background())
 	if err == nil || errors.As(err, new(*APIError)) || !strings.Contains(err.Error(), "send request GET") {
 		t.Fatalf("ListPlots() error = %v, want a transport timeout", err)
+	}
+}
+
+func TestClientForwardsTheRequestIDFromTheContext(t *testing.T) {
+	gateway := newFakeGateway()
+	received := make(chan string, 2)
+
+	gateway.mux.HandleFunc("GET /api/v1/plots", func(response http.ResponseWriter, request *http.Request) {
+		received <- request.Header.Get(logging.HeaderRequestID)
+
+		writeJSON(response, http.StatusOK, []Plot{})
+	})
+
+	client := gateway.start(t)
+	if _, err := client.ListPlots(logging.WithRequestID(context.Background(), "req-42")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := client.ListPlots(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if first, second := <-received, <-received; first != "req-42" || second != "" {
+		t.Fatalf("request IDs = %q, %q", first, second)
 	}
 }

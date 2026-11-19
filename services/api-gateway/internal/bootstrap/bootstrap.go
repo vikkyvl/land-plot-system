@@ -26,7 +26,7 @@ func Run() error {
 		return fmt.Errorf(wrapLoadConfig, err)
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(logging.KeyService, config.ServiceName)
+	logger := logging.NewLogger(os.Stdout, config.ServiceName, slog.LevelInfo)
 	gatewayMetrics := metrics.NewGateway(config.ServiceName)
 
 	resolver := consul.NewResolver(serviceConfig.ConsulAddress, &http.Client{Timeout: serviceConfig.ConsulTimeout})

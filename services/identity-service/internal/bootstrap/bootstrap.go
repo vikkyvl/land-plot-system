@@ -24,7 +24,7 @@ func Run() error {
 		return fmt.Errorf(wrapLoadConfig, err)
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(logging.KeyService, config.ServiceName)
+	logger := logging.NewLogger(os.Stdout, config.ServiceName, slog.LevelInfo)
 
 	pool, err := openDatabase(serviceConfig.DatabaseURL, serviceConfig.DatabaseTimeout)
 	if err != nil {
@@ -47,7 +47,10 @@ func Run() error {
 	defer stopVerifier()
 
 	router := handler.NewRouter(logger, config.ServiceName, identity, verifier)
-	server := &http.Server{Handler: serviceMetrics.ObserveRequests(router), ReadHeaderTimeout: readHeaderTimeout}
+	server := &http.Server{
+		Handler:           logging.AccessLog(logger, logging.PatternRoute, serviceMetrics.ObserveRequests(router)),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)
 	if err != nil {

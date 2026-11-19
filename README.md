@@ -267,6 +267,16 @@ make obs-check   # health of every Prometheus target and UI
 
 - **Traces:** OTLP → OpenTelemetry Collector → Jaeger.
 - **Logs:** Grafana Alloy reads the stdout of every container of the project through the Docker socket and sends it to Loki with the labels `container`, `service` and `level`; `trace_id`, `span_id` and `request_id` of JSON logs go to structured metadata. In Grafana a `trace_id` in a log line opens the trace in Jaeger, and a span opens its logs.
+- **Log format.** The four services and the AI programs (`mcp-server`, `producer-agent`, `consumer-agent`, `fc-client`) write JSON lines with `log/slog` and the same fields: `time`, `level`, `service`, `msg`, `request_id`, `trace_id` and `span_id` (taken from the context; left out while there is no span), and for requests `method`, `route`, `status`, `duration_ms`.
+  - Every HTTP request gives one access line: `error` for 5xx, `warn` for 4xx, `info` otherwise. `route` is the route template (`/api/v1/plots/{id}`), never the path with its query. Health checks are logged only at `debug`; `/metrics` runs on its own port and is not logged.
+  - `request_id` comes from `X-Request-ID` (the gateway creates one when the client sends none and returns it in the response). It goes on to the services over HTTP, is stored with the outbox row (`outbox_events.request_id`) and travels as the RabbitMQ header `x-request-id`, so the consumer of `report-service` and the saga in `land-plot-service` log the request that started them. The AI programs forward it to the gateway.
+  - Logs never contain headers, tokens, cookies, passwords or request bodies; tests send all of them, also in a failing request, and check the output.
+
+  One request across the services in Grafana → Explore → Loki:
+
+  ```
+  {service="land-plot-service"} | json | request_id="lab6-step4-bc584dac"
+  ```
 - **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
 - **Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
 

@@ -22,6 +22,7 @@ const (
 	transportStdio    = "stdio"
 	transportHTTP     = "http"
 	readHeaderTimeout = 5 * time.Second
+	mcpService        = "mcp-server"
 )
 
 func RunMCPServer(runContext context.Context, arguments []string, stderr io.Writer) int {
@@ -31,7 +32,7 @@ func RunMCPServer(runContext context.Context, arguments []string, stderr io.Writ
 		return ExitUsage
 	}
 
-	logger := newLogger(stderr, slog.LevelInfo)
+	logger := newLogger(stderr, mcpService, slog.LevelInfo)
 
 	gateway, err := config.LoadGateway()
 	if err != nil {
@@ -102,8 +103,12 @@ func runMCPHTTP(runContext context.Context, toolset *tools.Toolset, logger *slog
 
 	server := mcpserver.New(toolset, mcpserver.Options{RateLimitPerMinute: settings.RateLimitPerMinute}, logger)
 	httpServer := &http.Server{
-		Addr:              settings.HTTPAddress,
-		Handler:           mcpserver.NewHTTPHandler(server, settings.AccessToken),
+		Addr: settings.HTTPAddress,
+		Handler: logging.AccessLog(
+			logger,
+			logging.PatternRoute,
+			mcpserver.NewHTTPHandler(server, settings.AccessToken),
+		),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
 )
 
@@ -122,7 +123,7 @@ func TestRequestIDIsKeptOrGenerated(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/health", http.NoBody),
 	).Header().
 		Get(proxy.HeaderRequestID)
-	if len(generated) != 2*requestIDBytes {
+	if len(generated) != len(logging.NewRequestID()) {
 		t.Fatalf("generated request ID = %q", generated)
 	}
 }

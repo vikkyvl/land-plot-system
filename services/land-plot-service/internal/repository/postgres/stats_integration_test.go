@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/domain"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/logging"
+	"github.com/vleshchenko/land-plot-system/services/land-plot-service/internal/service"
 )
 
 func TestOutboxBacklogCountsPendingAndFailedRows(t *testing.T) {
@@ -100,5 +102,26 @@ func TestPlotCountsByState(t *testing.T) {
 	want := domain.PlotCounts{Pending: 1, Confirmed: 1, Cancelled: 1, Deleted: 1}
 	if counts != want {
 		t.Fatalf("Counts() = %+v, want %+v", counts, want)
+	}
+}
+
+func TestOutboxKeepsTheRequestIDOfTheEvent(t *testing.T) {
+	pool := openTestPool(t)
+	repository := NewPlotRepository(pool)
+	plot := storeConfirmedPlot(t, repository, uuid.NewString())
+	requestContext := logging.WithRequestID(context.Background(), "req-42")
+
+	err := repository.InTransaction(requestContext, func(store service.PlotStore) error {
+		return store.AppendEvent(requestContext, domain.NewPlotEvent(uuid.NewString(), domain.PlotUpdated, plot))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &publishRecorder{}
+	publishPending(t, NewOutboxRepository(pool), recorder, 1)
+
+	if len(recorder.messages) != 1 || recorder.messages[0].RequestID != "req-42" {
+		t.Fatalf("published messages = %+v", recorder.messages)
 	}
 }

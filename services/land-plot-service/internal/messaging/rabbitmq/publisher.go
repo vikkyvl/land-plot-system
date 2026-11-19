@@ -29,7 +29,7 @@ func (publisher *Publisher) Publish(publishContext context.Context, outboxMessag
 		MessageId:    outboxMessage.ID,
 		Type:         outboxMessage.RoutingKey,
 		Timestamp:    outboxMessage.CreatedAt,
-		Headers:      amqp.Table{HeaderCreatedAt: outboxMessage.CreatedAt.UnixMilli()},
+		Headers:      messageHeaders(outboxMessage),
 		Body:         outboxMessage.Payload,
 	}
 
@@ -89,4 +89,13 @@ func (publisher *Publisher) Close() error {
 	}
 
 	return publisher.session.close()
+}
+
+func messageHeaders(outboxMessage domain.OutboxMessage) amqp.Table {
+	headers := amqp.Table{HeaderCreatedAt: outboxMessage.CreatedAt.UnixMilli()}
+	if outboxMessage.RequestID != "" {
+		headers[HeaderRequestID] = outboxMessage.RequestID
+	}
+
+	return headers
 }
