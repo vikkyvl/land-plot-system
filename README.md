@@ -155,7 +155,7 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── scripts/demo_lr3.sh         # transactional outbox and saga demo
 ├── scripts/demo_lr4.sh         # function calling, MCP and A2A demo
 ├── scripts/demo_lr5.sh         # CORS, Keycloak tokens, scopes and Zero Trust demo
-├── scripts/demo_web.sh         # preview, deletion, history, report list, Mailpit, accuracy, terrain, climate and rate limit demo
+├── scripts/demo_web.sh         # preview, deletion, history, report list, Mailpit, accuracy, terrain, climate, PDF, GeoJSON and rate limit demo
 ├── scripts/keycloak_idp.sh     # adds the Google login to Keycloak
 ├── scripts/keycloak_realm.sh   # applies realm settings to a running Keycloak
 ├── tools/stripcomments/        # comment check used by make lint
@@ -693,7 +693,7 @@ The security demo runs without a browser. It shows a decoded Keycloak token, a C
 make demo-lr5
 ```
 
-The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), a CORS preflight for `DELETE`, a password reset email in Mailpit, the area margin with `capture` and an obstruction (`worst_side`, `basis: assumed` without a capture), `400 invalid_capture` and `invalid_obstruction`, a `PATCH` with only obstructions, reports with terrain and climate for the Carpathians and Kyiv, a report while Open-Meteo is unreachable (`201` with `unavailable` blocks; the script restarts `report-service` with a broken URL and restores it) and the preview rate limit (`429` with `Retry-After`):
+The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), a CORS preflight for `DELETE`, a password reset email in Mailpit, the area margin with `capture` and an obstruction (`worst_side`, `basis: assumed` without a capture), `400 invalid_capture` and `invalid_obstruction`, a `PATCH` with only obstructions, reports with terrain and climate for the Carpathians and Kyiv, the PDF of a report in Ukrainian and English and its GeoJSON (`400 invalid_language` for `lang=de`), the plot list summary from `GET /api/v1/plots/summary`, a report while Open-Meteo is unreachable (`201` with `unavailable` blocks; the script restarts `report-service` with a broken URL and restores it) and the preview rate limit (`429` with `Retry-After`):
 
 ```sh
 make demo-web

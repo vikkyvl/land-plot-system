@@ -50,10 +50,10 @@ The app repeats the layers of the Go services:
 
 ```
 src/
-├── domain/      types and pure functions: Plot, Report, Coordinate, Profile, DomainError, GeoJSON export,
+├── domain/      types and pure functions: Plot, Report, Coordinate, Profile, DomainError,
 │                survey (capture and obstructed sides), accuracy, terrain and climate
 ├── port/        interfaces the services need: PlotGateway, ReportGateway, ProfileGateway,
-│                GeocodingGateway, AuthSession, DraftStore, PreferencesStore
+│                GeocodingGateway, AccessTokenProvider, AuthSession, DraftStore, SettingsStore
 ├── service/     use cases: calculator, sessions, plots, reports, place search, saga confirmation
 ├── client/      HTTP adapters for the gateway and Nominatim, error mapping to DomainError
 ├── auth/        Keycloak sign-in with oidc-client-ts
