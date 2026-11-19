@@ -40,7 +40,9 @@ func newTestRouter(upstream http.Handler, verifier TokenVerifier) http.Handler {
 }
 
 func newTestRouterWithLimiter(upstream http.Handler, verifier TokenVerifier, limiter RequestLimiter) http.Handler {
-	return NewRouter(slog.New(slog.DiscardHandler), "api-gateway", upstream, verifier, limiter, testOrigins)
+	return NewRouter(
+		slog.New(slog.DiscardHandler), "api-gateway", upstream, verifier, limiter, testOrigins, &requestObserverStub{},
+	)
 }
 
 func serve(router http.Handler, request *http.Request) *httptest.ResponseRecorder {

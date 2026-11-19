@@ -22,6 +22,10 @@ type Balancer interface {
 	Select(service string, instances []discovery.Instance) (discovery.Instance, bool)
 }
 
+type UpstreamObserver interface {
+	ObserveUpstream(upstream string, status int, err error, duration time.Duration)
+}
+
 type upstreamContextKey struct{}
 
 type upstream struct {
@@ -44,6 +48,7 @@ func NewGateway(
 	logger *slog.Logger,
 	upstreamTimeout time.Duration,
 	instanceID string,
+	observer UpstreamObserver,
 ) *Gateway {
 	gateway := &Gateway{
 		resolver:        resolver,
@@ -54,6 +59,7 @@ func NewGateway(
 	}
 	gateway.proxy = &httputil.ReverseProxy{
 		Director:       direct,
+		Transport:      observedTransport{base: http.DefaultTransport, observer: observer},
 		ModifyResponse: removeUpstreamCORSHeaders,
 		ErrorHandler:   gateway.handleProxyError,
 	}
@@ -124,6 +130,26 @@ func (gateway *Gateway) handleProxyError(response http.ResponseWriter, request *
 		logging.KeyRequestID, request.Header.Get(HeaderRequestID),
 	)
 	WriteError(response, request, ErrBadGateway)
+}
+
+type observedTransport struct {
+	base     http.RoundTripper
+	observer UpstreamObserver
+}
+
+func (transport observedTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	target, _ := request.Context().Value(upstreamContextKey{}).(upstream)
+	started := time.Now()
+	response, err := transport.base.RoundTrip(request)
+
+	status := 0
+	if response != nil {
+		status = response.StatusCode
+	}
+
+	transport.observer.ObserveUpstream(target.service, status, err, time.Since(started))
+
+	return response, err
 }
 
 func removeUpstreamCORSHeaders(response *http.Response) error {

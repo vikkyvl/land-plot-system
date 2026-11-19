@@ -15,6 +15,7 @@ import (
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/discovery/consul"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/logging"
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/metrics"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
 	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/ratelimit"
 )
@@ -26,6 +27,7 @@ func Run() error {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(logging.KeyService, config.ServiceName)
+	gatewayMetrics := metrics.NewGateway(config.ServiceName)
 
 	resolver := consul.NewResolver(serviceConfig.ConsulAddress, &http.Client{Timeout: serviceConfig.ConsulTimeout})
 	gateway := proxy.NewGateway(
@@ -34,6 +36,7 @@ func Run() error {
 		logger,
 		serviceConfig.UpstreamTimeout,
 		serviceConfig.InstanceID,
+		gatewayMetrics,
 	)
 
 	verifier, stopVerifier, err := newTokenVerifier(serviceConfig, logger)
@@ -49,6 +52,7 @@ func Run() error {
 		verifier,
 		ratelimit.NewIPLimiter(serviceConfig.PreviewRateLimitPerMinute),
 		serviceConfig.AllowedOrigins,
+		gatewayMetrics,
 	)
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 
@@ -56,6 +60,13 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf(wrapListenHTTP, err)
 	}
+
+	metricsEndpoint, err := startMetricsServer(serviceConfig.MetricsAddress, gatewayMetrics.Handler(), logger)
+	if err != nil {
+		_ = listener.Close()
+		return err
+	}
+	defer metricsEndpoint.stop(serviceConfig.ShutdownTimeout)
 
 	instance, err := register(serviceConfig, logger)
 	if err != nil {

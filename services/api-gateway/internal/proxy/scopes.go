@@ -14,6 +14,8 @@ const (
 	pathSeparator     = "/"
 	parameterPrefix   = "{"
 	parameterSuffix   = "}"
+	HealthPath        = "/health"
+	UnmatchedRoute    = "unmatched"
 )
 
 type scopeRule struct {
@@ -58,6 +60,20 @@ func IsRateLimitedRoute(method, path string) bool {
 	rule, known := findScopeRule(method, path)
 
 	return known && rule.rateLimited
+}
+
+func RouteTemplate(path string) string {
+	if path == HealthPath {
+		return HealthPath
+	}
+
+	for _, rule := range scopeRules {
+		if matchesPattern(rule.pattern, path) {
+			return rule.pattern
+		}
+	}
+
+	return UnmatchedRoute
 }
 
 func findScopeRule(method, path string) (scopeRule, bool) {

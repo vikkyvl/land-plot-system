@@ -261,8 +261,11 @@ services:
       UPSTREAM_TIMEOUT: ${UPSTREAM_TIMEOUT:-5s}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://cad.kpi.ua,http://localhost:5173,http://localhost:4173}
       PREVIEW_RATE_LIMIT_PER_MINUTE: ${PREVIEW_RATE_LIMIT_PER_MINUTE:-60}
+      METRICS_ADDRESS: :9464
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
+    expose:
+      - "9464"
     depends_on:
       keycloak:
         condition: service_healthy
@@ -510,10 +513,10 @@ services:
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 networks:
   land-network:

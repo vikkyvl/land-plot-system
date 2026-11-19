@@ -6,6 +6,7 @@ const (
 	envConsulTimeout       = "CONSUL_TIMEOUT"
 	envHTTPAddress         = "HTTP_ADDRESS"
 	envHTTPShutdownTimeout = "HTTP_SHUTDOWN_TIMEOUT"
+	envMetricsAddress      = "METRICS_ADDRESS"
 	envServiceAddress      = "SERVICE_ADDRESS"
 	envServiceInstanceID   = "SERVICE_INSTANCE_ID"
 	envUpstreamTimeout     = "UPSTREAM_TIMEOUT"

@@ -267,7 +267,16 @@ make obs-check   # health of every Prometheus target and UI
 
 - **Traces:** OTLP → OpenTelemetry Collector → Jaeger.
 - **Logs:** Grafana Alloy reads the stdout of every container of the project through the Docker socket and sends it to Loki with the labels `container`, `service` and `level`; `trace_id`, `span_id` and `request_id` of JSON logs go to structured metadata. In Grafana a `trace_id` in a log line opens the trace in Jaeger, and a span opens its logs.
-- **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter) and the stack itself.
+- **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
+- **Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
+
+  | Metric | Labels |
+  |---|---|
+  | `http_server_request_duration_seconds` (histogram, 5 ms … 10 s) | `service`, `route`, `method`, `status_class` |
+  | `gateway_upstream_request_duration_seconds` (histogram) | `upstream` (service name), `outcome` (`2xx` … `5xx`, `error`, `timeout`) |
+  | `gateway_rejected_requests_total` | `status` (`401`, `403`, `429`), `origin` (`gateway` or `upstream`) |
+
+  `route` is the template of the route (`/api/v1/plots/{id}`), never the raw path; any path the gateway does not know is `unmatched`, so scanners cannot create new series. No label holds a user, plot or trace identifier.
 - **Jaeger version:** Jaeger is pinned to 2.20.0 because 2.21 removed the HTTP API that the Jaeger data source of Grafana 13 uses.
 - **Ports:** the ports differ from the usual 3000, 9090 and 9093 so that other local stacks do not collide; every port can be changed in `.env`.
 

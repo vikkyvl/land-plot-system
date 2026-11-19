@@ -13,3 +13,7 @@ type TokenVerifier interface {
 type RequestLimiter interface {
 	Allow(key string) (bool, time.Duration)
 }
+
+type RequestObserver interface {
+	ObserveRequest(route, method string, status int, fromUpstream bool, duration time.Duration)
+}

@@ -75,3 +75,22 @@ func TestOnlyPreviewIsPublicAndRateLimited(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteTemplateReplacesIdentifiers(t *testing.T) {
+	cases := map[string]string{
+		"/api/v1/plots":                   "/api/v1/plots",
+		"/api/v1/plots/summary":           "/api/v1/plots/summary",
+		"/api/v1/plots/3f2a/versions":     "/api/v1/plots/{id}/versions",
+		"/api/v1/reports/9c1d/pdf":        "/api/v1/reports/{id}/pdf",
+		"/api/v1/reports/9c1d":            "/api/v1/reports/{id}",
+		"/health":                         HealthPath,
+		"/api/v1/plots/3f2a/versions/2":   UnmatchedRoute,
+		"/../../etc/passwd":               UnmatchedRoute,
+		"/api/v1/users/profile/something": UnmatchedRoute,
+	}
+	for path, want := range cases {
+		if got := RouteTemplate(path); got != want {
+			t.Fatalf("RouteTemplate(%q) = %q, want %q", path, got, want)
+		}
+	}
+}

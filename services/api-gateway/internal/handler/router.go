@@ -3,6 +3,8 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+
+	"github.com/vleshchenko/land-plot-system/services/api-gateway/internal/proxy"
 )
 
 func NewRouter(
@@ -12,12 +14,13 @@ func NewRouter(
 	verifier TokenVerifier,
 	limiter RequestLimiter,
 	allowedOrigins []string,
+	observer RequestObserver,
 ) http.Handler {
 	router := http.NewServeMux()
-	router.HandleFunc("GET /health", healthHandler(logger, serviceName))
+	router.HandleFunc(http.MethodGet+" "+proxy.HealthPath, healthHandler(logger, serviceName))
 	router.Handle("/", gateway)
 
 	protected := sanitizeUserHeaders(limitRequests(limiter, authenticate(verifier, router)))
 
-	return withRequestID(withCORS(allowedOrigins, protected))
+	return observeRequests(observer, withRequestID(withCORS(allowedOrigins, protected)))
 }

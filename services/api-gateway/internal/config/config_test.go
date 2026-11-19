@@ -22,7 +22,8 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	}
 
 	if serviceConfig.HTTPPort != 8080 || serviceConfig.UpstreamTimeout != defaultUpstreamTimeout ||
-		serviceConfig.InstanceID != "gateway-1" || serviceConfig.PreviewRateLimitPerMinute != 60 {
+		serviceConfig.InstanceID != "gateway-1" || serviceConfig.PreviewRateLimitPerMinute != 60 ||
+		serviceConfig.MetricsAddress != ":9464" {
 		t.Fatalf("Load() = %#v", serviceConfig)
 	}
 }
@@ -55,6 +56,7 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 		"OIDC_TIMEOUT":     "0s",
 		"HTTP_ADDRESS":     ":http-port",
 		"UPSTREAM_TIMEOUT": "-5s",
+		"METRICS_ADDRESS":  " ",
 
 		"PREVIEW_RATE_LIMIT_PER_MINUTE": "0",
 	}

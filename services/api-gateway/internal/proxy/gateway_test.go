@@ -34,15 +34,34 @@ func (roundTrip roundTripFunc) RoundTrip(request *http.Request) (*http.Response,
 	return roundTrip(request)
 }
 
+type upstreamObservation struct {
+	upstream string
+	status   int
+	err      error
+}
+
+type observerStub struct {
+	observations []upstreamObservation
+}
+
+func (stub *observerStub) ObserveUpstream(upstream string, status int, err error, _ time.Duration) {
+	stub.observations = append(stub.observations, upstreamObservation{upstream: upstream, status: status, err: err})
+}
+
 func newTestGateway(resolver ServiceResolver, transport http.RoundTripper) *Gateway {
+	return newObservedTestGateway(resolver, transport, &observerStub{})
+}
+
+func newObservedTestGateway(resolver ServiceResolver, transport http.RoundTripper, observer *observerStub) *Gateway {
 	gateway := NewGateway(
 		resolver,
 		balancer.NewRoundRobin(),
 		slog.New(slog.DiscardHandler),
 		time.Second,
 		testGatewayID,
+		observer,
 	)
-	gateway.proxy.Transport = transport
+	gateway.proxy.Transport = observedTransport{base: transport, observer: observer}
 
 	return gateway
 }
@@ -170,5 +189,44 @@ func TestGatewayRemovesCORSHeadersFromUpstream(t *testing.T) {
 	if headers.Get("Access-Control-Allow-Origin") != "" || headers.Get("Access-Control-Allow-Credentials") != "" ||
 		headers.Get(HeaderRequestID) != "request-1" || headers.Get(HeaderServedBy) != "plot-1" {
 		t.Fatalf("headers = %#v", headers)
+	}
+}
+
+func TestGatewayObservesEveryUpstreamCall(t *testing.T) {
+	resolver := &resolverStub{instances: []discovery.Instance{{ID: "report-1", Address: "10.0.0.9", Port: 8083}}}
+	failure := errors.New("connection refused")
+	responses := []func() (*http.Response, error){
+		func() (*http.Response, error) { return okResponse(), nil },
+		func() (*http.Response, error) { return nil, failure },
+	}
+	observer := &observerStub{}
+	call := 0
+	gateway := newObservedTestGateway(resolver, roundTripFunc(func(*http.Request) (*http.Response, error) {
+		response, err := responses[call]()
+		call++
+
+		return response, err
+	}), observer)
+
+	for range responses {
+		gateway.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/api/v1/reports/r-1", http.NoBody),
+		)
+	}
+
+	want := []upstreamObservation{
+		{upstream: "report-service", status: http.StatusOK},
+		{upstream: "report-service", err: failure},
+	}
+	if len(observer.observations) != len(want) {
+		t.Fatalf("observations = %+v, want %+v", observer.observations, want)
+	}
+
+	for index, observation := range observer.observations {
+		if observation.upstream != want[index].upstream || observation.status != want[index].status ||
+			!errors.Is(observation.err, want[index].err) {
+			t.Fatalf("observation %d = %+v, want %+v", index, observation, want[index])
+		}
 	}
 }
