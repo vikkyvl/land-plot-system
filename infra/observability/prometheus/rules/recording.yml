@@ -1,0 +1,87 @@
+# Recording rules: the series the dashboards and the alerts read.
+# Health checks are left out of the per-service aggregates, so Docker and Consul probes do not hide real traffic.
+
+groups:
+  - name: http
+    rules:
+      - record: service_route:http_server_requests:rate5m
+        expr: sum by (service, route) (rate(http_server_request_duration_seconds_count[5m]))
+
+      - record: service:http_server_requests:rate5m
+        expr: sum by (service) (rate(http_server_request_duration_seconds_count{route!="/health"}[5m]))
+
+      - record: service_route:http_server_errors:ratio_rate5m
+        expr: |
+          sum by (service, route) (rate(http_server_request_duration_seconds_count{status_class="5xx"}[5m]))
+            / sum by (service, route) (rate(http_server_request_duration_seconds_count[5m]))
+
+      - record: service:http_server_errors:ratio_rate5m
+        expr: |
+          sum by (service) (rate(http_server_request_duration_seconds_count{route!="/health", status_class="5xx"}[5m]))
+            / sum by (service) (rate(http_server_request_duration_seconds_count{route!="/health"}[5m]))
+
+      - record: service_route:http_server_request_duration_seconds:p50_5m
+        expr: histogram_quantile(0.50, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m])))
+
+      - record: service_route:http_server_request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m])))
+
+      - record: service_route:http_server_request_duration_seconds:p99_5m
+        expr: histogram_quantile(0.99, sum by (le, service, route) (rate(http_server_request_duration_seconds_bucket[5m])))
+
+      - record: service:http_server_request_duration_seconds:p50_5m
+        expr: histogram_quantile(0.50, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m])))
+
+      - record: service:http_server_request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m])))
+
+      - record: service:http_server_request_duration_seconds:p99_5m
+        expr: histogram_quantile(0.99, sum by (le, service) (rate(http_server_request_duration_seconds_bucket{route!="/health"}[5m])))
+
+      - record: upstream:gateway_upstream_request_duration_seconds:p99_5m
+        expr: histogram_quantile(0.99, sum by (le, upstream) (rate(gateway_upstream_request_duration_seconds_bucket[5m])))
+
+      - record: service_target:http_client_errors:ratio_rate5m
+        expr: |
+          sum by (service, target) (rate(http_client_request_duration_seconds_count{outcome=~"5xx|error|timeout"}[5m]))
+            / sum by (service, target) (rate(http_client_request_duration_seconds_count[5m]))
+
+  - name: latency-baseline
+    rules:
+      # The baseline of the anomaly alert: the last hour of p95 without the latest 15 minutes,
+      # so a spike that lasts a few minutes does not raise its own mean and deviation.
+      - record: service:http_server_request_duration_seconds:p95_5m:avg1h
+        expr: avg_over_time(service:http_server_request_duration_seconds:p95_5m[1h] offset 15m)
+
+      - record: service:http_server_request_duration_seconds:p95_5m:stddev1h
+        expr: stddev_over_time(service:http_server_request_duration_seconds:p95_5m[1h] offset 15m)
+
+  - name: messaging
+    rules:
+      - record: service:outbox_oldest_age_seconds:max
+        expr: max by (service) (outbox_oldest_age_seconds)
+
+      - record: service:outbox_pending:max
+        expr: max by (service) (outbox_pending)
+
+      - record: service_queue:message_age_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (le, service, queue) (rate(message_age_seconds_bucket[5m])))
+
+      - record: queue:rabbitmq_messages:sum
+        expr: sum by (queue) (rabbitmq_detailed_queue_messages{queue!~".*\\.dead"})
+
+  - name: business-recording
+    rules:
+      - record: saga:compensations:increase10m
+        expr: sum(increase(sagas_finished_total{result=~"cancelled|reverted"}[10m]))
+
+      # Conversions over the last hour; no data while there were no previews or no saved plots.
+      - record: land_plot:preview_to_plot:ratio_rate1h
+        expr: |
+          sum(increase(plots_changed_total{change="created"}[1h]))
+            / sum(increase(plot_previews_total{result="valid"}[1h]))
+
+      - record: land_plot:plot_to_report:ratio_rate1h
+        expr: |
+          sum(increase(reports_created_total[1h]))
+            / sum(increase(plots_changed_total{change="created"}[1h]))

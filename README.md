@@ -325,6 +325,51 @@ make obs-check   # health of every Prometheus target and UI
 
 **cAdvisor** (CPU and memory per container) runs privileged with the Docker host mounted, so it has its own `cadvisor` profile and is never started by `make obs-up`. `make cadvisor-check` starts it on `127.0.0.1:${CADVISOR_PORT:-8088}` and lists memory and CPU per compose service. If it cannot see the containers (Docker Desktop with the containerd image store), the dashboards use the process metrics of the Go services instead.
 
+### Alerts and runbook
+
+Prometheus records the series the dashboards and alerts read (`infra/observability/prometheus/rules/recording.yml`): p50, p95 and p99, requests per second and the share of 5xx per service and per route (health checks left out of the per-service series), the p99 of the gateway to each upstream, the share of failed calls to each external target, the outbox and queue backlog, compensated sagas in 10 minutes and two conversions over the last hour, `land_plot:preview_to_plot:ratio_rate1h` (valid previews that became plots) and `land_plot:plot_to_report:ratio_rate1h` (reports per created plot).
+
+The alerts are in `infra/observability/prometheus/rules/alerts.yml`. Each has `for`, `severity`, `service`, a summary, a description, the runbook section below and the dashboard panel. The thresholds are the numbers in `expr` and `for`, each named in a comment above its rule; after changing one run `make rules-check` and restart Prometheus. `make rules-check` (part of `make check`) runs `promtool check config` and `promtool test rules` from the pinned `prom/prometheus` image; `infra/observability/prometheus/tests/alerts_test.yml` has a case where each alert fires and one where it stays quiet. Alertmanager groups by `alertname` and `service` and has no receiver yet.
+
+| Alert | Fires when | Severity |
+|---|---|---|
+| `ServiceDown` | a Go service, RabbitMQ or PostgreSQL target is `up == 0`, or a Go service has no target at all (its container is stopped), for 1 minute | critical |
+| `HighLatencyP99` | p99 of a service above 1 s for 5 minutes | warning |
+| `HighErrorRate` | more than 5 % of the requests of a service end with 5xx for 5 minutes, at 0.05 requests per second or more | critical |
+| `LatencyAnomaly` | p95 more than three standard deviations above its mean of the previous hour (the last 15 minutes left out of the baseline) and above 100 ms, for 5 minutes | warning |
+| `ReplicationLagHigh` | the oldest outbox row, or the p95 age of consumed messages, above 30 s for 1 minute | warning |
+| `QueueBacklog` | more than 100 messages in a queue (dead letter queues left out) for 5 minutes | warning |
+| `BacklogPredicted` | `predict_linear` over 30 minutes says the outbox or a queue passes 100 messages within 15 minutes, for 10 minutes | info |
+| `SagaCompensationsSpike` | more than 5 sagas cancelled or reverted within 10 minutes | warning |
+| `ExternalDependencyDown` | more than 50 % of the calls to an Open-Meteo API fail or time out for 5 minutes | warning |
+
+#### ServiceDown
+Check `docker compose ps` and `docker compose logs --tail 100 <service>`: a crash, a failed health check, or PostgreSQL, RabbitMQ, Consul or Keycloak not ready at start. The Go services restart on their own (`restart: unless-stopped`); if the container stays stopped, start it with `docker compose up -d <service>`. The alert resolves once Prometheus scrapes the service again.
+
+#### HighLatencyP99
+Find the slow route on the dashboard and a slow trace in Jaeger (sort by duration): a slow PostgreSQL query, a slow upstream (`gateway_upstream_request_duration_seconds`) or Open-Meteo. **Roll back** when the spike started right after a deployment of that service and nothing outside it changed: redeploy the previous image (`docker compose up -d <service>` after checking out the previous commit, or the previous image tag) and watch p99 fall back within 5–10 minutes. Do not roll back for a slow external API or a database problem; that is fixed where it happens.
+
+#### HighErrorRate
+Filter the logs of the service in Loki by `level="ERROR"` and open the `trace_id` of a failing request in Jaeger. Usual causes: the database or RabbitMQ is unavailable, or `land-plot-service` is unreachable from `report-service`. A rise of 5xx right after a deployment is a reason to roll back as for `HighLatencyP99`.
+
+#### LatencyAnomaly
+The service is clearly slower than in the previous hour even if p99 is still below 1 s. Compare the routes on the dashboard, check whether the traffic changed (RPS) and look at recent traces. If it follows a deployment, prepare the rollback described in `HighLatencyP99`; if it lasts, `HighLatencyP99` may follow.
+
+#### ReplicationLagHigh
+Events wait in the outbox or in RabbitMQ. Check that RabbitMQ is up (`docker compose ps rabbitmq`, the management UI), that the relay logs no `relay outbox messages` errors and that the consumers run (`messages_processed_total`, `retry` outcomes). Once the broker is back the relay publishes the backlog by itself; a PENDING plot whose saga times out is compensated.
+
+#### QueueBacklog
+A consumer does not keep up or does not run. Check the consumers of the queue in the RabbitMQ UI, the `retry` outcomes and the logs of the consuming service. Scale the consumer (`docker compose up -d --scale land-plot-service=2`) or fix the failing handler; messages that cannot be processed go to the dead letter queue.
+
+#### BacklogPredicted
+An early warning: the backlog grows steadily. Act as for `ReplicationLagHigh` or `QueueBacklog` before it reaches them.
+
+#### SagaCompensationsSpike
+Many plots are cancelled or their changes reverted. Look at `reason` on the dashboard: `dlq` means `report-service` rejects events (its logs and the `.dead` queues), `timeout` means replies do not arrive in `SAGA_TIMEOUT` (see `ReplicationLagHigh`). Plots named `FAIL…` are rejected on purpose.
+
+#### ExternalDependencyDown
+Open-Meteo does not answer. Reports are still created with the terrain or climate block `unavailable`, and «Оновити звіт» tries again later. Check that `api.open-meteo.com` answers from the host, the `OPEN_METEO_*` settings and the outgoing network; nothing needs to be restarted.
+
 Stop the stack with `docker compose down`. Add `-v` to also delete the database volume.
 
 ## API

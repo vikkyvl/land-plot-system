@@ -11,12 +11,15 @@ define for_each_module
 	done
 endef
 
+PROMETHEUS_IMAGE := prom/prometheus:v3.15.1
+PROMETHEUS_CONFIG := $(abspath infra/observability/prometheus)
+
 POSTGRES_PORT ?= 55432
 PLOT_TEST_DATABASE_URL ?= postgres://plot_user:plot_dev_password@localhost:$(POSTGRES_PORT)/plot_db?sslmode=disable
 REPORT_TEST_DATABASE_URL ?= postgres://report_user:report_dev_password@localhost:$(POSTGRES_PORT)/report_db?sslmode=disable
 INTEGRATION_TEST := go test -count=1 -tags=integration ./internal/repository/postgres/...
 
-.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector obs-up obs-check cadvisor-check saga-trace-check
+.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector obs-up obs-check cadvisor-check saga-trace-check rules-check
 
 # Formats code: gofumpt, import groups (gci) and long lines (golines).
 fmt:
@@ -49,7 +52,12 @@ test-integration:
 vet:
 	$(call for_each_module,Vetting,go vet ./...)
 
-check: lint test vet compose-config
+check: lint test vet compose-config rules-check
+
+# Checks the Prometheus configuration and rules and runs the alert tests with promtool from the pinned image.
+rules-check:
+	docker run --rm -v "$(PROMETHEUS_CONFIG):/etc/prometheus:ro" --entrypoint sh $(PROMETHEUS_IMAGE) -c \
+		'promtool check config /etc/prometheus/prometheus.yml && promtool test rules /etc/prometheus/tests/*.yml'
 
 # Installs the web app dependencies from package-lock.json when they are missing or outdated.
 $(WEB_DIR)/node_modules: $(WEB_DIR)/package.json $(WEB_DIR)/package-lock.json

@@ -1,0 +1,147 @@
+# Alerts of the land plot system.
+#
+# Thresholds are the numbers in `expr` and the durations in `for`; every rule names its threshold
+# in a comment above it. To change one, edit it here, run `make rules-check` (promtool checks the
+# rules and runs the tests in ../tests, which pin the thresholds) and restart Prometheus:
+#   docker compose --profile observability restart prometheus
+#
+# Every alert carries `severity` (critical, warning or info) and `service`, which Alertmanager
+# groups by, a summary, a description, the runbook section in README.md and the dashboard panel.
+
+groups:
+  - name: availability
+    rules:
+      # A Go service is down when its target answers with up == 0 or, because Prometheus finds the
+      # services through Docker DNS, when the stopped container has no target at all. 1 minute.
+      - alert: ServiceDown
+        expr: |
+          up{job=~"api-gateway|identity-service|land-plot-service|report-service|rabbitmq|postgres"} == 0
+            or absent(up{job="api-gateway"})
+            or absent(up{job="identity-service"})
+            or absent(up{job="land-plot-service"})
+            or absent(up{job="report-service"})
+        for: 1m
+        labels:
+          severity: critical
+          service: "{{ $labels.job }}"
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "Prometheus has not reached {{ $labels.job }} for more than a minute."
+          runbook: README.md#servicedown
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=1
+
+  - name: golden-signals
+    rules:
+      # p99 of a service above 1 second for 5 minutes.
+      - alert: HighLatencyP99
+        expr: service:http_server_request_duration_seconds:p99_5m > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} answers slowly (p99 above 1 s)"
+          description: "The 99th percentile of the request duration of {{ $labels.service }} has been above 1 second for 5 minutes."
+          runbook: README.md#highlatencyp99
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=10
+
+      # More than 5 % of the requests of a service end with 5xx for 5 minutes, at 0.05 requests per second or more.
+      - alert: HighErrorRate
+        expr: |
+          service:http_server_errors:ratio_rate5m > 0.05
+            and on (service) service:http_server_requests:rate5m >= 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} fails more than 5 % of requests"
+          description: "More than 5 % of the requests of {{ $labels.service }} have ended with a 5xx status for 5 minutes."
+          runbook: README.md#higherrorrate
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=12
+
+      # p95 more than 3 standard deviations above its mean of the previous hour, and above 100 ms, for 5 minutes.
+      - alert: LatencyAnomaly
+        expr: |
+          service:http_server_request_duration_seconds:p95_5m
+            > on (service) (
+              service:http_server_request_duration_seconds:p95_5m:avg1h
+                + 3 * service:http_server_request_duration_seconds:p95_5m:stddev1h
+            )
+            and service:http_server_request_duration_seconds:p95_5m > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} is slower than usual"
+          description: "The p95 of {{ $labels.service }} is more than three standard deviations above its mean of the previous hour."
+          runbook: README.md#latencyanomaly
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=10
+
+  - name: replication
+    rules:
+      # The oldest unpublished outbox row, or the p95 age of consumed messages, is older than 30 seconds for 1 minute.
+      - alert: ReplicationLagHigh
+        expr: |
+          service:outbox_oldest_age_seconds:max > 30
+            or max by (service) (service_queue:message_age_seconds:p95_5m) > 30
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Events of {{ $labels.service }} are delayed"
+          description: "Events of {{ $labels.service }} wait more than 30 seconds in the outbox or in RabbitMQ."
+          runbook: README.md#replicationlaghigh
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=20
+
+      # More than 100 messages wait in a queue (dead letter queues excluded) for 5 minutes.
+      - alert: QueueBacklog
+        expr: queue:rabbitmq_messages:sum > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: rabbitmq
+        annotations:
+          summary: "{{ $labels.queue }} holds more than 100 messages"
+          description: "More than 100 messages have been waiting in {{ $labels.queue }} for 5 minutes."
+          runbook: README.md#queuebacklog
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=21
+
+      # Predictive: at the growth of the last 30 minutes the outbox or a queue passes 100 messages within 15 minutes.
+      - alert: BacklogPredicted
+        expr: |
+          predict_linear(service:outbox_pending:max[30m], 900) > 100
+            or label_replace(predict_linear(queue:rabbitmq_messages:sum[30m], 900), "service", "rabbitmq", "", "") > 100
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "The backlog of {{ $labels.service }} grows towards 100 messages"
+          description: "At the growth of the last 30 minutes the outbox or a queue of {{ $labels.service }} will hold more than 100 messages within 15 minutes."
+          runbook: README.md#backlogpredicted
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=21
+
+  - name: business
+    rules:
+      # More than 5 sagas compensated (cancelled or reverted) within 10 minutes.
+      - alert: SagaCompensationsSpike
+        expr: saga:compensations:increase10m > 5
+        for: 1m
+        labels:
+          severity: warning
+          service: land-plot-service
+        annotations:
+          summary: "Many sagas are compensated"
+          description: "More than 5 sagas were cancelled or reverted in the last 10 minutes."
+          runbook: README.md#sagacompensationsspike
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=40
+
+      # More than 50 % of the calls to an Open-Meteo API fail or time out for 5 minutes.
+      - alert: ExternalDependencyDown
+        expr: service_target:http_client_errors:ratio_rate5m{target=~"open-meteo.*"} > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.target }} does not answer"
+          description: "More than half of the calls of {{ $labels.service }} to {{ $labels.target }} have failed or timed out for 5 minutes."
+          runbook: README.md#externaldependencydown
+          dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=41

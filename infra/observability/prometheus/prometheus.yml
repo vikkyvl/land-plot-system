@@ -16,24 +16,28 @@ scrape_configs:
       - names: ["api-gateway"]
         type: A
         port: 9464
+        refresh_interval: 15s
 
   - job_name: identity-service
     dns_sd_configs:
       - names: ["identity-service"]
         type: A
         port: 9464
+        refresh_interval: 15s
 
   - job_name: land-plot-service
     dns_sd_configs:
       - names: ["land-plot-service"]
         type: A
         port: 9464
+        refresh_interval: 15s
 
   - job_name: report-service
     dns_sd_configs:
       - names: ["report-service"]
         type: A
         port: 9464
+        refresh_interval: 15s
 
   - job_name: prometheus
     static_configs:
