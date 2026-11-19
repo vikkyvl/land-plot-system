@@ -245,84 +245,145 @@ The port and credentials can be changed through `RABBITMQ_MANAGEMENT_PORT`, `RAB
 
 The **Exchanges** tab contains `land.events` and `land.events.dead`. The **Queues and Streams** tab contains `report.plot-events` and `report.plot-events.dead`, where message counts, consumers, bindings, acknowledgements, and dead-lettered messages can be inspected.
 
-### Observability stack
+### Observability and incident response
 
-Metrics, logs and traces run in the `observability` profile, so the system also starts without them.
+The system is monitored with metrics, logs and traces, and alerts open incidents in Jira through n8n. The terms of a distributed database map onto the system as follows:
 
-> **`GRAFANA_ADMIN_PASSWORD` is required even without the `observability` profile.** It has no default, and Docker Compose resolves the variables of every service before it does anything, so without it in `.env` every `docker compose` command fails, including `docker compose up` of the main system and the demos. `.env.example` has the placeholder `change-me`; replace it in `.env` (for example with `openssl rand -hex 16`).
+| Term | In the system |
+|---|---|
+| coordinator | `api-gateway`; every request goes through it |
+| shards | `identity-service`, `land-plot-service`, `report-service` |
+| node down | the container of a service is unavailable (`up == 0`, or no Prometheus target at all) — alert [`ServiceDown`](#servicedown); a running service whose `/health` fails — [`ServiceUnhealthy`](#serviceunhealthy) |
+| replication lag | delay of the asynchronous events: the age of the oldest unpublished outbox row (`outbox_oldest_age_seconds`) and the number and age of messages in the RabbitMQ queues — [`ReplicationLagHigh`](#replicationlaghigh), [`QueueBacklog`](#queuebacklog), [`BacklogPredicted`](#backlogpredicted) |
+| shard distribution | share of requests and errors per service, requests per replica, plots and reports in the databases (dashboard section «Shard distribution») |
+| cluster health | `up` of every Prometheus target, `/health` of the Go services, PostgreSQL and RabbitMQ (dashboard section «Cluster health») |
+
+Everything runs in the `observability` profile of `docker-compose.yml`, so the system also starts without it.
+
+| Component | Version | Role |
+|---|---|---|
+| OpenTelemetry SDK for Go | v1.47.0 | traces in the four services and in `ai/` |
+| OpenTelemetry Collector (contrib) | 0.164.0 | receives OTLP and sends the traces to Jaeger |
+| Jaeger | 2.20.0 | trace storage (Badger) and UI |
+| Prometheus | v3.15.1 | metrics, recording rules, alerts |
+| Alertmanager | v0.34.2 | groups alerts and sends them to n8n |
+| Loki, Grafana Alloy | 3.7.9, v1.21.3 | logs of every container |
+| Grafana | 13.2.5 | dashboard, data sources Prometheus, Loki, Jaeger, Alertmanager |
+| postgres-exporter, `rabbitmq_prometheus` | v0.20.1, built into RabbitMQ | database and broker metrics |
+| n8n | 2.46.6 | incident response: Jira Cloud ticket and Mailpit mail |
+| autoheal | 1.2.0 (by digest) | restarts unhealthy Go services |
+
+Every UI listens on `127.0.0.1` only; the ports can be changed in `.env`:
+
+| URL | What | Variable |
+|---|---|---|
+| `http://localhost:13000` | Grafana (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`) | `GRAFANA_PORT` |
+| `http://localhost:19090` | Prometheus | `PROMETHEUS_PORT` |
+| `http://localhost:19093` | Alertmanager | `ALERTMANAGER_PORT` |
+| `http://localhost:16686` | Jaeger | `JAEGER_UI_PORT` |
+| `http://localhost:5678` | n8n | `N8N_PORT` |
+| `http://localhost:8025` | Mailpit, incident mails | `MAILPIT_UI_PORT` |
+| `127.0.0.1:4317`, `127.0.0.1:4318` | OTLP gRPC and HTTP of the Collector, for programs started on the host | `OTLP_GRPC_PORT`, `OTLP_HTTP_PORT` |
+
+The ports differ from the usual 3000, 9090 and 9093 so that other local stacks do not collide. Loki, Alloy, postgres-exporter and the `/metrics` port of the services (`:9464`) are not published.
 
 ```sh
-make obs-up      # docker compose --profile observability up -d --wait
-make obs-check   # health of every Prometheus target and UI
+make obs-up      # docker compose --profile observability up -d --wait: the system and the stack
+make obs-check   # health of every Prometheus target and of the Grafana, Jaeger, Alertmanager and Prometheus UIs
 ```
 
-| URL (127.0.0.1 only)         | What |
-|------------------------------|------|
-| `http://localhost:13000`     | Grafana (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`); data sources Prometheus, Loki, Jaeger and Alertmanager come from `infra/observability/grafana/provisioning` |
-| `http://localhost:19090`     | Prometheus |
-| `http://localhost:19093`     | Alertmanager |
-| `http://localhost:16686`     | Jaeger, traces kept for `JAEGER_RETENTION` (72 h) in Badger on the `jaeger-data` volume |
-| `127.0.0.1:4317`, `:4318`    | OTLP gRPC and HTTP of the OpenTelemetry Collector for programs started on the host |
+**`.env`.** Copy `.env.example` and set these variables; `.env.example` has only placeholders:
 
-- **Traces:** OTLP → OpenTelemetry Collector → Jaeger.
-- **Logs:** Grafana Alloy reads the stdout of every container of the project through the Docker socket and sends it to Loki with the labels `container`, `service` and `level`; `trace_id`, `span_id` and `request_id` of JSON logs go to structured metadata. In Grafana a `trace_id` in a log line opens the trace in Jaeger, and a span opens its logs.
-- **Log format.** The four services and the AI programs (`mcp-server`, `producer-agent`, `consumer-agent`, `fc-client`) write JSON lines with `log/slog` and the same fields: `time`, `level`, `service`, `msg`, `request_id`, `trace_id` and `span_id` (taken from the context; left out while there is no span), and for requests `method`, `route`, `status`, `duration_ms`.
-  - Every HTTP request gives one access line: `error` for 5xx, `warn` for 4xx, `info` otherwise. `route` is the route template (`/api/v1/plots/{id}`), never the path with its query. Health checks are logged only at `debug`; `/metrics` runs on its own port and is not logged.
-  - `request_id` comes from `X-Request-ID` (the gateway creates one when the client sends none and returns it in the response). It goes on to the services over HTTP, is stored with the outbox row (`outbox_events.request_id`) and travels as the RabbitMQ header `x-request-id`, so the consumer of `report-service` and the saga in `land-plot-service` log the request that started them. The AI programs forward it to the gateway.
-  - Logs never contain headers, tokens, cookies, passwords or request bodies; tests send all of them, also in a failing request, and check the output.
+- `GRAFANA_ADMIN_PASSWORD`, `ALERTMANAGER_WEBHOOK_TOKEN`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` — **required even without the `observability` profile.** They have no default, and Docker Compose resolves the variables of every service before it does anything, so without them every `docker compose` command fails, including `docker compose up` of the main system and the demos.
+- `N8N_ENCRYPTION_KEY` — the key n8n encrypts its credentials with; keep it once n8n has started, or the imported credentials cannot be read. Compose passes it as a secret and does not check it, so set it before the first `make obs-up`.
+- Generate the password, the key and the token, for example, with `openssl rand -hex 32`.
+- `JIRA_PROJECT_KEY` (default `INC`) — the Jira project of the tickets.
+- `LLM_API_KEY` — the Gemini key of the AI agents; without it the tickets get the template text instead of the model's analysis.
+- optional: `INCIDENT_MAIL_TO`, `AUTOHEAL_INTERVAL`, `DEMO_FAULTS_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `JAEGER_RETENTION`, `PROMETHEUS_RETENTION`, `GRAFANA_ADMIN_USER` and the ports above.
 
-  One request across the services in Grafana → Explore → Loki:
+In short:
+
+- **[Metrics](#metrics):** every Go service serves `/metrics` on an internal port: request duration per route template, calls to other services and Open-Meteo, outbox and queues, business counters. No label holds a user, plot or trace identifier.
+- **[Logs](#logs):** JSON lines with the same fields in every program, collected by Alloy into Loki; `request_id` and `trace_id` connect them across the services.
+- **[Tracing](#tracing):** OpenTelemetry with W3C Trace Context from the browser and the AI agents through the gateway, the services, PostgreSQL and RabbitMQ; a saga is one trace.
+- **[Dashboard](#dashboard):** one Grafana dashboard from files with seven sections.
+- **[Alerts and runbook](#alerts-and-runbook):** ten Prometheus alerts, unit tested with `promtool` in `make check`, each with a runbook section.
+- **[Incident response](#incident-response):** Alertmanager → n8n → AI analysis → Jira ticket and a mail to Mailpit; resolved closes the ticket.
+- **[Autoheal and demo faults](#autoheal-and-demo-faults):** unhealthy Go services are restarted, and the restart is written into the ticket.
+- **[CPU and memory](#cpu-and-memory-why-not-cadvisor):** from the Go process metrics, because cAdvisor does not work on Docker Desktop for macOS.
+
+### Metrics
+
+Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
+
+**Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
+
+| Metric | Labels |
+|---|---|
+| `http_server_request_duration_seconds` (histogram, 5 ms … 10 s) | `service`, `route`, `method`, `status_class` |
+| `gateway_upstream_request_duration_seconds` (histogram) | `upstream` (service name), `outcome` (`2xx` … `5xx`, `error`, `timeout`) |
+| `gateway_rejected_requests_total` | `status` (`401`, `403`, `429`), `origin` (`gateway` or `upstream`) |
+
+`route` is the template of the route (`/api/v1/plots/{id}`), never the raw path; any path the gateway does not know is `unmatched`, so scanners cannot create new series. No label holds a user, plot or trace identifier.
+
+**Service metrics.** `identity-service`, `land-plot-service` and `report-service` measure every request with the same `http_server_request_duration_seconds{service, route, method, status_class}`; `route` is the pattern the Go `ServeMux` matched (`/api/v1/plots/{id}`), or `unmatched`.
+
+| Metric | Service | Meaning |
+|---|---|---|
+| `http_client_request_duration_seconds{target, outcome}` | report | calls to `land-plot-service`, `open-meteo-elevation` and `open-meteo-archive`; `outcome` is the status class, `error` or `timeout` |
+| `outbox_pending`, `outbox_failed`, `outbox_oldest_age_seconds` | land-plot, report | read from `outbox_events` on every scrape; the age is the replication lag of the outbox |
+| `outbox_published_total`, `outbox_publish_errors_total{failure}` | land-plot, report | messages confirmed by RabbitMQ; failures that are retried or abandoned |
+| `messages_processed_total{queue, outcome}` | land-plot, report | consumed messages: `ack`, `retry` (requeued) or `reject` (dead-lettered) |
+| `message_age_seconds{queue}` | land-plot, report | time from writing the event to the outbox until the consumer processed it (header `x-created-at-ms`, AMQP timestamp as fallback) |
+| `plots_changed_total{change}` | land-plot | plots `created`, `updated`, `deleted` |
+| `plot_previews_total{result}`, `plot_preview_problems_total{reason}` | land-plot | previews `valid` or `invalid`, and every problem code (`self_intersection`, `duplicate_point`, `invalid_capture`, …) |
+| `sagas_finished_total{kind, result, reason}` | land-plot | sagas `confirmed`, `cancelled` (a create compensated) or `reverted` (an update compensated), with `dlq` or `timeout` |
+| `plots_stored{state}`, `reports_stored{plot}` | land-plot, report | rows in the databases (`pending`, `confirmed`, `cancelled`, `deleted`; reports of `active` or `deleted` plots) |
+| `reports_created_total`, `report_blocks_unavailable_total{block}`, `report_downloads_total{format}` | report | reports, reports whose `terrain` or `climate` source did not answer, PDF and GeoJSON files built |
+| `identity_profiles_served_total`, `identity_users_created_total` | identity | profiles returned (one per sign-in of the web app) and users created just in time |
+| `database_stats_up` | land-plot, report | `0` when the statistics above could not be read on that scrape |
+| `service_health_status` | all four | `1` while `/health` answers 200, `0` after a demo fault (see [Autoheal and demo faults](#autoheal-and-demo-faults)) |
+
+The conversions (valid preview → saved plot, plot → report) are recording rules over these counters. Every replica reports the same database gauges, so dashboards take `max` of them, not `sum`.
+
+### Logs
+
+Grafana Alloy reads the stdout of every container of the project through the Docker socket and sends it to Loki with the labels `container`, `service` and `level`; `trace_id`, `span_id` and `request_id` of JSON logs go to structured metadata. In Grafana a `trace_id` in a log line opens the trace in Jaeger, and a span opens its logs.
+
+The four services and the AI programs (`mcp-server`, `producer-agent`, `consumer-agent`, `fc-client`) write JSON lines with `log/slog` and the same fields: `time`, `level`, `service`, `msg`, `request_id`, `trace_id` and `span_id` (taken from the context; left out while there is no span), and for requests `method`, `route`, `status`, `duration_ms`.
+
+- Every HTTP request gives one access line: `error` for 5xx, `warn` for 4xx, `info` otherwise. `route` is the route template (`/api/v1/plots/{id}`), never the path with its query. Health checks are logged only at `debug`; `/metrics` runs on its own port and is not logged.
+- `request_id` comes from `X-Request-ID` (the gateway creates one when the client sends none and returns it in the response). It goes on to the services over HTTP, is stored with the outbox row (`outbox_events.request_id`) and travels as the RabbitMQ header `x-request-id`, so the consumer of `report-service` and the saga in `land-plot-service` log the request that started them. The AI programs forward it to the gateway.
+- Logs never contain headers, tokens, cookies, passwords or request bodies; tests send all of them, also in a failing request, and check the output.
+
+One request across the services in Grafana → Explore → Loki:
+
+```
+{service="land-plot-service"} | json | request_id="lab6-step4-bc584dac"
+```
+
+### Tracing
+
+OpenTelemetry with W3C Trace Context. Every Go service starts the SDK and exports spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_ENDPOINT` (`http://otel-collector:4318`; empty turns tracing off, and an unreachable collector is only logged at `debug`). The Collector sends them to Jaeger, which keeps them for `JAEGER_RETENTION` (72 h) in Badger on the `jaeger-data` volume. Jaeger is pinned to 2.20.0 because 2.21 removed the HTTP API that the Jaeger data source of Grafana 13 uses.
+
+- The gateway continues the trace from an incoming `traceparent` or starts a new one, returns its ID in `X-Trace-ID` (exposed through CORS, which also allows `traceparent` and `tracestate`) and puts `trace_id` next to `request_id` in every error body of the gateway and the services.
+- Spans: one server span per request named after the route (`POST /api/v1/plots`, health checks are not traced), a client span for every call to another service, which carries `traceparent` (`otelhttp`), and a span for every PostgreSQL query (`otelpgx`, without parameters). Calls to Open-Meteo get a client span too, but no `traceparent` is sent to an external API.
+- The logger takes `trace_id` and `span_id` from the context, so in Grafana a log line opens its trace in Jaeger (derived field `trace_id`) and a span opens the logs of its trace (`{container=~".+"} | trace_id = "<id>"`).
+- **A saga is one trace.** The trace context of the request is written with the outbox row (`outbox_events.trace_context`) and with the saga (`plot_sagas.trace_context`) in the same transaction. The relay publishes each row in a `publish <routing key>` span (producer) under that context and sends `traceparent` and `tracestate` as AMQP headers. A consumer starts `process <queue>` (consumer) as a child of the publication with a link to it; the handler, its queries and its own outbox row run in that span. Dead-lettered and requeued messages keep their headers, so the compensation stays in the trace, and the saga timeout continues the trace stored with the saga.
 
   ```
-  {service="land-plot-service"} | json | request_id="lab6-step4-bc584dac"
+  api-gateway        POST /api/v1/plots
+  land-plot-service    POST /api/v1/plots → publish plot.created
+  report-service         process report.plot-events → publish plot.summary.applied
+  land-plot-service        process land-plot.saga-events (CONFIRMED)
   ```
-- **Tracing** (OpenTelemetry, W3C Trace Context). Every Go service starts the SDK and exports spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_ENDPOINT` (`http://otel-collector:4318`; empty turns tracing off, and an unreachable collector is only logged at `debug`).
-  - The gateway continues the trace from an incoming `traceparent` or starts a new one, returns its ID in `X-Trace-ID` (exposed through CORS, which also allows `traceparent` and `tracestate`) and puts `trace_id` next to `request_id` in every error body of the gateway and the services.
-  - Spans: one server span per request named after the route (`POST /api/v1/plots`, health checks are not traced), a client span for every call to another service, which carries `traceparent` (`otelhttp`), and a span for every PostgreSQL query (`otelpgx`, without parameters). Calls to Open-Meteo get a client span too, but no `traceparent` is sent to an external API.
-  - The logger takes `trace_id` and `span_id` from the context, so in Grafana a log line opens its trace in Jaeger (derived field `trace_id`) and a span opens the logs of its trace (`{container=~".+"} | trace_id = "<id>"`).
-  - **A saga is one trace.** The trace context of the request is written with the outbox row (`outbox_events.trace_context`) and with the saga (`plot_sagas.trace_context`) in the same transaction. The relay publishes each row in a `publish <routing key>` span (producer) under that context and sends `traceparent` and `tracestate` as AMQP headers. A consumer starts `process <queue>` (consumer) as a child of the publication with a link to it; the handler, its queries and its own outbox row run in that span. Dead-lettered and requeued messages keep their headers, so the compensation stays in the trace, and the saga timeout continues the trace stored with the saga.
 
-    ```
-    api-gateway        POST /api/v1/plots
-    land-plot-service    POST /api/v1/plots → publish plot.created
-    report-service         process report.plot-events → publish plot.summary.applied
-    land-plot-service        process land-plot.saga-events (CONFIRMED)
-    ```
+  `make saga-trace-check` creates a plot that is confirmed and one named `FAIL…` that is cancelled through the dead letter queue, and checks in Jaeger that each saga is a single trace.
+- **Traces start in the browser and in the AI agents.** The web app has no tracing SDK: for every request to the gateway it creates a W3C `traceparent` (a new trace ID, kept when the request is repeated after a token renewal), so the trace in Jaeger starts with the gateway span whose parent is the browser. Nominatim and the map tiles never get `traceparent`. The AI programs run the same SDK as the services: `mcp-server`, `producer-agent` and `consumer-agent` continue an incoming trace, and their calls to the gateway and from the consumer to the producer (A2A) carry `traceparent` and `X-Request-ID`, so an MCP tool call or a delegated task is one trace with the gateway and the services.
 
-    `make saga-trace-check` creates a plot that is confirmed and one named `FAIL…` that is cancelled through the dead letter queue, and checks in Jaeger that each saga is a single trace.
-  - **Traces start in the browser and in the AI agents.** The web app has no tracing SDK: for every request to the gateway it creates a W3C `traceparent` (a new trace ID, kept when the request is repeated after a token renewal), so the trace in Jaeger starts with the gateway span whose parent is the browser. Nominatim and the map tiles never get `traceparent`. The AI programs run the same SDK as the services: `mcp-server`, `producer-agent` and `consumer-agent` continue an incoming trace, and their calls to the gateway and from the consumer to the producer (A2A) carry `traceparent` and `X-Request-ID`, so an MCP tool call or a delegated task is one trace with the gateway and the services.
-- **Metrics:** Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
-- **Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
+### CPU and memory: why not cAdvisor
 
-  | Metric | Labels |
-  |---|---|
-  | `http_server_request_duration_seconds` (histogram, 5 ms … 10 s) | `service`, `route`, `method`, `status_class` |
-  | `gateway_upstream_request_duration_seconds` (histogram) | `upstream` (service name), `outcome` (`2xx` … `5xx`, `error`, `timeout`) |
-  | `gateway_rejected_requests_total` | `status` (`401`, `403`, `429`), `origin` (`gateway` or `upstream`) |
-
-  `route` is the template of the route (`/api/v1/plots/{id}`), never the raw path; any path the gateway does not know is `unmatched`, so scanners cannot create new series. No label holds a user, plot or trace identifier.
-- **Service metrics.** `identity-service`, `land-plot-service` and `report-service` measure every request with the same `http_server_request_duration_seconds{service, route, method, status_class}`; `route` is the pattern the Go `ServeMux` matched (`/api/v1/plots/{id}`), or `unmatched`.
-
-  | Metric | Service | Meaning |
-  |---|---|---|
-  | `http_client_request_duration_seconds{target, outcome}` | report | calls to `land-plot-service`, `open-meteo-elevation` and `open-meteo-archive`; `outcome` is the status class, `error` or `timeout` |
-  | `outbox_pending`, `outbox_failed`, `outbox_oldest_age_seconds` | land-plot, report | read from `outbox_events` on every scrape; the age is the replication lag of the outbox |
-  | `outbox_published_total`, `outbox_publish_errors_total{failure}` | land-plot, report | messages confirmed by RabbitMQ; failures that are retried or abandoned |
-  | `messages_processed_total{queue, outcome}` | land-plot, report | consumed messages: `ack`, `retry` (requeued) or `reject` (dead-lettered) |
-  | `message_age_seconds{queue}` | land-plot, report | time from writing the event to the outbox until the consumer processed it (header `x-created-at-ms`, AMQP timestamp as fallback) |
-  | `plots_changed_total{change}` | land-plot | plots `created`, `updated`, `deleted` |
-  | `plot_previews_total{result}`, `plot_preview_problems_total{reason}` | land-plot | previews `valid` or `invalid`, and every problem code (`self_intersection`, `duplicate_point`, `invalid_capture`, …) |
-  | `sagas_finished_total{kind, result, reason}` | land-plot | sagas `confirmed`, `cancelled` (a create compensated) or `reverted` (an update compensated), with `dlq` or `timeout` |
-  | `plots_stored{state}`, `reports_stored{plot}` | land-plot, report | rows in the databases (`pending`, `confirmed`, `cancelled`, `deleted`; reports of `active` or `deleted` plots) |
-  | `reports_created_total`, `report_blocks_unavailable_total{block}`, `report_downloads_total{format}` | report | reports, reports whose `terrain` or `climate` source did not answer, PDF and GeoJSON files built |
-  | `identity_profiles_served_total`, `identity_users_created_total` | identity | profiles returned (one per sign-in of the web app) and users created just in time |
-  | `database_stats_up` | land-plot, report | `0` when the statistics above could not be read on that scrape |
-
-  The conversions (valid preview → saved plot, plot → report) are recording rules over these counters. Every replica reports the same database gauges, so dashboards take `max` of them, not `sum`.
-- **Jaeger version:** Jaeger is pinned to 2.20.0 because 2.21 removed the HTTP API that the Jaeger data source of Grafana 13 uses.
-- **Ports:** the ports differ from the usual 3000, 9090 and 9093 so that other local stacks do not collide; every port can be changed in `.env`.
-
-**CPU and memory** come from the process metrics of the Go services (`process_cpu_seconds_total`, `process_resident_memory_bytes`, registered by `client_golang`), not from cAdvisor. cAdvisor v0.60.6 was tried twice on Docker Desktop for macOS (Docker Engine 29 with the containerd image store) and dropped:
+CPU and memory come from the process metrics of the Go services (`process_cpu_seconds_total`, `process_resident_memory_bytes`, registered by `client_golang`), not from cAdvisor. cAdvisor v0.60.6 was tried twice on Docker Desktop for macOS (Docker Engine 29 with the containerd image store) and dropped:
 
 1. With `/var/run` mounted it saw only the root cgroup: its Docker factory could not reach `/var/run/docker.sock`, because Docker Desktop passes the socket into a container only when it is mounted on its own.
 2. With the socket mounted the Docker factory reached the API, but with the containerd image store it also needs `/run/containerd/containerd.sock`, and mounting that socket from the Docker Desktop VM fails with «read-only file system».
