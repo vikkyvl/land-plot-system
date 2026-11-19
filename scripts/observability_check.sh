@@ -12,7 +12,7 @@ prometheus_url=${PROMETHEUS_URL:-http://localhost:${PROMETHEUS_PORT:-19090}}
 grafana_url=${GRAFANA_URL:-http://localhost:${GRAFANA_PORT:-13000}}
 jaeger_url=${JAEGER_URL:-http://localhost:${JAEGER_UI_PORT:-16686}}
 alertmanager_url=${ALERTMANAGER_URL:-http://localhost:${ALERTMANAGER_PORT:-19093}}
-optional_jobs=${OPTIONAL_JOBS:-cadvisor}
+optional_jobs=${OPTIONAL_JOBS:-}
 
 echo "Prometheus targets ($prometheus_url)"
 targets=$(curl -fsS "$prometheus_url/api/v1/targets?state=active")
@@ -42,4 +42,4 @@ if [ -n "$(echo "$down" | tr -d ' ')" ]; then
 fi
 
 echo
-echo "Observability stack is healthy (optional jobs: $optional_jobs)"
+echo "Observability stack is healthy"

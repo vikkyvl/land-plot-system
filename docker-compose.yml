@@ -504,29 +504,6 @@ services:
       postgres:
         condition: service_healthy
 
-  cadvisor:
-    <<: *observability-service
-    profiles: ["cadvisor"]
-    image: ghcr.io/google/cadvisor:v0.60.6
-    privileged: true
-    command:
-      - --docker_only=true
-      - --housekeeping_interval=15s
-      - --store_container_labels=false
-      - --whitelisted_container_labels=com.docker.compose.service
-    devices:
-      - /dev/kmsg
-    ports:
-      - "127.0.0.1:${CADVISOR_PORT:-8088}:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-
 networks:
   land-network:
     driver: bridge

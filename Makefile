@@ -19,7 +19,7 @@ PLOT_TEST_DATABASE_URL ?= postgres://plot_user:plot_dev_password@localhost:$(POS
 REPORT_TEST_DATABASE_URL ?= postgres://report_user:report_dev_password@localhost:$(POSTGRES_PORT)/report_db?sslmode=disable
 INTEGRATION_TEST := go test -count=1 -tags=integration ./internal/repository/postgres/...
 
-.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector obs-up obs-check cadvisor-check saga-trace-check rules-check
+.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector obs-up obs-check saga-trace-check rules-check
 
 # Formats code: gofumpt, import groups (gci) and long lines (golines).
 fmt:
@@ -73,7 +73,7 @@ check-all: check web-check
 compose-config:
 	docker compose config --quiet
 	docker compose --profile ai config --quiet
-	docker compose --profile observability --profile cadvisor config --quiet
+	docker compose --profile observability config --quiet
 
 demo:
 	./scripts/demo.sh
@@ -95,18 +95,13 @@ demo-lr5:
 demo-web:
 	./scripts/demo_web.sh
 
-# Starts the system with the observability stack (without the privileged cAdvisor).
+# Starts the system with the observability stack.
 obs-up:
 	docker compose --profile observability up -d --wait
 
 # Shows the health of every Prometheus scrape target.
 obs-check:
 	./scripts/observability_check.sh
-
-# Starts cAdvisor (privileged, mounts the Docker host) and checks that it sees the containers of the project.
-cadvisor-check:
-	docker compose --profile cadvisor up -d cadvisor
-	./scripts/cadvisor_check.sh
 
 # Creates a confirmed and a compensated plot through the gateway and checks in Jaeger that each saga is one trace.
 saga-trace-check:

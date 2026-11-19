@@ -2688,152 +2688,10 @@
       "panels": []
     },
     {
-      "id": 50,
-      "type": "timeseries",
-      "title": "CPU by container (cAdvisor)",
-      "description": "Needs cAdvisor (make cadvisor-check). The process panels below are the fallback.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 104
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service!=\"\"}[$__rate_interval]))",
-          "legendFormat": "{{container_label_com_docker_compose_service}}",
-          "refId": "A",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "palette-classic"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "id": 51,
-      "type": "timeseries",
-      "title": "Memory by container (cAdvisor)",
-      "description": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 104
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_service!=\"\"})",
-          "legendFormat": "{{container_label_com_docker_compose_service}}",
-          "refId": "A",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "palette-classic"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
       "id": 52,
       "type": "timeseries",
-      "title": "CPU of the Go services (process)",
-      "description": "process_cpu_seconds_total of each Go service; works without cAdvisor.",
+      "title": "CPU of the Go services",
+      "description": "process_cpu_seconds_total of each Go service.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2842,7 +2700,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 112
+        "y": 104
       },
       "targets": [
         {
@@ -2903,8 +2761,8 @@
     {
       "id": 53,
       "type": "timeseries",
-      "title": "Memory of the Go services (process)",
-      "description": "",
+      "title": "Memory of the Go services",
+      "description": "Resident memory of each Go service.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2913,7 +2771,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 112
+        "y": 104
       },
       "targets": [
         {
@@ -2975,12 +2833,12 @@
       "type": "row",
       "title": "Logs",
       "collapsed": false,
-      "id": 143,
+      "id": 141,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 120
+        "y": 112
       },
       "panels": []
     },
@@ -2997,7 +2855,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 121
+        "y": 113
       },
       "targets": [
         {
@@ -3033,7 +2891,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 133
+        "y": 125
       },
       "targets": [
         {
