@@ -89,7 +89,7 @@ func TestRequestFromAnAllowedOriginGetsOneSetOfHeaders(t *testing.T) {
 
 	if response.Code != http.StatusOK || len(response.Header().Values("Access-Control-Allow-Origin")) != 1 ||
 		response.Header().Get("Access-Control-Allow-Origin") != allowedOrigin ||
-		response.Header().Get("Access-Control-Expose-Headers") != "X-Request-ID, Retry-After" {
+		response.Header().Get("Access-Control-Expose-Headers") != "X-Request-ID, Retry-After, Content-Disposition" {
 		t.Fatalf("status = %d, headers = %#v", response.Code, response.Header())
 	}
 }

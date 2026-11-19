@@ -29,6 +29,10 @@ func TestRequiredScopes(t *testing.T) {
 		{http.MethodGet, "/api/v1/plots/", nil, false},
 		{http.MethodGet, "/api/v1/reports", []string{ScopeReportsRead}, true},
 		{http.MethodGet, "/api/v1/plots/plot-1/versions", []string{ScopePlotsRead}, true},
+		{http.MethodGet, "/api/v1/plots/summary", []string{ScopePlotsRead}, true},
+		{http.MethodGet, "/api/v1/reports/report-1/pdf", []string{ScopeReportsRead}, true},
+		{http.MethodGet, "/api/v1/reports/report-1/geojson", []string{ScopeReportsRead}, true},
+		{http.MethodPost, "/api/v1/reports/report-1/pdf", nil, false},
 		{http.MethodGet, "/api/v1/plots/plot-1/versions/1", nil, false},
 		{http.MethodPost, "/api/v1/plots/plot-1/versions", nil, false},
 	}

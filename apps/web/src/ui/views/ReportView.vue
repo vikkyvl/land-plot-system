@@ -3,19 +3,19 @@ import { storeToRefs } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { reportToGeoJson } from '../../domain/geoJson'
 import { hasScope, Scope } from '../../domain/profile'
+import { hasNewerReport, type ReportFormat } from '../../domain/report'
 import { isOutdated, isPlotDeleted, reportNumber, type ReportDetails } from '../../domain/reportDetails'
 import PlotViewMap from '../components/PlotViewMap.vue'
 import ReportAccuracy from '../components/ReportAccuracy.vue'
 import ReportBlock from '../components/ReportBlock.vue'
 import ReportClimate from '../components/ReportClimate.vue'
 import ReportTerrain from '../components/ReportTerrain.vue'
-import { copyText, downloadJson, safeFileName } from '../composables/fileExport'
+import { copyText, saveFile } from '../composables/fileExport'
 import { formatAres, formatDate, formatHectareNumber, formatMeters, formatSquareMeters } from '../composables/format'
 import { useMapLayers, useReportService, useSettingsService } from '../composables/services'
 import { useFailure, type Failure } from '../composables/useFailure'
-import { t } from '../i18n'
+import { currentLocale, t } from '../i18n'
 import { useSessionStore } from '../stores/session'
 import { useToastStore } from '../stores/toast'
 
@@ -90,11 +90,32 @@ async function refresh(): Promise<void> {
   }
 }
 
-function download(): void {
-  if (report.value === null || points.value === null) {
+const downloading = ref<ReportFormat | null>(null)
+const newer = computed(() => (report.value !== null && hasNewerReport(report.value) ? report.value.latest : null))
+const createdLine = computed(() => {
+  if (report.value === null) {
+    return ''
+  }
+  const created = t('report.created', { date: formatDate(report.value.createdAt) })
+  const years = report.value.generatedFrom.climateYears
+
+  return years === null ? created : `${created} · ${t('report.climateFrom', { from: years.first, to: years.last })}`
+})
+
+async function download(format: ReportFormat): Promise<void> {
+  if (report.value === null) {
     return
   }
-  downloadJson(`${safeFileName(report.value.plotName)}-${reportNumber(report.value)}.geojson`, reportToGeoJson(report.value, points.value))
+  downloading.value = format
+  try {
+    const file = await service.download(report.value.id, format, currentLocale())
+    const fallback = `${t('report.fallbackFileName', { number: reportNumber(report.value) })}.${format}`
+    saveFile(file.fileName ?? fallback, file.content)
+  } catch (error) {
+    await handle(error, { toast: true })
+  } finally {
+    downloading.value = null
+  }
 }
 
 async function share(): Promise<void> {
@@ -171,12 +192,22 @@ async function share(): Promise<void> {
         <div class="report__actions">
           <button
             type="button"
-            class="report__button report__download ui-secondary"
-            :disabled="points === null"
-            :title="points === null ? $t('report.noBoundary') : undefined"
-            @click="download"
+            class="report__button report__pdf ui-secondary"
+            :disabled="downloading !== null"
+            :aria-busy="downloading === 'pdf'"
+            @click="download('pdf')"
           >
-            {{ $t('report.geojson') }}
+            {{ downloading === 'pdf' ? $t('report.downloading') : $t('report.pdf') }}
+          </button>
+          <button
+            type="button"
+            class="report__button report__download ui-secondary"
+            :disabled="downloading !== null || report.boundary.length === 0"
+            :title="report.boundary.length === 0 ? $t('report.noBoundary') : undefined"
+            :aria-busy="downloading === 'geojson'"
+            @click="download('geojson')"
+          >
+            {{ downloading === 'geojson' ? $t('report.downloading') : $t('report.geojson') }}
           </button>
           <button
             type="button"
@@ -188,6 +219,29 @@ async function share(): Promise<void> {
           </button>
         </div>
       </header>
+
+      <div
+        v-if="canReport && !deleted"
+        class="report__refresh"
+      >
+        <button
+          type="button"
+          class="report__button report__refresh-button ui-secondary"
+          :disabled="refreshing"
+          @click="refresh"
+        >
+          {{ refreshing ? $t('report.refreshing') : $t('report.refresh') }}
+        </button>
+        <span class="report__refresh-hint">{{ $t('report.refreshHint') }}</span>
+      </div>
+
+      <RouterLink
+        v-if="newer"
+        class="report__newer"
+        :to="`/reports/${newer.id}`"
+      >
+        {{ $t('report.newer', { date: formatDate(newer.createdAt) }) }}
+      </RouterLink>
 
       <div
         v-if="outdated && details?.plot"
@@ -250,9 +304,7 @@ async function share(): Promise<void> {
 
       <article class="report__card">
         <div class="report__meta">
-          <span class="report__meta-number">{{
-            $t('report.meta', { number: reportNumber(report), date: formatDate(report.createdAt) })
-          }}</span>
+          <span class="report__meta-number">{{ $t('report.number', { number: reportNumber(report) }) }} · {{ createdLine }}</span>
           <span
             v-if="owner"
             class="report__meta-owner"
@@ -260,7 +312,7 @@ async function share(): Promise<void> {
         </div>
         <div class="report__card-heading">
           <span class="report__card-name">{{ report.plotName }}</span>
-          <span class="report__card-date">{{ $t('report.created', { date: formatDate(report.createdAt) }) }}</span>
+          <span class="report__card-date">{{ createdLine }}</span>
         </div>
 
         <PlotViewMap
@@ -415,6 +467,24 @@ async function share(): Promise<void> {
 
 .report__sources a {
   color: inherit;
+}
+
+.report__refresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.report__refresh-hint {
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+}
+
+.report__newer {
+  align-self: flex-start;
+  font-size: var(--fs-control);
+  font-weight: 700;
 }
 
 .report__head {

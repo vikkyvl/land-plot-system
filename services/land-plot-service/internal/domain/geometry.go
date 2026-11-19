@@ -42,7 +42,10 @@ func InspectPolygon(points []Coordinate, calculator AreaCalculator) PolygonInspe
 		return PolygonInspection{Errors: problems}
 	}
 
-	if intersection, found := findSelfIntersection(projectToLocalPlane(points)); found {
+	plane := newLocalPlane(points)
+	if intersection, crossing, found := findSelfIntersection(plane.project(points)); found {
+		intersection.Point = plane.coordinate(crossing)
+
 		return PolygonInspection{Errors: []*Error{ErrSelfIntersection.WithDetails(intersection)}}
 	}
 
@@ -108,3 +111,5 @@ func firstDuplicatePair(points []Coordinate) (int, int, bool) {
 }
 
 func degreesToRadians(value float64) float64 { return value * math.Pi / degreesInHalfTurn }
+
+func radiansToDegrees(value float64) float64 { return value * degreesInHalfTurn / math.Pi }

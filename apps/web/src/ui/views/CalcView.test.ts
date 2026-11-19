@@ -44,7 +44,7 @@ const crossed: PlotPreview = {
     {
       code: 'self_intersection',
       message: 'polygon sides intersect',
-      details: { kind: 'self_intersection', segments: [[1, 2], [3, 0]], swap: [2, 3] },
+      details: { kind: 'self_intersection', segments: [[1, 2], [3, 0]], swap: [2, 3], point: null },
     },
   ],
 }

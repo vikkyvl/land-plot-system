@@ -1,5 +1,6 @@
-import type { Report, ReportQuery } from '../domain/report'
-import type { ReportGateway } from '../port/reportGateway'
+import type { Locale } from '../domain/locale'
+import type { Report, ReportFormat, ReportQuery } from '../domain/report'
+import type { ReportFile, ReportGateway } from '../port/reportGateway'
 
 import { toReport, type ReportDto } from './dto'
 import { pathOf, type HttpClient } from './http'
@@ -23,6 +24,10 @@ export class ReportsClient implements ReportGateway {
 
   async get(id: string): Promise<Report> {
     return toReport(await this.http.request<ReportDto>('GET', reportsPath + pathOf(id)))
+  }
+
+  download(id: string, format: ReportFormat, locale: Locale): Promise<ReportFile> {
+    return this.http.download(reportsPath + pathOf(id, format), { query: { lang: locale } })
   }
 
   async create(plotId: string): Promise<Report> {

@@ -49,13 +49,14 @@ describe('error map', () => {
     const body = {
       code: ErrorCode.SelfIntersection,
       message: 'polygon sides intersect',
-      details: { segments: [[1, 2], [3, 0]], swap: [2, 3] },
+      details: { segments: [[1, 2], [3, 0]], swap: [2, 3], point: { lat: 50.45045, lon: 30.5207 } },
     }
 
     expect(toDomainError(422, body).details).toEqual({
       kind: 'self_intersection',
       segments: [[1, 2], [3, 0]],
       swap: [2, 3],
+      point: { latitude: 50.45045, longitude: 30.5207 },
     })
   })
 

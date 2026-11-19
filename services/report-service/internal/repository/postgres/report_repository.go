@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,9 +13,19 @@ import (
 )
 
 const reportColumns = `id, owner_id, plot_id, plot_name, plot_version, area_m2,
-	area_ares, area_hectares, perimeter_m, created_at, accuracy, terrain, climate`
+	area_ares, area_hectares, perimeter_m, created_at, accuracy, terrain, climate, boundary`
 
-const storedReportColumns = reportColumns + `, plot_deleted_at`
+const selectReports = `SELECT report.id, report.owner_id, report.plot_id, report.plot_name, report.plot_version,
+	report.area_m2, report.area_ares, report.area_hectares, report.perimeter_m, report.created_at,
+	report.accuracy, report.terrain, report.climate, report.boundary, report.plot_deleted_at,
+	latest.id, latest.created_at
+	FROM reports report
+	LEFT JOIN LATERAL (
+		SELECT newest.id, newest.created_at FROM reports newest
+		WHERE newest.owner_id = report.owner_id AND newest.plot_id = report.plot_id
+		ORDER BY newest.created_at DESC, newest.id DESC
+		LIMIT 1
+	) latest ON true`
 
 type ReportRepository struct {
 	pool *pgxpool.Pool
@@ -32,10 +43,10 @@ func (repository *ReportRepository) Create(requestContext context.Context, repor
 
 	_, err = repository.pool.Exec(requestContext, `
 		INSERT INTO reports (`+reportColumns+`)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		report.ID, report.OwnerID, report.PlotID, report.PlotName, report.PlotVersion,
 		report.AreaM2, report.AreaAres, report.AreaHectares, report.PerimeterM, report.CreatedAt,
-		snapshot.accuracy, snapshot.terrain, snapshot.climate,
+		snapshot.accuracy, snapshot.terrain, snapshot.climate, snapshot.boundary,
 	)
 	if err != nil {
 		return fmt.Errorf(wrapInsertReport, err)
@@ -45,7 +56,7 @@ func (repository *ReportRepository) Create(requestContext context.Context, repor
 }
 
 func (repository *ReportRepository) GetByID(requestContext context.Context, id string) (domain.Report, error) {
-	row := repository.pool.QueryRow(requestContext, `SELECT `+storedReportColumns+` FROM reports WHERE id = $1`, id)
+	row := repository.pool.QueryRow(requestContext, selectReports+` WHERE report.id = $1`, id)
 
 	report, err := scanReport(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -69,9 +80,9 @@ func (repository *ReportRepository) List(
 	}
 
 	rows, err := repository.pool.Query(requestContext, `
-		SELECT `+storedReportColumns+` FROM reports
-		WHERE owner_id = $1 AND ($2::uuid IS NULL OR plot_id = $2::uuid)
-		ORDER BY created_at DESC, id DESC
+		`+selectReports+`
+		WHERE report.owner_id = $1 AND ($2::uuid IS NULL OR report.plot_id = $2::uuid)
+		ORDER BY report.created_at DESC, report.id DESC
 		LIMIT $3`,
 		filter.OwnerID, plotID, filter.Limit,
 	)
@@ -95,17 +106,24 @@ type rowScanner interface {
 
 func scanReport(row rowScanner) (domain.Report, error) {
 	var (
-		report   domain.Report
-		snapshot snapshotColumns
+		report          domain.Report
+		snapshot        snapshotColumns
+		latestID        *string
+		latestCreatedAt *time.Time
 	)
 
 	err := row.Scan(
 		&report.ID, &report.OwnerID, &report.PlotID, &report.PlotName, &report.PlotVersion,
 		&report.AreaM2, &report.AreaAres, &report.AreaHectares, &report.PerimeterM, &report.CreatedAt,
-		&snapshot.accuracy, &snapshot.terrain, &snapshot.climate, &report.PlotDeletedAt,
+		&snapshot.accuracy, &snapshot.terrain, &snapshot.climate, &snapshot.boundary, &report.PlotDeletedAt,
+		&latestID, &latestCreatedAt,
 	)
 	if err != nil {
 		return domain.Report{}, err
+	}
+
+	if latestID != nil && latestCreatedAt != nil {
+		report.Latest = &domain.LatestReport{ID: *latestID, CreatedAt: *latestCreatedAt}
 	}
 
 	return snapshot.decodeInto(report)

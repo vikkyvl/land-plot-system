@@ -30,7 +30,14 @@ func (LocalEllipsoidCalculator) Calculate(points []Coordinate) AreaResult {
 	}
 }
 
-func projectToLocalPlane(points []Coordinate) []metricPoint {
+type localPlane struct {
+	latitudeCenter  float64
+	longitudeCenter float64
+	meridianRadius  float64
+	parallelRadius  float64
+}
+
+func newLocalPlane(points []Coordinate) localPlane {
 	var latitudeCenter, longitudeCenter float64
 	for _, point := range points {
 		latitudeCenter += point.Latitude
@@ -43,17 +50,35 @@ func projectToLocalPlane(points []Coordinate) []metricPoint {
 	centerLatitude := degreesToRadians(latitudeCenter)
 	sinLatitude := math.Sin(centerLatitude)
 	curvature := 1 - wgs84EccentricitySquared*sinLatitude*sinLatitude
-	meridianRadius := WGS84SemiMajorAxis * (1 - wgs84EccentricitySquared) / (curvature * math.Sqrt(curvature))
 	primeVerticalRadius := WGS84SemiMajorAxis / math.Sqrt(curvature)
-	parallelRadius := primeVerticalRadius * math.Cos(centerLatitude)
 
+	return localPlane{
+		latitudeCenter:  latitudeCenter,
+		longitudeCenter: longitudeCenter,
+		meridianRadius:  WGS84SemiMajorAxis * (1 - wgs84EccentricitySquared) / (curvature * math.Sqrt(curvature)),
+		parallelRadius:  primeVerticalRadius * math.Cos(centerLatitude),
+	}
+}
+
+func (plane localPlane) project(points []Coordinate) []metricPoint {
 	projected := make([]metricPoint, len(points))
 	for i, point := range points {
 		projected[i] = metricPoint{
-			x: degreesToRadians(point.Longitude-longitudeCenter) * parallelRadius,
-			y: degreesToRadians(point.Latitude-latitudeCenter) * meridianRadius,
+			x: degreesToRadians(point.Longitude-plane.longitudeCenter) * plane.parallelRadius,
+			y: degreesToRadians(point.Latitude-plane.latitudeCenter) * plane.meridianRadius,
 		}
 	}
 
 	return projected
+}
+
+func (plane localPlane) coordinate(point metricPoint) Coordinate {
+	return Coordinate{
+		Latitude:  plane.latitudeCenter + radiansToDegrees(point.y/plane.meridianRadius),
+		Longitude: plane.longitudeCenter + radiansToDegrees(point.x/plane.parallelRadius),
+	}
+}
+
+func projectToLocalPlane(points []Coordinate) []metricPoint {
+	return newLocalPlane(points).project(points)
 }

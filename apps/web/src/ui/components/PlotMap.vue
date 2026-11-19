@@ -72,19 +72,6 @@ function showLayer(layer: MapLayer): void {
   map.value.setMaxZoom(layer.maxZoom)
 }
 
-function crossing(a: Coordinate, b: Coordinate, c: Coordinate, d: Coordinate): L.LatLngTuple | null {
-  const denominator =
-    (a.longitude - b.longitude) * (c.latitude - d.latitude) - (a.latitude - b.latitude) * (c.longitude - d.longitude)
-  if (denominator === 0) {
-    return null
-  }
-  const t =
-    ((a.longitude - c.longitude) * (c.latitude - d.latitude) - (a.latitude - c.latitude) * (c.longitude - d.longitude)) /
-    denominator
-
-  return [a.latitude + t * (b.latitude - a.latitude), a.longitude + t * (b.longitude - a.longitude)]
-}
-
 function anchorOf(event: L.LeafletMouseEvent): { x: number; y: number } {
   const original = event.originalEvent as MouseEvent | undefined
 
@@ -92,7 +79,9 @@ function anchorOf(event: L.LeafletMouseEvent): { x: number; y: number } {
 }
 
 function middleOf(from: L.LatLngTuple, to: L.LatLngTuple): L.LatLngTuple {
-  return [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]
+  const centre = L.latLngBounds([from, to]).getCenter()
+
+  return [centre.lat, centre.lng]
 }
 
 function openSide(index: number, middle: L.LatLngTuple, event: L.LeafletMouseEvent): void {
@@ -164,10 +153,9 @@ function drawShapes(latLngs: L.LatLngTuple[]): void {
     }
   }
 
-  const [[a, b], [c, d]] = segments as [[Coordinate?, Coordinate?], [Coordinate?, Coordinate?]]
-  const point = a && b && c && d ? crossing(a, b, c, d) : null
+  const point = props.selfIntersection.point
   if (point !== null) {
-    L.circleMarker(point, {
+    L.circleMarker(toLatLng(point), {
       radius: 16,
       color: intersection,
       weight: 2.5,

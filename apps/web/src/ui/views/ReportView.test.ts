@@ -30,6 +30,9 @@ const report: Report = {
   accuracy: null,
   terrain: null,
   climate: null,
+  boundary: [],
+  generatedFrom: { climateYears: null, terrainAt: null },
+  latest: null,
 }
 
 const points = [
@@ -61,6 +64,7 @@ async function mountReport(details: ReportDetails) {
   const service = {
     details: vi.fn(async () => details),
     create: vi.fn(async () => ({ ...report, id: 'report-new' })),
+    download: vi.fn(async () => ({ content: new Blob(['%PDF-1.7']), fileName: 'Звіт-Поле-біля-ставка-0014.pdf' })),
   }
   const wrapper = mount(
     { template: '<RouterView />' },
@@ -193,7 +197,7 @@ describe('ReportView', () => {
     const { wrapper } = await mountReport({ report, plot: { version: 1 } as Plot, points , obstructions: [] })
 
     expect(wrapper.get('.report__title').text()).toBe('Звіт · Поле біля ставка')
-    expect(wrapper.get('.report__meta').text()).toContain('Звіт № 0014 · сформовано 26.10.2026')
+    expect(wrapper.get('.report__meta').text()).toContain('Звіт № 0014 · Сформовано 26.10.2026')
     expect(wrapper.get('.report__tiles').text()).toContain('2,41')
     expect(wrapper.get('.report__tiles').text()).toContain('24 100')
     expect(wrapper.findAll('tbody tr')).toHaveLength(3)
@@ -226,27 +230,48 @@ describe('ReportView', () => {
     expect(wrapper.get('.report__back').attributes('href')).toBe('/reports')
   })
 
-  it('downloads GeoJSON built on the client and copies the link', async () => {
-    const created: Blob[] = []
-    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
-      created.push(blob as Blob)
-
-      return 'blob:report'
-    })
+  it('downloads the PDF from the backend in the current language and copies the link', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:report')
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const names: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download)
+    })
     const writeText = vi.fn(async () => undefined)
     Object.assign(navigator, { clipboard: { writeText } })
-    const { wrapper } = await mountReport({ report, plot: { version: 1 } as Plot, points , obstructions: [] })
+    const { wrapper, service } = await mountReport({ report, plot: { version: 1 } as Plot, points, obstructions: [] })
 
-    await button(wrapper, 'Завантажити GeoJSON')?.trigger('click')
-    const feature = JSON.parse(await (created[0] as Blob).text())
-    expect(click).toHaveBeenCalled()
-    expect(feature.geometry.coordinates[0]).toHaveLength(4)
-    expect(feature.properties.report_id).toBe(report.id)
+    await button(wrapper, 'Завантажити PDF')?.trigger('click')
+    await flushPromises()
+    expect(service.download).toHaveBeenCalledWith(report.id, 'pdf', 'uk')
+    expect(names).toEqual(['Звіт-Поле-біля-ставка-0014.pdf'])
 
     await button(wrapper, 'Поділитися')?.trigger('click')
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith(window.location.href)
   })
+
+  it('always offers a new report, shows the climate years and links a newer report', async () => {
+    const { wrapper, service, router } = await mountReport({
+      report: {
+        ...report,
+        generatedFrom: { climateYears: { first: 2016, last: 2025 }, terrainAt: report.createdAt },
+        latest: { id: 'report-newer', createdAt: new Date(2026, 10, 19) },
+      },
+      plot: { version: 1 } as Plot,
+      points,
+      obstructions: [],
+    })
+
+    expect(wrapper.get('.report__meta').text()).toContain('Сформовано 26.10.2026 · клімат за 2016–2025')
+    expect(wrapper.get('.report__refresh').text()).toContain('Створить новий звіт з актуальними даними, цей лишиться без змін')
+    expect(wrapper.get('.report__newer').text()).toBe('Є новіший звіт від 19.11.2026')
+    expect(wrapper.get('.report__newer').attributes('href')).toBe('/reports/report-newer')
+
+    await wrapper.get('.report__refresh-button').trigger('click')
+    await flushPromises()
+    expect(service.create).toHaveBeenCalledWith('plot-1')
+    expect(router.currentRoute.value.fullPath).toBe('/reports/report-new')
+  })
 })
+

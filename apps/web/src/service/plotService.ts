@@ -1,4 +1,4 @@
-import type { Plot, PlotVersion } from '../domain/plot'
+import type { Plot, PlotSummary, PlotVersion } from '../domain/plot'
 import type { Report } from '../domain/report'
 import type { PlotGateway } from '../port/plotGateway'
 import type { ReportGateway } from '../port/reportGateway'
@@ -14,6 +14,10 @@ export class PlotService {
 
   list(): Promise<Plot[]> {
     return this.plots.list()
+  }
+
+  summary(): Promise<PlotSummary> {
+    return this.plots.summary()
   }
 
   get(id: string): Promise<Plot> {

@@ -4,7 +4,7 @@ import type { MapLayerId } from '../domain/mapLayer'
 import type { Measurement } from '../domain/measurement'
 import type { Plot, PlotPreview, PlotStatus, PlotVersion } from '../domain/plot'
 import type { Profile } from '../domain/profile'
-import type { Report } from '../domain/report'
+import type { GeneratedFrom, Report } from '../domain/report'
 import { parseMonthDay, type Climate, type DataStatus, type Season, type Terrain } from '../domain/surroundings'
 import type { Capture, Obstruction, ObstructionReason, PointerKind } from '../domain/survey'
 
@@ -52,6 +52,7 @@ export interface PlotDto extends MeasurementDto {
   readonly capture?: CaptureDto | null
   readonly obstructions?: ObstructionDto[] | null
   readonly accuracy?: AccuracyDto | null
+  readonly outline?: { readonly x: number; readonly y: number }[] | null
   readonly version: number
   readonly status: PlotStatus
   readonly created_at: string
@@ -119,6 +120,14 @@ export interface ReportDto extends MeasurementDto {
   readonly accuracy?: AccuracyDto | null
   readonly terrain?: TerrainDto | null
   readonly climate?: ClimateDto | null
+  readonly boundary?: CoordinateDto[] | null
+  readonly generated_from?: {
+    readonly climate_first_year: number | null
+    readonly climate_last_year: number | null
+    readonly terrain_at: string | null
+  } | null
+  readonly latest_report_id?: string | null
+  readonly latest_report_created_at?: string | null
 }
 
 export interface ProfileDto {
@@ -189,6 +198,7 @@ export function toPlot(dto: PlotDto): Plot {
     capture: toCapture(dto.capture),
     obstructions: toObstructions(dto.obstructions),
     accuracy: toAccuracy(dto.accuracy),
+    outline: (dto.outline ?? []).map(({ x, y }) => ({ x, y })),
     version: dto.version,
     status: dto.status,
     createdAt: new Date(dto.created_at),
@@ -232,6 +242,22 @@ export function toReport(dto: ReportDto): Report {
     accuracy: toAccuracy(dto.accuracy),
     terrain: toTerrain(dto.terrain),
     climate: toClimate(dto.climate),
+    boundary: (dto.boundary ?? []).map(toCoordinate),
+    generatedFrom: toGeneratedFrom(dto.generated_from),
+    latest:
+      dto.latest_report_id && dto.latest_report_created_at
+        ? { id: dto.latest_report_id, createdAt: new Date(dto.latest_report_created_at) }
+        : null,
+  }
+}
+
+function toGeneratedFrom(dto: ReportDto['generated_from']): GeneratedFrom {
+  const first = dto?.climate_first_year ?? null
+  const last = dto?.climate_last_year ?? null
+
+  return {
+    climateYears: first !== null && last !== null ? { first, last } : null,
+    terrainAt: dto?.terrain_at ? new Date(dto.terrain_at) : null,
   }
 }
 

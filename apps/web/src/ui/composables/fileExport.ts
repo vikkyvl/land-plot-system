@@ -1,7 +1,5 @@
-const geoJsonType = 'application/geo+json'
-
-export function downloadJson(fileName: string, value: unknown): void {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: geoJsonType }))
+export function saveFile(fileName: string, content: Blob): void {
+  const url = URL.createObjectURL(content)
   const link = document.createElement('a')
   link.href = url
   link.download = fileName
@@ -19,8 +17,4 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-export function safeFileName(name: string): string {
-  return name.trim().replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || 'plot'
 }

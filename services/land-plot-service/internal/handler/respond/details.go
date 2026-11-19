@@ -9,8 +9,14 @@ type ProblemResponse struct {
 }
 
 type selfIntersectionResponse struct {
-	Segments [2][2]int `json:"segments"`
-	Swap     [2]int    `json:"swap"`
+	Segments [2][2]int     `json:"segments"`
+	Swap     [2]int        `json:"swap"`
+	Point    pointResponse `json:"point"`
+}
+
+type pointResponse struct {
+	Latitude  float64 `json:"lat"`
+	Longitude float64 `json:"lon"`
 }
 
 type duplicatePointResponse struct {
@@ -28,7 +34,11 @@ func NewProblemResponse(problem *domain.Error) ProblemResponse {
 func detailsResponse(details any) any {
 	switch value := details.(type) {
 	case domain.SelfIntersectionDetails:
-		return selfIntersectionResponse{Segments: value.Segments, Swap: value.Swap}
+		return selfIntersectionResponse{
+			Segments: value.Segments,
+			Swap:     value.Swap,
+			Point:    pointResponse{Latitude: value.Point.Latitude, Longitude: value.Point.Longitude},
+		}
 	case domain.DuplicatePointDetails:
 		return duplicatePointResponse{Indices: value.Indices}
 	case domain.InvalidCoordinateDetails:

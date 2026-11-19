@@ -7,6 +7,7 @@ const (
 	wrapGetDailyWeather      = "get daily weather: %w"
 	wrapGetElevations        = "get elevations: %w"
 	wrapGetReport            = "get report: %w"
+	wrapRenderPDF            = "render PDF: %w"
 	wrapProfileTerrain       = "profile terrain: %w"
 	wrapListReports          = "list reports: %w"
 	wrapTraceLandPlotService = "trace land plot service: %w"

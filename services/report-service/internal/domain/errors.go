@@ -40,6 +40,12 @@ var (
 
 	ErrPlotNotConfirmed = NewError(KindConflict, "plot_not_confirmed",
 		"plot is waiting for confirmation; retry the request later")
+
+	ErrInvalidLanguage = NewError(KindInvalidRequest, "invalid_language",
+		"lang must be uk or en")
+
+	ErrBoundaryNotRecorded = NewError(KindConflict, "boundary_not_recorded",
+		"the report was created before boundaries were stored in reports; create a new report")
 )
 
 var (

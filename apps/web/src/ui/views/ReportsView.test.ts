@@ -22,6 +22,9 @@ function report(id: string, name: string, deleted = false): Report {
     accuracy: null,
     terrain: null,
     climate: null,
+    boundary: [],
+    generatedFrom: { climateYears: null, terrainAt: null },
+    latest: null,
   }
 }
 

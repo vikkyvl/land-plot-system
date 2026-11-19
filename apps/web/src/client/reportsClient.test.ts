@@ -39,7 +39,49 @@ describe('ReportsClient', () => {
       accuracy: null,
       terrain: null,
       climate: null,
+      boundary: [],
+      generatedFrom: { climateYears: null, terrainAt: null },
+      latest: null,
     })
+  })
+
+  it('reads the boundary, what the report was generated from and the latest report', async () => {
+    const server = new FakeServer().reply({
+      status: 200,
+      body: {
+        ...reportDto,
+        boundary: [{ lat: 48.14, lon: 24.48 }],
+        generated_from: { climate_first_year: 2016, climate_last_year: 2025, terrain_at: '2026-11-18T12:00:00Z' },
+        latest_report_id: 'report-15',
+        latest_report_created_at: '2026-11-19T08:00:00Z',
+      },
+    })
+
+    const report = await reports(server).get('report-14')
+
+    expect(report.boundary).toEqual([{ latitude: 48.14, longitude: 24.48 }])
+    expect(report.generatedFrom).toEqual({
+      climateYears: { first: 2016, last: 2025 },
+      terrainAt: new Date('2026-11-18T12:00:00Z'),
+    })
+    expect(report.latest).toEqual({ id: 'report-15', createdAt: new Date('2026-11-19T08:00:00Z') })
+  })
+
+  it('downloads the PDF in the current language with its file name', async () => {
+    const server = new FakeServer().reply({
+      status: 200,
+      body: '%PDF-1.7',
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="____-14.pdf"; filename*=UTF-8''%D0%97%D0%B2%D1%96%D1%82-14.pdf`,
+      },
+    })
+
+    const file = await reports(server).download('report-14', 'pdf', 'uk')
+
+    expect(server.requests[0]?.url).toBe(`${gatewayUrl}/api/v1/reports/report-14/pdf?lang=uk`)
+    expect(file.fileName).toBe('Звіт-14.pdf')
+    expect(await file.content.text()).toContain('%PDF-1.7')
   })
 
   it('maps the terrain and climate blocks', async () => {

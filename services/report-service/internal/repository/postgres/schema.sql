@@ -68,6 +68,11 @@ ALTER TABLE reports ADD COLUMN IF NOT EXISTS accuracy JSONB NULL;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS terrain JSONB NULL;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS climate JSONB NULL;
 
+-- The boundary of the plot version, so PDF and GeoJSON come from the report alone; older reports have none.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS boundary JSONB NULL;
+
+CREATE INDEX IF NOT EXISTS reports_owner_plot_created_idx ON reports (owner_id, plot_id, created_at DESC, id DESC);
+
 -- Climate profiles per 0.1° cell and period of years; neighbouring plots share the same climate.
 CREATE TABLE IF NOT EXISTS climate_cache (
     cell_latitude_tenths INT NOT NULL,

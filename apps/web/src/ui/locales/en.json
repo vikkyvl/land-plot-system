@@ -206,7 +206,6 @@
     "refresh": "Update report",
     "refreshing": "Creating…",
     "deletedDetails": "The report keeps the data from when it was created. The boundary and coordinates are no longer available.",
-    "meta": "Report No. {number} · created {date}",
     "owner": "Owner · {owner}",
     "created": "Created {date}",
     "hectares": "Hectares",
@@ -219,7 +218,13 @@
     "noteMobile": "The calculation is approximate and is not a cadastral measurement.",
     "refreshed": "A new report for the current version is ready",
     "copied": "Link to the report copied",
-    "copyFailed": "Could not copy the link"
+    "copyFailed": "Could not copy the link",
+    "pdf": "Download PDF",
+    "downloading": "Downloading…",
+    "climateFrom": "climate for {from}–{to}",
+    "newer": "A newer report from {date} exists",
+    "refreshHint": "Creates a new report with current data; this one stays unchanged",
+    "fallbackFileName": "Report-{number}"
   },
   "confirmations": {
     "saved": "Plot “{name}” saved",

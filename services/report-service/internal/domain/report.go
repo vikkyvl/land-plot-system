@@ -22,6 +22,13 @@ type Report struct {
 	Accuracy      *AreaAccuracy
 	Terrain       *Terrain
 	Climate       *Climate
+	Boundary      []Coordinate
+	Latest        *LatestReport
+}
+
+type LatestReport struct {
+	ID        string
+	CreatedAt time.Time
 }
 
 func (report Report) WithSurroundings(terrain Terrain, climate Climate) Report {
@@ -48,5 +55,7 @@ func NewReport(id string, plot PlotSnapshot, now time.Time) Report {
 		PerimeterM:   plot.PerimeterM,
 		CreatedAt:    now.UTC(),
 		Accuracy:     plot.Accuracy,
+		Boundary:     append([]Coordinate(nil), plot.Points...),
+		Latest:       &LatestReport{ID: id, CreatedAt: now.UTC()},
 	}
 }

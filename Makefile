@@ -81,7 +81,8 @@ demo-lr5:
 	./scripts/demo_lr5.sh
 
 # Shows preview, validation details, deletion, version history, report listing, Mailpit, area accuracy,
-# terrain and climate in reports, a report without Open-Meteo and the preview rate limit.
+# terrain and climate in reports, PDF and GeoJSON downloads, the plot summary, a report without Open-Meteo
+# and the preview rate limit.
 demo-web:
 	./scripts/demo_web.sh
 

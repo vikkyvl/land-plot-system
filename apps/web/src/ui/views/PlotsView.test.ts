@@ -27,6 +27,7 @@ function plot(id: string, name: string, hectares: number, status: Plot['status']
     ],
     measurement: { area: { squareMeters: hectares * 10000, ares: hectares * 100, hectares }, perimeterMeters: 600 },
     capture: null,
+    outline: [],
     obstructions: [],
     accuracy: null,
     version: 2,
@@ -53,7 +54,14 @@ async function mountPlots(list: () => Promise<Plot[]>, path = '/plots') {
     ],
   })
   await router.push(path)
-  const service = { list: vi.fn(list) }
+  const service = {
+    list: vi.fn(list),
+    summary: vi.fn(async () => {
+      const plots = await list().catch(() => [])
+
+      return { count: plots.length, totalHectares: plots.reduce((sum, plot) => sum + plot.measurement.area.hectares, 0) }
+    }),
+  }
   const wrapper = mount({ template: '<RouterView />' }, {
     global: {
       plugins: [createPinia(), router],

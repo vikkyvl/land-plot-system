@@ -1,21 +1,50 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/domain"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler/middleware"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler/respond"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/service"
 )
 
 const (
-	queryPlotID = "plot_id"
-	queryLimit  = "limit"
+	queryPlotID   = "plot_id"
+	queryLimit    = "limit"
+	queryLanguage = "lang"
 )
 
 type reportHandler struct {
 	reports   ReportService
+	exports   ExportService
 	responses respond.Writer
+}
+
+type exportFunc func(requestContext context.Context, ownerID, reportID, language string) (domain.ReportFile, error)
+
+func (handler *reportHandler) pdf(response http.ResponseWriter, request *http.Request) {
+	handler.export(response, request, handler.exports.PDF)
+}
+
+func (handler *reportHandler) geojson(response http.ResponseWriter, request *http.Request) {
+	handler.export(response, request, handler.exports.GeoJSON)
+}
+
+func (handler *reportHandler) export(response http.ResponseWriter, request *http.Request, produce exportFunc) {
+	file, err := produce(
+		request.Context(),
+		middleware.PrincipalFrom(request.Context()).UserID,
+		request.PathValue("id"),
+		request.URL.Query().Get(queryLanguage),
+	)
+	if err != nil {
+		handler.responses.Error(response, request, err)
+		return
+	}
+
+	writeFile(response, file)
 }
 
 func (handler *reportHandler) create(response http.ResponseWriter, request *http.Request) {

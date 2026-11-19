@@ -55,6 +55,7 @@ describe('PlotsClient', () => {
       capture: null,
       obstructions: [],
       accuracy: null,
+      outline: [],
       version: 3,
       status: 'CONFIRMED',
       createdAt: new Date('2026-10-14T09:00:00Z'),

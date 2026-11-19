@@ -65,6 +65,20 @@ func (handler *plotHandler) list(response http.ResponseWriter, request *http.Req
 	handler.responses.JSON(response, http.StatusOK, plotsResponse)
 }
 
+func (handler *plotHandler) summary(response http.ResponseWriter, request *http.Request) {
+	summary, err := handler.plots.Summary(request.Context(), middleware.UserID(request.Context()))
+	if err != nil {
+		handler.responses.Error(response, request, err)
+		return
+	}
+
+	handler.responses.JSON(response, http.StatusOK, plotSummaryResponse{
+		Count:             summary.Count,
+		TotalAreaM2:       summary.TotalAreaM2,
+		TotalAreaHectares: domain.SquareMetersToHectares(summary.TotalAreaM2),
+	})
+}
+
 func (handler *plotHandler) get(response http.ResponseWriter, request *http.Request) {
 	plot, err := handler.plots.Get(request.Context(), middleware.UserID(request.Context()), request.PathValue("id"))
 	if err != nil {

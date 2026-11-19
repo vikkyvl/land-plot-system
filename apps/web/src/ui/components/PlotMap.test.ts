@@ -102,7 +102,7 @@ describe('PlotMap', () => {
 
     await wrapper.setProps({ points: [first, third, second, { latitude: 50.4495, longitude: 30.5205 }] })
     await wrapper.setProps({
-      selfIntersection: { kind: 'self_intersection', segments: [[1, 2], [3, 0]], swap: [2, 3] },
+      selfIntersection: { kind: 'self_intersection', segments: [[1, 2], [3, 0]], swap: [2, 3], point: null },
     })
 
     const vertices = [...document.querySelectorAll<HTMLElement>('.plot-vertex')]

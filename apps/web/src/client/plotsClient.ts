@@ -1,5 +1,5 @@
 import type { Coordinate } from '../domain/coordinate'
-import type { NewPlot, Plot, PlotChanges, PlotPreview, PlotVersion, SurveyFacts } from '../domain/plot'
+import type { NewPlot, Plot, PlotChanges, PlotPreview, PlotSummary, PlotVersion, SurveyFacts } from '../domain/plot'
 import type { PlotGateway } from '../port/plotGateway'
 
 import {
@@ -30,6 +30,12 @@ export class PlotsClient implements PlotGateway {
     const plots = await this.http.request<PlotDto[] | null>('GET', plotsPath)
 
     return (plots ?? []).map(toPlot)
+  }
+
+  async summary(): Promise<PlotSummary> {
+    const summary = await this.http.request<PlotSummaryDto>('GET', plotsPath + pathOf('summary'))
+
+    return { count: summary.count, totalHectares: summary.total_area_hectares }
   }
 
   async get(id: string): Promise<Plot> {
@@ -72,6 +78,11 @@ export class PlotsClient implements PlotGateway {
 
     return toPlotPreview(preview)
   }
+}
+
+interface PlotSummaryDto {
+  readonly count: number
+  readonly total_area_hectares: number
 }
 
 interface SurveyBody {

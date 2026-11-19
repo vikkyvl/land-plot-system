@@ -9,6 +9,7 @@ const plot: Plot = {
   points: [],
   measurement: { area: { squareMeters: 1, ares: 0.01, hectares: 0.0001 }, perimeterMeters: 4 },
   capture: null,
+  outline: [],
   obstructions: [],
   accuracy: null,
   version: 1,

@@ -21,10 +21,16 @@ export interface Plot {
   readonly capture: Capture | null
   readonly obstructions: readonly Obstruction[]
   readonly accuracy: Accuracy | null
+  readonly outline: readonly OutlinePoint[]
   readonly version: number
   readonly status: PlotStatus
   readonly createdAt: Date
   readonly updatedAt: Date
+}
+
+export interface OutlinePoint {
+  readonly x: number
+  readonly y: number
 }
 
 export interface PlotVersion {
@@ -51,6 +57,13 @@ export interface PlotChanges extends Partial<SurveyFacts> {
   readonly name?: string
   readonly points?: readonly Coordinate[]
 }
+
+export interface PlotSummary {
+  readonly count: number
+  readonly totalHectares: number
+}
+
+export const emptyPlotSummary: PlotSummary = { count: 0, totalHectares: 0 }
 
 export interface PlotPreview {
   readonly valid: boolean

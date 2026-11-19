@@ -27,6 +27,7 @@ type scopeRule struct {
 var scopeRules = []scopeRule{
 	{method: http.MethodPost, pattern: "/api/v1/plots/preview", public: true, rateLimited: true},
 	{method: http.MethodGet, pattern: "/api/v1/plots", scopes: []string{ScopePlotsRead}},
+	{method: http.MethodGet, pattern: "/api/v1/plots/summary", scopes: []string{ScopePlotsRead}},
 	{method: http.MethodGet, pattern: "/api/v1/plots/{id}", scopes: []string{ScopePlotsRead}},
 	{method: http.MethodGet, pattern: "/api/v1/plots/{id}/versions", scopes: []string{ScopePlotsRead}},
 	{method: http.MethodPost, pattern: "/api/v1/plots", scopes: []string{ScopePlotsWrite}},
@@ -34,6 +35,8 @@ var scopeRules = []scopeRule{
 	{method: http.MethodDelete, pattern: "/api/v1/plots/{id}", scopes: []string{ScopePlotsWrite}},
 	{method: http.MethodGet, pattern: "/api/v1/reports", scopes: []string{ScopeReportsRead}},
 	{method: http.MethodGet, pattern: "/api/v1/reports/{id}", scopes: []string{ScopeReportsRead}},
+	{method: http.MethodGet, pattern: "/api/v1/reports/{id}/pdf", scopes: []string{ScopeReportsRead}},
+	{method: http.MethodGet, pattern: "/api/v1/reports/{id}/geojson", scopes: []string{ScopeReportsRead}},
 	{method: http.MethodPost, pattern: "/api/v1/reports", scopes: []string{ScopeReportsWrite, ScopePlotsRead}},
 	{method: http.MethodGet, pattern: "/api/v1/users/profile", scopes: []string{ScopeOpenID}},
 	{method: http.MethodGet, pattern: "/api/v1/demo/chain"},

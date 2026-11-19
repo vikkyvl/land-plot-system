@@ -24,6 +24,15 @@ type PlotClient interface {
 	Trace(requestContext context.Context, caller Caller, message string) ([]domain.TraceHop, error)
 }
 
+type ReportReader interface {
+	Get(requestContext context.Context, ownerID, reportID string) (domain.Report, error)
+}
+
+type ReportDocuments interface {
+	PDF(report domain.Report, language domain.Language) ([]byte, error)
+	GeoJSON(report domain.Report) ([]byte, error)
+}
+
 type Surroundings interface {
 	Describe(requestContext context.Context, plot domain.PlotSnapshot) (domain.Terrain, domain.Climate)
 }

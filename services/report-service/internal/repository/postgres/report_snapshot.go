@@ -11,6 +11,12 @@ type snapshotColumns struct {
 	accuracy []byte
 	terrain  []byte
 	climate  []byte
+	boundary []byte
+}
+
+type boundaryPointRecord struct {
+	Latitude  float64 `json:"lat"`
+	Longitude float64 `json:"lon"`
 }
 
 type accuracyRecord struct {
@@ -69,6 +75,17 @@ func encodeSnapshot(report domain.Report) (snapshotColumns, error) {
 		}
 	}
 
+	if len(report.Boundary) > 0 {
+		points := make([]boundaryPointRecord, len(report.Boundary))
+		for index, point := range report.Boundary {
+			points[index] = boundaryPointRecord{Latitude: point.Latitude, Longitude: point.Longitude}
+		}
+
+		if columns.boundary, err = json.Marshal(points); err != nil {
+			return snapshotColumns{}, fmt.Errorf(wrapEncodeReportSnapshot, err)
+		}
+	}
+
 	return columns, nil
 }
 
@@ -107,6 +124,18 @@ func (columns snapshotColumns) decodeInto(report domain.Report) (domain.Report, 
 		}
 
 		report.Climate = new(record.climate())
+	}
+
+	if columns.boundary != nil {
+		var points []boundaryPointRecord
+		if err := json.Unmarshal(columns.boundary, &points); err != nil {
+			return domain.Report{}, fmt.Errorf(wrapDecodeReportSnapshot, err)
+		}
+
+		report.Boundary = make([]domain.Coordinate, len(points))
+		for index, point := range points {
+			report.Boundary[index] = domain.Coordinate{Latitude: point.Latitude, Longitude: point.Longitude}
+		}
 	}
 
 	return report, nil

@@ -154,3 +154,16 @@ func TestPlotVersionsNeedReadScope(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
 }
+
+func TestPlotSummaryCountsPlotsAndTheirArea(t *testing.T) {
+	plots := &plotServiceStub{plots: []domain.Plot{{AreaM2: 24_810}, {AreaM2: 11_400}}}
+
+	response := serve(newTestRouter(plots), authorizedRequest(http.MethodGet, "/api/v1/plots/summary", ""))
+
+	body := decodeBody[plotSummaryResponse](t, response)
+	if response.Code != http.StatusOK || body.Count != 2 || body.TotalAreaM2 != 36_210 ||
+		body.TotalAreaHectares != 3.621 ||
+		plots.ownerID != testOwnerID {
+		t.Fatalf("status = %d body = %+v", response.Code, body)
+	}
+}

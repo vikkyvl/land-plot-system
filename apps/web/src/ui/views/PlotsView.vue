@@ -16,7 +16,7 @@ import { useSessionStore } from '../stores/session'
 
 const store = usePlotsStore()
 const session = useSessionStore()
-const { visible, plots, loading, loaded, query, totalHectares } = storeToRefs(store)
+const { visible, plots, loading, loaded, query, totalHectares, count } = storeToRefs(store)
 const { userName } = storeToRefs(session)
 const route = useRoute()
 const handle = useFailure()
@@ -184,7 +184,7 @@ onMounted(load)
               :aria-current="plot.id === selectedId ? 'page' : undefined"
             >
               <PlotThumbnail
-                :points="plot.points"
+                :outline="plot.outline"
                 :style="{ viewTransitionName: plot.id === selectedId ? undefined : plotTransitionName(plot.id) }"
               />
               <span class="plots__card-text">
@@ -206,7 +206,7 @@ onMounted(load)
           {{ $t('plots.nothingFound', { query }) }}
         </p>
         <p class="plots__summary">
-          <span>{{ $t('plots.total', { count: formatPlotCount(plots.length) }) }}</span>
+          <span>{{ $t('plots.total', { count: formatPlotCount(count) }) }}</span>
           <b>{{ formatHectares(totalHectares) }}</b>
         </p>
       </template>

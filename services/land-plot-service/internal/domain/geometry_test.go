@@ -104,9 +104,27 @@ func TestSelfIntersectionNamesTheCrossingSidesAndThePointsToSwap(t *testing.T) {
 		t.Fatalf("errors = %v", inspection.Errors)
 	}
 
-	want := SelfIntersectionDetails{Segments: [2][2]int{{1, 2}, {3, 0}}, Swap: [2]int{2, 3}}
-	if inspection.Errors[0].Details != want {
-		t.Fatalf("details = %#v, want %#v", inspection.Errors[0].Details, want)
+	details, ok := inspection.Errors[0].Details.(SelfIntersectionDetails)
+	if !ok || details.Segments != [2][2]int{{1, 2}, {3, 0}} || details.Swap != [2]int{2, 3} {
+		t.Fatalf("details = %#v", inspection.Errors[0].Details)
+	}
+
+	if math.Abs(details.Point.Latitude-50.45045) > 1e-9 || math.Abs(details.Point.Longitude-30.5207) > 1e-9 {
+		t.Fatalf("crossing point = %+v, want the middle of the hourglass", details.Point)
+	}
+}
+
+func TestCrossingPointOfSidesTouchingAtAVertex(t *testing.T) {
+	first := segment{start: metricPoint{x: 0, y: 0}, end: metricPoint{x: 10, y: 0}}
+	touching := segment{start: metricPoint{x: 5, y: 0}, end: metricPoint{x: 5, y: 7}}
+	overlapping := segment{start: metricPoint{x: 3, y: 0}, end: metricPoint{x: 20, y: 0}}
+
+	if point := crossingPoint(first, touching); point != (metricPoint{x: 5, y: 0}) {
+		t.Fatalf("touching point = %+v", point)
+	}
+
+	if point := crossingPoint(first, overlapping); point != (metricPoint{x: 3, y: 0}) {
+		t.Fatalf("overlapping point = %+v", point)
 	}
 }
 

@@ -26,7 +26,6 @@ hourglass='[{"lat":50.4509,"lon":30.52},{"lat":50.4509,"lon":30.5214},{"lat":50.
 broken='[{"lat":50,"lon":30},{"lat":95,"lon":30},{"lat":50,"lon":30}]'
 carpathians='[{"lat":48.14,"lon":24.48},{"lat":48.14,"lon":24.486},{"lat":48.144,"lon":24.486},{"lat":48.144,"lon":24.48}]'
 kyiv_left_bank='[{"lat":50.44,"lon":30.64},{"lat":50.44,"lon":30.646},{"lat":50.444,"lon":30.646},{"lat":50.444,"lon":30.64}]'
-lviv='[{"lat":49.84,"lon":24.02},{"lat":49.84,"lon":24.026},{"lat":49.844,"lon":24.026},{"lat":49.844,"lon":24.02}]'
 mouse_capture='{"zoom":18,"layer":"map","pointer":"mouse"}'
 touch_capture='{"zoom":17,"layer":"satellite","pointer":"touch"}'
 unreachable_open_meteo=http://open-meteo.invalid/v1
@@ -100,6 +99,24 @@ preview() {
 preview_with() {
 	request --request POST --header 'Content-Type: application/json' \
 		--data "$1" "$gateway_url/api/v1/plots/preview"
+}
+
+uncached_square() {
+	awk 'BEGIN {
+		srand()
+		lat = 46 + int(rand() * 40) / 10 + 0.04
+		lon = 23 + int(rand() * 60) / 10 + 0.04
+		printf "[{\"lat\":%.3f,\"lon\":%.3f},{\"lat\":%.3f,\"lon\":%.3f},{\"lat\":%.3f,\"lon\":%.3f},{\"lat\":%.3f,\"lon\":%.3f}]", lat, lon, lat, lon + 0.006, lat + 0.004, lon + 0.006, lat + 0.004, lon
+	}'
+}
+
+wait_for_open_meteo_url() {
+	attempt=0
+	until [ "$(docker compose exec -T report-service printenv OPEN_METEO_ARCHIVE_URL 2>/dev/null)" = "$1" ]; do
+		attempt=$((attempt + 1))
+		[ "$attempt" -lt 60 ] || fail "report-service did not restart with $1"
+		sleep 2
+	done
 }
 
 wait_for_report_service() {
@@ -196,7 +213,7 @@ echo "2. Preview of a self-intersecting plot: crossing sides and the points to s
 status=$(preview "$hourglass")
 expect_status "$status" 200 "preview of a self-intersecting plot"
 body '{valid, area_m2, errors}' | sed 's/^/   /'
-expect_body '.valid == false and .area_m2 == null and .errors[0].details == {"segments":[[1,2],[3,0]],"swap":[2,3]}' \
+expect_body '.valid == false and .area_m2 == null and .errors[0].details.segments == [[1,2],[3,0]] and .errors[0].details.swap == [2,3] and .errors[0].details.point.lat > 50.45 and .errors[0].details.point.lon > 30.52' \
 	"the self-intersection details are wrong"
 
 echo
@@ -328,26 +345,50 @@ echo "13. Reports with terrain and climate from Open-Meteo: the Carpathians and 
 report_for "Полонина над Ворохтою" "$carpathians" "$touch_capture"
 expect_body '.terrain.status == "available" and .climate.status == "available" and .terrain.slope_degrees > 5' "Carpathian report"
 echo "   Carpathians: $(surroundings_summary)"
+carpathian_report=$(jq -er .id "$demo_tmp/body.json")
 report_for "Город на Лівому березі" "$kyiv_left_bank" "$mouse_capture"
 expect_body '.terrain.status == "available" and .climate.status == "available" and .terrain.slope_degrees < 1' "Kyiv report"
 echo "   Kyiv: $(surroundings_summary)"
 echo "   sources: $(body '{terrain: .terrain.source, climate: .climate.source}')"
 
 echo
-echo "14. Report while Open-Meteo is unreachable: still 201, the blocks are unavailable"
+echo "14. PDF and GeoJSON come from the stored report, plots have a summary"
+for language in uk en; do
+	status=$(request --header "Authorization: Bearer $token" "$gateway_url/api/v1/reports/$carpathian_report/pdf?lang=$language")
+	expect_status "$status" 200 "PDF in $language"
+	[ "$(header_value Content-Type)" = application/pdf ] || fail "PDF in $language has Content-Type $(header_value Content-Type)"
+	[ "$(head -c 5 "$demo_tmp/body.json")" = "%PDF-" ] || fail "PDF in $language does not start with %PDF-"
+	echo "   PDF $language: $status, $(header_value Content-Type), $(wc -c <"$demo_tmp/body.json" | tr -d ' ') bytes, $(header_value Content-Disposition | cut -c1-60)…"
+done
+status=$(request --header "Authorization: Bearer $token" "$gateway_url/api/v1/reports/$carpathian_report/geojson")
+expect_status "$status" 200 "GeoJSON"
+[ "$(header_value Content-Type)" = application/geo+json ] || fail "GeoJSON has Content-Type $(header_value Content-Type)"
+expect_body '.type == "FeatureCollection" and (.features[0].geometry.coordinates[0] | length) == 5' "GeoJSON of the report"
+echo "   GeoJSON: $status, $(header_value Content-Type), $(body '{type, ring: (.features[0].geometry.coordinates[0] | length), report_number: .features[0].properties.report_number}')"
+status=$(request --header "Authorization: Bearer $token" "$gateway_url/api/v1/reports/$carpathian_report/pdf?lang=de")
+expect_status "$status" 400 "PDF in an unknown language"
+echo "   lang=de: $status, $(body '{code}')"
+status=$(api GET /plots/summary)
+expect_status "$status" 200 "plot summary"
+echo "   plots summary: $(body '{count, total_area_hectares: (.total_area_hectares * 100 | round / 100)}')"
+
+echo
+echo "15. Report while Open-Meteo is unreachable: still 201, the blocks are unavailable"
 open_meteo_broken=true
 OPEN_METEO_ELEVATION_URL=$unreachable_open_meteo/elevation OPEN_METEO_ARCHIVE_URL=$unreachable_open_meteo/archive \
 	docker compose up -d report-service >/dev/null 2>&1
+wait_for_open_meteo_url "$unreachable_open_meteo/archive"
 wait_for_report_service
-report_for "Сад під Львовом" "$lviv" "$mouse_capture"
+report_for "Сад на заході" "$(uncached_square)" "$mouse_capture"
 expect_body '.terrain.status == "unavailable" and .climate.status == "unavailable"' "report without Open-Meteo"
 echo "   $status, $(body '{terrain: .terrain.status, climate: .climate.status, accuracy_basis: .accuracy.basis}')"
 restore_open_meteo
+wait_for_open_meteo_url https://archive-api.open-meteo.com/v1/archive
 wait_for_report_service
 echo "   report-service is back with the real Open-Meteo endpoints"
 
 echo
-echo "15. Preview rate limit on the gateway"
+echo "16. Preview rate limit on the gateway"
 count=0
 status=200
 while [ "$count" -lt "$max_preview_requests" ] && [ "$status" != 429 ]; do

@@ -28,6 +28,7 @@ type plotServiceStub struct {
 	changes   domain.PlotChanges
 	deletedID string
 	versions  []domain.PlotVersion
+	plots     []domain.Plot
 	plot      domain.Plot
 	err       error
 }
@@ -42,6 +43,12 @@ func (stub *plotServiceStub) Create(_ context.Context, draft domain.PlotDraft) (
 func (stub *plotServiceStub) List(_ context.Context, ownerID string) ([]domain.Plot, error) {
 	stub.ownerID = ownerID
 	return []domain.Plot{stub.plot}, stub.err
+}
+
+func (stub *plotServiceStub) Summary(_ context.Context, ownerID string) (domain.PlotSummary, error) {
+	stub.ownerID = ownerID
+
+	return domain.SummarizePlots(stub.plots), stub.err
 }
 
 func (stub *plotServiceStub) Get(_ context.Context, ownerID, _ string) (domain.Plot, error) {

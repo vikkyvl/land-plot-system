@@ -35,6 +35,7 @@ function plot(status: Plot['status'] = 'CONFIRMED'): Plot {
     points,
     measurement: { area: { squareMeters: 24810, ares: 248.1, hectares: 2.481 }, perimeterMeters: 612 },
     capture: null,
+    outline: [],
     obstructions: [],
     accuracy: null,
     version: 2,

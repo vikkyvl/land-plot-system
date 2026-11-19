@@ -8,7 +8,7 @@ import type { ReportGateway } from '../port/reportGateway'
 
 import { ReportService } from './reportService'
 
-const report = { id: 'report-1', plotId: 'plot-1', plotVersion: 1, plotDeleted: false } as Report
+const report = { id: 'report-1', plotId: 'plot-1', plotVersion: 1, plotDeleted: false, boundary: [] } as unknown as Report
 const oldPoints = [{ latitude: 1, longitude: 1 }]
 const newPoints = [{ latitude: 2, longitude: 2 }]
 const versions = [

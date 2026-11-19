@@ -1,3 +1,4 @@
+import type { Coordinate } from '../domain/coordinate'
 import { DomainError, type ErrorKind } from '../domain/error'
 import { ErrorCode } from '../domain/errorCode'
 import type { Problem, ProblemDetails } from '../domain/problem'
@@ -102,9 +103,9 @@ export function toProblemDetails(code: string, details: unknown): ProblemDetails
 
   switch (code) {
     case ErrorCode.SelfIntersection: {
-      const { segments, swap } = details
+      const { segments, swap, point } = details
       if (isPairOf(segments, isIndexPair) && isIndexPair(swap)) {
-        return { kind: ErrorCode.SelfIntersection, segments, swap }
+        return { kind: ErrorCode.SelfIntersection, segments, swap, point: toPoint(point) }
       }
 
       return null
@@ -118,6 +119,14 @@ export function toProblemDetails(code: string, details: unknown): ProblemDetails
     default:
       return null
   }
+}
+
+function toPoint(value: unknown): Coordinate | null {
+  if (!isRecord(value) || !Number.isFinite(value['lat']) || !Number.isFinite(value['lon'])) {
+    return null
+  }
+
+  return { latitude: value['lat'] as number, longitude: value['lon'] as number }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -20,7 +20,7 @@ func (edge segment) contains(point metricPoint) bool {
 		point.y <= math.Max(edge.start.y, edge.end.y)+geometryEpsilon
 }
 
-func findSelfIntersection(points []metricPoint) (SelfIntersectionDetails, bool) {
+func findSelfIntersection(points []metricPoint) (SelfIntersectionDetails, metricPoint, bool) {
 	count := len(points)
 	for i := range points {
 		first := segment{start: points[i], end: points[(i+1)%count]}
@@ -31,12 +31,37 @@ func findSelfIntersection(points []metricPoint) (SelfIntersectionDetails, bool) 
 
 			second := segment{start: points[j], end: points[(j+1)%count]}
 			if segmentsIntersect(first, second) {
-				return newSelfIntersectionDetails(i, j, count), true
+				return newSelfIntersectionDetails(i, j, count), crossingPoint(first, second), true
 			}
 		}
 	}
 
-	return SelfIntersectionDetails{}, false
+	return SelfIntersectionDetails{}, metricPoint{}, false
+}
+
+func crossingPoint(first, second segment) metricPoint {
+	firstDirection := metricPoint{x: first.end.x - first.start.x, y: first.end.y - first.start.y}
+	secondDirection := metricPoint{x: second.end.x - second.start.x, y: second.end.y - second.start.y}
+	denominator := cross(firstDirection, secondDirection)
+
+	if nearZero(denominator) {
+		for _, candidate := range []metricPoint{second.start, second.end} {
+			if first.contains(candidate) {
+				return candidate
+			}
+		}
+
+		return first.start
+	}
+
+	offset := metricPoint{x: second.start.x - first.start.x, y: second.start.y - first.start.y}
+	along := cross(offset, secondDirection) / denominator
+
+	return metricPoint{x: first.start.x + along*firstDirection.x, y: first.start.y + along*firstDirection.y}
+}
+
+func cross(first, second metricPoint) float64 {
+	return first.x*second.y - first.y*second.x
 }
 
 func newSelfIntersectionDetails(first, second, count int) SelfIntersectionDetails {

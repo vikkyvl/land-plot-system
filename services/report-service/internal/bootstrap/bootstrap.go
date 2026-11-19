@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/config"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/document"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
 	"github.com/vleshchenko/land-plot-system/services/report-service/internal/messaging/rabbitmq"
@@ -62,7 +63,8 @@ func Run() error {
 	}
 	defer stopVerifier()
 
-	router := handler.NewRouter(logger, config.ServiceName, reports, verifier)
+	exports := service.NewExportService(reports, document.Renderer{})
+	router := handler.NewRouter(logger, config.ServiceName, reports, exports, verifier)
 	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
 
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)

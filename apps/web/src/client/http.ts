@@ -12,6 +12,11 @@ export interface RequestOptions {
   readonly authenticated?: boolean
 }
 
+export interface DownloadedFile {
+  readonly content: Blob
+  readonly fileName: string | null
+}
+
 export interface HttpClientOptions {
   readonly baseUrl: string
   readonly session: AccessTokenProvider
@@ -23,6 +28,9 @@ const requestIdHeader = 'X-Request-ID'
 const retryAfterHeader = 'Retry-After'
 const statusNoContent = 204
 const statusUnauthorized = 401
+const dispositionHeader = 'Content-Disposition'
+const encodedFileName = /filename\*=UTF-8''([^;]+)/iu
+const plainFileName = /filename="([^"]+)"/iu
 
 export class HttpClient {
   private readonly baseUrl: string
@@ -37,6 +45,22 @@ export class HttpClient {
   }
 
   async request<T>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
+    const response = await this.checked(method, path, options)
+
+    if (response.status === statusNoContent) {
+      return undefined as T
+    }
+
+    return (await response.json()) as T
+  }
+
+  async download(path: string, options: RequestOptions = {}): Promise<DownloadedFile> {
+    const response = await this.checked('GET', path, options)
+
+    return { content: await response.blob(), fileName: fileNameOf(response.headers.get(dispositionHeader)) }
+  }
+
+  private async checked(method: HttpMethod, path: string, options: RequestOptions): Promise<Response> {
     const authenticated = options.authenticated ?? true
     const url = this.url(path, options.query)
     const token = authenticated ? await this.session.accessToken() : null
@@ -56,11 +80,7 @@ export class HttpClient {
       })
     }
 
-    if (response.status === statusNoContent) {
-      return undefined as T
-    }
-
-    return (await response.json()) as T
+    return response
   }
 
   private async freshToken(rejectedToken: string | null): Promise<string | null> {
@@ -116,6 +136,19 @@ export class HttpClient {
 
 export function pathOf(...segments: string[]): string {
   return segments.map((segment) => `/${encodeURIComponent(segment)}`).join('')
+}
+
+function fileNameOf(disposition: string | null): string | null {
+  const encoded = encodedFileName.exec(disposition ?? '')?.[1]
+  if (encoded !== undefined) {
+    try {
+      return decodeURIComponent(encoded)
+    } catch {
+      return null
+    }
+  }
+
+  return plainFileName.exec(disposition ?? '')?.[1] ?? null
 }
 
 async function readJson(response: Response): Promise<unknown> {

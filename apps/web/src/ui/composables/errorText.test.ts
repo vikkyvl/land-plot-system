@@ -20,7 +20,7 @@ describe('errorText', () => {
     const text = problemText({
       code: ErrorCode.SelfIntersection,
       message: 'polygon sides intersect',
-      details: { kind: 'self_intersection', segments: [[1, 2], [3, 0]], swap: [2, 3] },
+      details: { kind: 'self_intersection', segments: [[1, 2], [3, 0]], swap: [2, 3], point: null },
     })
 
     expect(text.title).toBe('Сторони контуру перетинаються')

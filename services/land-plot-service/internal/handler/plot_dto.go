@@ -65,21 +65,33 @@ type previewPlotRequest struct {
 }
 
 type plotResponse struct {
-	ID           string           `json:"id"`
-	OwnerID      string           `json:"owner_id"`
-	Name         string           `json:"name"`
-	Points       []coordinateDTO  `json:"points"`
-	AreaM2       float64          `json:"area_m2"`
-	AreaAres     float64          `json:"area_ares"`
-	AreaHectares float64          `json:"area_hectares"`
-	PerimeterM   float64          `json:"perimeter_m"`
-	Capture      *captureDTO      `json:"capture"`
-	Obstructions []obstructionDTO `json:"obstructions"`
-	Accuracy     accuracyDTO      `json:"accuracy"`
-	Version      int64            `json:"version"`
-	Status       string           `json:"status"`
-	CreatedAt    time.Time        `json:"created_at"`
-	UpdatedAt    time.Time        `json:"updated_at"`
+	ID           string                 `json:"id"`
+	OwnerID      string                 `json:"owner_id"`
+	Name         string                 `json:"name"`
+	Points       []coordinateDTO        `json:"points"`
+	AreaM2       float64                `json:"area_m2"`
+	AreaAres     float64                `json:"area_ares"`
+	AreaHectares float64                `json:"area_hectares"`
+	PerimeterM   float64                `json:"perimeter_m"`
+	Capture      *captureDTO            `json:"capture"`
+	Obstructions []obstructionDTO       `json:"obstructions"`
+	Accuracy     accuracyDTO            `json:"accuracy"`
+	Outline      []outlinePointResponse `json:"outline"`
+	Version      int64                  `json:"version"`
+	Status       string                 `json:"status"`
+	CreatedAt    time.Time              `json:"created_at"`
+	UpdatedAt    time.Time              `json:"updated_at"`
+}
+
+type outlinePointResponse struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type plotSummaryResponse struct {
+	Count             int     `json:"count"`
+	TotalAreaM2       float64 `json:"total_area_m2"`
+	TotalAreaHectares float64 `json:"total_area_hectares"`
 }
 
 type plotVersionResponse struct {
@@ -233,6 +245,7 @@ func newPlotResponse(plot domain.Plot) plotResponse {
 		Capture:      toCaptureDTO(plot.Survey.Capture),
 		Obstructions: toObstructionDTOs(plot.Survey.Obstructions),
 		Accuracy:     newAccuracyDTO(plot.Accuracy),
+		Outline:      newOutlineResponse(plot.Points),
 		Version:      plot.Version,
 		Status:       string(plot.Status),
 		CreatedAt:    plot.CreatedAt,
@@ -266,4 +279,15 @@ func newPreviewPlotResponse(inspection domain.PolygonInspection) previewPlotResp
 		Valid:        true,
 		Errors:       problems,
 	}
+}
+
+func newOutlineResponse(points []domain.Coordinate) []outlinePointResponse {
+	outline := domain.Outline(points)
+	response := make([]outlinePointResponse, len(outline))
+
+	for index, point := range outline {
+		response[index] = outlinePointResponse{X: point.X, Y: point.Y}
+	}
+
+	return response
 }

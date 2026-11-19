@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { reportToGeoJson } from './geoJson'
 import type { Plot } from './plot'
 import type { Report } from './report'
+import { hasNewerReport } from './report'
 import { isOutdated, isPlotDeleted, reportNumber, type ReportDetails } from './reportDetails'
 
 const report: Report = {
@@ -16,6 +16,9 @@ const report: Report = {
   accuracy: null,
   terrain: null,
   climate: null,
+  boundary: [],
+  generatedFrom: { climateYears: null, terrainAt: null },
+  latest: null,
 }
 
 const points = [
@@ -49,22 +52,9 @@ describe('report details', () => {
     expect(isPlotDeleted(details(2))).toBe(false)
   })
 
-  it('exports a closed GeoJSON polygon with lon, lat order and report properties', () => {
-    const feature = reportToGeoJson(report, points)
-
-    expect(feature.geometry.coordinates).toEqual([
-      [
-        [30.52011, 50.45021],
-        [30.52342, 50.45048],
-        [30.5245, 50.44962],
-        [30.52011, 50.45021],
-      ],
-    ])
-    expect(feature.properties).toMatchObject({
-      report_id: report.id,
-      name: 'Поле біля ставка',
-      plot_version: 1,
-      area_hectares: 2.41,
-    })
+  it('knows when a newer report of the plot exists', () => {
+    expect(hasNewerReport(report)).toBe(false)
+    expect(hasNewerReport({ ...report, latest: { id: report.id, createdAt: report.createdAt } })).toBe(false)
+    expect(hasNewerReport({ ...report, latest: { id: 'newer', createdAt: new Date() } })).toBe(true)
   })
 })

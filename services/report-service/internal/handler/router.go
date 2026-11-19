@@ -19,10 +19,11 @@ func NewRouter(
 	logger *slog.Logger,
 	serviceName string,
 	reports ReportService,
+	exports ExportService,
 	verifier middleware.TokenVerifier,
 ) http.Handler {
 	responses := respond.NewWriter(logger)
-	reportHandler := &reportHandler{reports: reports, responses: responses}
+	reportHandler := &reportHandler{reports: reports, exports: exports, responses: responses}
 	traceHandler := &traceHandler{reports: reports, responses: responses}
 
 	router := http.NewServeMux()
@@ -45,6 +46,12 @@ func protectedRoutes(reports *reportHandler, trace *traceHandler) []protectedRou
 		},
 		{pattern: "GET /api/v1/reports", scopes: []string{domain.ScopeReportsRead}, handle: reports.list},
 		{pattern: "GET /api/v1/reports/{id}", scopes: []string{domain.ScopeReportsRead}, handle: reports.get},
+		{pattern: "GET /api/v1/reports/{id}/pdf", scopes: []string{domain.ScopeReportsRead}, handle: reports.pdf},
+		{
+			pattern: "GET /api/v1/reports/{id}/geojson",
+			scopes:  []string{domain.ScopeReportsRead},
+			handle:  reports.geojson,
+		},
 		{pattern: "GET /api/v1/demo/chain", handle: trace.trace},
 	}
 }

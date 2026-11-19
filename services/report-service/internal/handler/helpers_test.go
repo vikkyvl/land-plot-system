@@ -57,6 +57,20 @@ func (stub *reportServiceStub) Trace(_ context.Context, caller service.Caller, _
 	return stub.trace, stub.err
 }
 
+type documentsStub struct{}
+
+func (documentsStub) PDF(report domain.Report, language domain.Language) ([]byte, error) {
+	return []byte("%PDF-1.7 " + report.PlotName + " " + string(language)), nil
+}
+
+func (documentsStub) GeoJSON(report domain.Report) ([]byte, error) {
+	if len(report.Boundary) == 0 {
+		return nil, domain.ErrBoundaryNotRecorded
+	}
+
+	return []byte(`{"type":"FeatureCollection","features":[]}`), nil
+}
+
 var allScopes = []string{domain.ScopePlotsRead, domain.ScopeReportsRead, domain.ScopeReportsWrite}
 
 type verifierStub struct {
@@ -70,7 +84,9 @@ func (stub verifierStub) Verify(string) (domain.Principal, error) {
 }
 
 func newTestRouterWithVerifier(reports ReportService, verifier middleware.TokenVerifier) http.Handler {
-	return NewRouter(slog.New(slog.DiscardHandler), testServiceName, reports, verifier)
+	exports := service.NewExportService(reports, documentsStub{})
+
+	return NewRouter(slog.New(slog.DiscardHandler), testServiceName, reports, exports, verifier)
 }
 
 func newTestRouter(reports ReportService) http.Handler {

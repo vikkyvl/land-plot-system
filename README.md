@@ -257,8 +257,10 @@ Validation errors may add `details` with zero-based point indices, so a client c
 
 ```json
 { "code": "self_intersection", "message": "polygon must not intersect itself", "request_id": "...",
-  "details": { "segments": [[1, 2], [3, 0]], "swap": [2, 3] } }
+  "details": { "segments": [[1, 2], [3, 0]], "swap": [2, 3], "point": { "lat": 50.45045, "lon": 30.5207 } } }
 ```
+
+`point` is where the two sides cross, calculated by the server, so clients only draw it.
 
 `duplicate_point` adds `{"indices": [i, j]}` and `invalid_coordinate` adds `{"index": i}`. Clients that do not know `details` can ignore it.
 
@@ -301,6 +303,7 @@ curl http://localhost:8080/api/v1/users/profile -H "Authorization: Bearer $TOKEN
 |--------|-----------------------|------------------------------------------------------|
 | POST   | `/api/v1/plots`       | Create a plot (`name`, `points[]` with `lat`/`lon`, optional `capture` and `obstructions`) |
 | POST   | `/api/v1/plots/preview` | Measure and validate `points[]` without saving; no token needed |
+| GET    | `/api/v1/plots/summary` | `count` and `total_area_hectares` (and `total_area_m2`) of the plots in the list |
 | GET    | `/api/v1/plots`       | List the current user's plots, recently changed first |
 | GET    | `/api/v1/plots/{id}`  | Get one plot                                         |
 | GET    | `/api/v1/plots/{id}/versions` | Confirmed versions of a plot, newest first    |
@@ -319,7 +322,7 @@ curl -X PATCH http://localhost:8080/api/v1/plots/<plot_id> \
   -d '{"name":"North field (renamed)"}'
 ```
 
-A plot response includes `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, `capture` (or `null`), `obstructions`, `accuracy`, `version`, `status`, and timestamps. `accuracy` is
+A plot response includes `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, `capture` (or `null`), `obstructions`, `accuracy`, `outline`, `version`, `status`, and timestamps. `outline` is the boundary projected by the server into a unit square (`x` to the east, `y` down, north on top, aspect kept), so a client draws a thumbnail by scaling it only. `GET /plots` stays an array, because the AI agents and the older demos read it so; the totals of the list come from `GET /plots/summary`. `accuracy` is
 
 ```json
 {
@@ -351,6 +354,8 @@ with the shares of `σ_A²` per source, `worst_side` as the marked side that add
 | POST   | `/api/v1/reports`       | Create a report for a plot (`plot_id`) |
 | GET    | `/api/v1/reports`       | List the current user's reports, newest first; `plot_id` and `limit` (50 by default, at most 100) are optional |
 | GET    | `/api/v1/reports/{id}`  | Get a saved report                  |
+| GET    | `/api/v1/reports/{id}/pdf?lang=uk\|en` | The report as a PDF (`application/pdf`, attachment «Звіт-<name>-<number>.pdf» or «Report-…») |
+| GET    | `/api/v1/reports/{id}/geojson` | The boundary of the report as GeoJSON (`application/geo+json`, attachment) |
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/reports \
@@ -367,6 +372,13 @@ A report also keeps a snapshot of three blocks, so a report never changes after 
 - `climate`: `status`, `first_year` and `last_year`, four `seasons` (`winter`, `spring`, `summer`, `autumn`, each with `mean_c`, `mean_min_c`, `mean_max_c`, `precipitation_mm`, `frost_days`, `heat_days`), `last_spring_frost` and `first_autumn_frost` as `MM-DD` or `null`, `growing_days` and `source`.
 
 Reports created before these blocks existed have them as `null`.
+
+A report also stores the `boundary` of the plot version, returns it as `boundary` (`[{lat, lon}]`, empty for older reports) and adds:
+
+- `generated_from`: `climate_first_year` and `climate_last_year` of the climate block and `terrain_at`, the time the elevations were read (each `null` when the block is unavailable);
+- `latest_report_id` and `latest_report_created_at`: the newest report of the same plot, in every list item and in `GET /reports/{id}`, so `/reports?plot_id=…` and a single report both tell whether a newer one exists.
+
+**PDF and GeoJSON.** Both files are built only from the stored report, without calling Open-Meteo or `land-plot-service`, so they also work for reports of deleted plots and always show what the report showed. Only the owner gets them (`reports:read`; another user's report is `403`), `lang` is `uk` (default) or `en` and anything else is `400 invalid_language`. The file name keeps letters, digits and dashes and is sent both as an ASCII `filename` and as `filename*=UTF-8''…`; the gateway exposes `Content-Disposition` to the browser. The PDF is drawn with [`github.com/signintech/gopdf`](https://github.com/signintech/gopdf) v0.38.4 (maintained, embeds TrueType fonts as subsets) with Montserrat Regular and Bold embedded for Cyrillic (`internal/document/fonts`, SIL Open Font License). It contains the logo, the plot name, the report number and date, the boundary as vector lines without map tiles, the area with its margin (marked approximate for `basis: assumed`), the perimeter, the surface area and slope, the climate by season with the frost dates and growing days, the coordinates (over several pages when needed) and the data sources «Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90»; an unavailable block or an older report says «Даних немає» / «No data». An older report without a stored boundary has no GeoJSON (`409 boundary_not_recorded`).
 
 ### Terrain and climate in reports
 

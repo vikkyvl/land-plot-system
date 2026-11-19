@@ -1,32 +1,21 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { Coordinate } from '../../domain/coordinate'
+import type { OutlinePoint } from '../../domain/plot'
 
-const props = defineProps<{ points: readonly Coordinate[]; size?: number }>()
+const props = defineProps<{ outline: readonly OutlinePoint[]; size?: number }>()
 
 const box = 64
 const padding = 12
+const minimumPoints = 3
 
-const outline = computed(() => {
-  if (props.points.length < 3) {
-    return ''
-  }
-  const middle = props.points.reduce((sum, point) => sum + point.latitude, 0) / props.points.length
-  const stretch = Math.cos((middle * Math.PI) / 180)
-  const flat = props.points.map((point) => ({ x: point.longitude * stretch, y: -point.latitude }))
-  const xs = flat.map((point) => point.x)
-  const ys = flat.map((point) => point.y)
-  const width = Math.max(...xs) - Math.min(...xs)
-  const height = Math.max(...ys) - Math.min(...ys)
-  const scale = (box - 2 * padding) / Math.max(width, height, Number.EPSILON)
-  const left = (box - width * scale) / 2
-  const top = (box - height * scale) / 2
-
-  return flat
-    .map((point) => `${(left + (point.x - Math.min(...xs)) * scale).toFixed(1)},${(top + (point.y - Math.min(...ys)) * scale).toFixed(1)}`)
-    .join(' ')
-})
+const shape = computed(() =>
+  props.outline.length < minimumPoints
+    ? ''
+    : props.outline
+        .map((point) => `${(padding + point.x * (box - 2 * padding)).toFixed(1)},${(padding + point.y * (box - 2 * padding)).toFixed(1)}`)
+        .join(' '),
+)
 </script>
 
 <template>
@@ -44,9 +33,9 @@ const outline = computed(() => {
       rx="10"
     />
     <polygon
-      v-if="outline"
+      v-if="shape"
       class="plot-thumbnail__shape"
-      :points="outline"
+      :points="shape"
     />
   </svg>
 </template>

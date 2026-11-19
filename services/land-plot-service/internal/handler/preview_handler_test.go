@@ -16,7 +16,7 @@ const (
 	squareBody       = `{"points":[{"lat":50.45,"lon":30.52},{"lat":50.45,"lon":30.5214},{"lat":50.4509,"lon":30.5214},{"lat":50.4509,"lon":30.52}]}`
 	hourglassBody    = `{"points":[{"lat":50.4509,"lon":30.52},{"lat":50.4509,"lon":30.5214},{"lat":50.45,"lon":30.52},{"lat":50.45,"lon":30.5214}]}`
 	selfIntersection = `{"code":"self_intersection","message":"polygon must not intersect itself",` +
-		`"details":{"segments":[[1,2],[3,0]],"swap":[2,3]}}`
+		`"details":{"segments":[[1,2],[3,0]],"swap":[2,3],"point":{"lat":50.45045,"lon":30.5207}}}`
 )
 
 func previewRequest(body string) *http.Request {

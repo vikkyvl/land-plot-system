@@ -86,6 +86,15 @@ func (plotService *PlotService) List(requestContext context.Context, ownerID str
 	return plots, nil
 }
 
+func (plotService *PlotService) Summary(requestContext context.Context, ownerID string) (domain.PlotSummary, error) {
+	plots, err := plotService.repository.ListByOwner(requestContext, ownerID)
+	if err != nil {
+		return domain.PlotSummary{}, fmt.Errorf(wrapListPlots, err)
+	}
+
+	return domain.SummarizePlots(plots), nil
+}
+
 func (plotService *PlotService) Get(requestContext context.Context, ownerID, plotID string) (domain.Plot, error) {
 	if _, err := uuid.Parse(plotID); err != nil {
 		return domain.Plot{}, domain.ErrInvalidPlotID
