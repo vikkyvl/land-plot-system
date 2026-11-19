@@ -1,0 +1,28 @@
+package logging
+
+const (
+	KeyAddress        = "address"
+	KeyAttempt        = "attempt"
+	KeyCompleted      = "completed"
+	KeyDelay          = "delay"
+	KeyDurationMS     = "duration_ms"
+	KeyError          = "error"
+	KeyFinishReason   = "finish_reason"
+	KeyInputTokens    = "input_tokens"
+	KeyIsError        = "is_error"
+	KeyModel          = "model"
+	KeyOutputTokens   = "output_tokens"
+	KeyPath           = "path"
+	KeyService        = "service"
+	KeySkill          = "skill"
+	KeySpentTokens    = "spent_tokens"
+	KeyStatus         = "status"
+	KeyStep           = "step"
+	KeySteps          = "steps"
+	KeyTaskID         = "task_id"
+	KeyThinkingTokens = "thinking_tokens"
+	KeyTool           = "tool"
+	KeyTotalTokens    = "total_tokens"
+	KeyTransport      = "transport"
+	KeyURL            = "url"
+)

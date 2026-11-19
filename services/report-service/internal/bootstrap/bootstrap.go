@@ -1,0 +1,95 @@
+package bootstrap
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/config"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/document"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/handler"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/logging"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/messaging/rabbitmq"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/repository/postgres"
+	"github.com/vleshchenko/land-plot-system/services/report-service/internal/service"
+)
+
+func Run() error {
+	serviceConfig, err := config.Load()
+	if err != nil {
+		return fmt.Errorf(wrapLoadConfig, err)
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(logging.KeyService, config.ServiceName)
+
+	pool, err := openDatabase(serviceConfig.DatabaseURL, serviceConfig.DatabaseTimeout)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	consumer := rabbitmq.NewConsumer(rabbitmq.ConsumerConfig{
+		URL:               serviceConfig.RabbitMQURL,
+		ConnectionTimeout: serviceConfig.RabbitMQTimeout,
+		ProcessingTimeout: serviceConfig.ProcessingTimeout,
+		Prefetch:          serviceConfig.EventPrefetch,
+		InstanceID:        serviceConfig.InstanceID,
+	}, logger)
+
+	publisher := rabbitmq.NewPublisher(serviceConfig.RabbitMQURL, serviceConfig.RabbitMQTimeout)
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			logger.Error(logCloseEventPublisher, logging.KeyError, err)
+		}
+	}()
+
+	reports := newReportService(serviceConfig, pool, logger)
+	projection := service.NewPlotProjection(postgres.NewPlotSummaryRepository(pool, serviceConfig.FailNamePrefix))
+	relay := service.NewOutboxRelay(
+		postgres.NewOutboxRepository(pool),
+		publisher,
+		outboxRelayConfig(serviceConfig),
+		logger,
+	)
+
+	verifier, stopVerifier, err := newTokenVerifier(serviceConfig, logger)
+	if err != nil {
+		return err
+	}
+	defer stopVerifier()
+
+	exports := service.NewExportService(reports, document.Renderer{})
+	router := handler.NewRouter(logger, config.ServiceName, reports, exports, verifier)
+	server := &http.Server{Handler: router, ReadHeaderTimeout: readHeaderTimeout}
+
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", serviceConfig.HTTPAddress)
+	if err != nil {
+		return fmt.Errorf(wrapListenHTTP, err)
+	}
+
+	instance, err := register(serviceConfig, logger)
+	if err != nil {
+		_ = listener.Close()
+		return err
+	}
+
+	runContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	waitWorkers := startWorkers(
+		runContext,
+		relay.Run,
+		func(workerContext context.Context) { consumer.Run(workerContext, projection) },
+	)
+	serveErr := serve(runContext, server, listener, serviceConfig.ShutdownTimeout, instance.deregister, logger)
+
+	stop()
+	waitWorkers()
+
+	return serveErr
+}

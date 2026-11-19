@@ -1,0 +1,28 @@
+package config
+
+const (
+	envAIClientID            = "AI_CLIENT_ID"
+	envAIClientSecret        = "AI_CLIENT_SECRET"
+	envAIScopes              = "AI_SCOPES"
+	envOIDCTokenURL          = "OIDC_TOKEN_URL"
+	envAgentHTTPAddress      = "AGENT_HTTP_ADDR"
+	envAgentMaxSteps         = "AGENT_MAX_STEPS"
+	envAgentPublicURL        = "AGENT_PUBLIC_URL"
+	envAgentTokenBudget      = "AGENT_TOKEN_BUDGET"
+	envA2ACallTimeout        = "A2A_CALL_TIMEOUT"
+	envGatewayTimeout        = "GATEWAY_TIMEOUT"
+	envGatewayURL            = "GATEWAY_URL"
+	envHTTPShutdownTimeout   = "HTTP_SHUTDOWN_TIMEOUT"
+	envLLMAPIKey             = "LLM_API_KEY"
+	envLLMMaxOutputTokens    = "LLM_MAX_OUTPUT_TOKENS"
+	envLLMMinInterval        = "LLM_MIN_INTERVAL"
+	envLLMModel              = "LLM_MODEL"
+	envLLMRequestTimeout     = "LLM_REQUEST_TIMEOUT"
+	envLLMThinkingLevel      = "LLM_THINKING_LEVEL"
+	envMCPAccessToken        = "MCP_ACCESS_TOKEN"
+	envMCPHTTPAddress        = "MCP_HTTP_ADDR"
+	envMCPRateLimitPerMinute = "MCP_RATE_LIMIT_PER_MINUTE"
+	envProducerAgentURL      = "PRODUCER_AGENT_URL"
+	envToolResultMaxBytes    = "TOOL_RESULT_MAX_BYTES"
+	envUserInputMaxChars     = "USER_INPUT_MAX_CHARS"
+)

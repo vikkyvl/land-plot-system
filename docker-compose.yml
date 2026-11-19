@@ -1,0 +1,364 @@
+name: land-plot-system
+
+x-go-service: &go-service
+  restart: unless-stopped
+  init: true
+  networks:
+    - land-network
+  environment: &go-environment
+    HTTP_SHUTDOWN_TIMEOUT: ${HTTP_SHUTDOWN_TIMEOUT:-10s}
+    CONSUL_ADDRESS: http://consul:8500
+    CONSUL_TIMEOUT: ${CONSUL_TIMEOUT:-3s}
+    OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-8180}/realms/land-plot
+    OIDC_JWKS_URL: http://keycloak:8080/realms/land-plot/protocol/openid-connect/certs
+    OIDC_AUDIENCE: ${OIDC_AUDIENCE:-land-plot-api}
+    OIDC_TIMEOUT: ${OIDC_TIMEOUT:-5s}
+
+x-ai-service: &ai-service
+  profiles: ["ai"]
+  build:
+    context: ./ai
+  image: land-plot-system-ai:local
+  restart: on-failure:3
+  init: true
+  networks:
+    - land-network
+  depends_on:
+    api-gateway:
+      condition: service_healthy
+  environment: &ai-environment
+    GATEWAY_URL: http://api-gateway:8080
+    GATEWAY_TIMEOUT: ${GATEWAY_TIMEOUT:-10s}
+    OIDC_TOKEN_URL: http://keycloak:8080/realms/land-plot/protocol/openid-connect/token
+    AI_CLIENT_ID: ${AI_CLIENT_ID:-land-plot-ai}
+    AI_CLIENT_SECRET: ${AI_CLIENT_SECRET:-local_development_ai_client_secret}
+    TOOL_RESULT_MAX_BYTES: ${TOOL_RESULT_MAX_BYTES:-4000}
+
+x-agent-environment: &agent-environment
+  <<: *ai-environment
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-gemini-3.5-flash-lite}
+  LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-1024}
+  LLM_MIN_INTERVAL: ${LLM_MIN_INTERVAL:-6s}
+  LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-1m}
+  AGENT_TOKEN_BUDGET: ${AGENT_TOKEN_BUDGET:-30000}
+  AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-8}
+  USER_INPUT_MAX_CHARS: ${USER_INPUT_MAX_CHARS:-2000}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-postgres_dev_password}
+      POSTGRES_DB: ${POSTGRES_ADMIN_DB:-postgres}
+      IDENTITY_DB_NAME: ${IDENTITY_DB_NAME:-identity_db}
+      IDENTITY_DB_USER: ${IDENTITY_DB_USER:-identity_user}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_dev_password}
+      PLOT_DB_NAME: ${PLOT_DB_NAME:-plot_db}
+      PLOT_DB_USER: ${PLOT_DB_USER:-plot_user}
+      PLOT_DB_PASSWORD: ${PLOT_DB_PASSWORD:-plot_dev_password}
+      REPORT_DB_NAME: ${REPORT_DB_NAME:-report_db}
+      REPORT_DB_USER: ${REPORT_DB_USER:-report_user}
+      REPORT_DB_PASSWORD: ${REPORT_DB_PASSWORD:-report_dev_password}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloak_db}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak_user}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_password}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - land-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB_NAME:-keycloak_db}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak_user}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_dev_password}
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8180}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-keycloak_admin_dev_password}
+      AI_CLIENT_SECRET: ${AI_CLIENT_SECRET:-local_development_ai_client_secret}
+      OLENA_KOVAL_PASSWORD: ${OLENA_KOVAL_PASSWORD:-OlenaDevPassword123}
+      TARAS_MELNYK_PASSWORD: ${TARAS_MELNYK_PASSWORD:-TarasDevPassword123}
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8180}:8080"
+    volumes:
+      - ./infra/keycloak/realm-land-plot.json:/opt/keycloak/data/import/realm-land-plot.json:ro
+      - ./infra/keycloak/themes/arqetra:/opt/keycloak/themes/arqetra:ro
+      - ./apps/web/public/brand:/opt/keycloak/themes/arqetra/login/resources/img/social:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q 'HTTP/1.0 200' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+      start_interval: 2s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    networks:
+      - land-network
+
+  mailpit:
+    image: axllent/mailpit:v1.33.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - land-network
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-land_app}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_dev_password}
+    ports:
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+      start_interval: 2s
+    networks:
+      - land-network
+
+  consul:
+    image: hashicorp/consul:1.20
+    restart: unless-stopped
+    command: agent -dev -client=0.0.0.0 -ui
+    ports:
+      - "${CONSUL_HTTP_PORT:-8500}:8500"
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - land-network
+
+  identity-service:
+    <<: *go-service
+    build:
+      context: ./services/identity-service
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8081
+      DATABASE_URL: postgres://${IDENTITY_DB_USER:-identity_user}:${IDENTITY_DB_PASSWORD:-identity_dev_password}@postgres:5432/${IDENTITY_DB_NAME:-identity_db}?sslmode=disable
+      DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
+    expose:
+      - "8081"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  land-plot-service:
+    <<: *go-service
+    build:
+      context: ./services/land-plot-service
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8082
+      DATABASE_URL: postgres://${PLOT_DB_USER:-plot_user}:${PLOT_DB_PASSWORD:-plot_dev_password}@postgres:5432/${PLOT_DB_NAME:-plot_db}?sslmode=disable
+      DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-land_app}:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672/
+      RABBITMQ_TIMEOUT: ${RABBITMQ_TIMEOUT:-5s}
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL:-1s}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
+      OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-1m}
+      OUTBOX_RETENTION: ${OUTBOX_RETENTION:-1h}
+      SAGA_TIMEOUT: ${SAGA_TIMEOUT:-30s}
+      MESSAGE_PROCESSING_TIMEOUT: ${MESSAGE_PROCESSING_TIMEOUT:-5s}
+    expose:
+      - "8082"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  report-service:
+    <<: *go-service
+    build:
+      context: ./services/report-service
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8083
+      DATABASE_URL: postgres://${REPORT_DB_USER:-report_user}:${REPORT_DB_PASSWORD:-report_dev_password}@postgres:5432/${REPORT_DB_NAME:-report_db}?sslmode=disable
+      DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-5s}
+      UPSTREAM_TIMEOUT: ${UPSTREAM_TIMEOUT:-5s}
+      LAND_PLOT_SERVICE_NAME: ${LAND_PLOT_SERVICE_NAME:-land-plot-service}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-land_app}:${RABBITMQ_PASSWORD:-rabbitmq_dev_password}@rabbitmq:5672/
+      RABBITMQ_TIMEOUT: ${RABBITMQ_TIMEOUT:-5s}
+      MESSAGE_PROCESSING_TIMEOUT: ${MESSAGE_PROCESSING_TIMEOUT:-5s}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
+      OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL:-1s}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
+      OUTBOX_CLEANUP_INTERVAL: ${OUTBOX_CLEANUP_INTERVAL:-1m}
+      OUTBOX_RETENTION: ${OUTBOX_RETENTION:-1h}
+      REPORT_FAIL_NAME_PREFIX: ${REPORT_FAIL_NAME_PREFIX-FAIL}
+      OPEN_METEO_ELEVATION_URL: ${OPEN_METEO_ELEVATION_URL:-https://api.open-meteo.com/v1/elevation}
+      OPEN_METEO_ARCHIVE_URL: ${OPEN_METEO_ARCHIVE_URL:-https://archive-api.open-meteo.com/v1/archive}
+      OPEN_METEO_TIMEOUT: ${OPEN_METEO_TIMEOUT:-3s}
+    expose:
+      - "8083"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  api-gateway:
+    <<: *go-service
+    build:
+      context: ./services/api-gateway
+    environment:
+      <<: *go-environment
+      HTTP_ADDRESS: :8080
+      UPSTREAM_TIMEOUT: ${UPSTREAM_TIMEOUT:-5s}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://cad.kpi.ua,http://localhost:5173,http://localhost:4173}
+      PREVIEW_RATE_LIMIT_PER_MINUTE: ${PREVIEW_RATE_LIMIT_PER_MINUTE:-60}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      land-plot-service:
+        condition: service_healthy
+      report-service:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        VITE_GATEWAY_URL: ${WEB_GATEWAY_URL:-http://localhost:8080}
+        VITE_OIDC_AUTHORITY: ${WEB_OIDC_AUTHORITY:-http://localhost:8180/realms/land-plot}
+        VITE_OIDC_CLIENT_ID: ${WEB_OIDC_CLIENT_ID:-land-plot-web}
+        VITE_GEOCODING_URL: ${WEB_GEOCODING_URL:-https://nominatim.openstreetmap.org}
+        VITE_MAP_TILES_URL: ${WEB_MAP_TILES_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+        VITE_SATELLITE_TILES_URL: ${WEB_SATELLITE_TILES_URL:-https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}}
+    environment:
+      CSP_GATEWAY_ORIGIN: ${WEB_CSP_GATEWAY_ORIGIN:-http://localhost:8080}
+      CSP_KEYCLOAK_ORIGIN: ${WEB_CSP_KEYCLOAK_ORIGIN:-http://localhost:8180}
+      CSP_GEOCODING_ORIGIN: ${WEB_CSP_GEOCODING_ORIGIN:-https://nominatim.openstreetmap.org}
+      CSP_TILE_ORIGINS: ${WEB_CSP_TILE_ORIGINS:-https://tile.openstreetmap.org https://server.arcgisonline.com}
+    ports:
+      - "${WEB_PORT:-4173}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - land-network
+
+  mcp-server:
+    <<: *ai-service
+    command: ["/app/mcp-server", "-transport", "http"]
+    environment:
+      <<: *ai-environment
+      MCP_HTTP_ADDR: :8090
+      AI_SCOPES: plots:read plots:write reports:read reports:write
+      MCP_ACCESS_TOKEN: ${MCP_ACCESS_TOKEN:-}
+      MCP_RATE_LIMIT_PER_MINUTE: ${MCP_RATE_LIMIT_PER_MINUTE:-30}
+    ports:
+      - "127.0.0.1:${MCP_HTTP_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  producer-agent:
+    <<: *ai-service
+    command: ["/app/producer-agent"]
+    environment:
+      <<: *agent-environment
+      AGENT_HTTP_ADDR: :8091
+      AI_SCOPES: plots:read plots:write
+      AGENT_PUBLIC_URL: http://producer-agent:8091
+    ports:
+      - "127.0.0.1:${PRODUCER_AGENT_PORT:-8091}:8091"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8091/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  consumer-agent:
+    <<: *ai-service
+    command: ["/app/consumer-agent"]
+    environment:
+      <<: *agent-environment
+      AGENT_HTTP_ADDR: :8092
+      AI_SCOPES: plots:read reports:read reports:write
+      AGENT_PUBLIC_URL: http://consumer-agent:8092
+      PRODUCER_AGENT_URL: http://producer-agent:8091
+      A2A_CALL_TIMEOUT: ${A2A_CALL_TIMEOUT:-90s}
+    ports:
+      - "127.0.0.1:${CONSUMER_AGENT_PORT:-8092}:8092"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      producer-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8092/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  land-network:
+    driver: bridge
+
+volumes:
+  postgres-data:

@@ -1,0 +1,875 @@
+<script setup lang="ts">
+import { storeToRefs } from 'pinia'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
+
+import { isPending, type Plot, type PlotVersion } from '../../domain/plot'
+import { hasScope, Scope } from '../../domain/profile'
+import AccuracyNotes from '../components/AccuracyNotes.vue'
+import DeletePlotDialog from '../components/DeletePlotDialog.vue'
+import PlotStatusBadge from '../components/PlotStatusBadge.vue'
+import PlotViewMap from '../components/PlotViewMap.vue'
+import StalledNotice from '../components/StalledNotice.vue'
+import RenamePlotDialog from '../components/RenamePlotDialog.vue'
+import {
+  formatAres,
+  formatDate,
+  formatHectares,
+  formatMeters,
+  formatPointCount,
+  formatSquareMeters,
+} from '../composables/format'
+import { formatMargin } from '../composables/accuracyText'
+import { useMapLayers, usePlotService, useSettingsService } from '../composables/services'
+import { useFailure, type Failure } from '../composables/useFailure'
+import { useFollowedPlots } from '../composables/useFollowedPlots'
+import { plotTransitionName } from '../composables/viewTransitions'
+import { t } from '../i18n'
+import { useConfirmationsStore } from '../stores/confirmations'
+import { usePlotsStore } from '../stores/plots'
+import { useSessionStore } from '../stores/session'
+import { useToastStore } from '../stores/toast'
+
+const props = defineProps<{ id: string }>()
+
+const service = usePlotService()
+const layers = useMapLayers()
+const preferences = useSettingsService()
+const plotsStore = usePlotsStore()
+const toasts = useToastStore()
+const router = useRouter()
+const handle = useFailure()
+const { profile } = storeToRefs(useSessionStore())
+
+const plot = shallowRef<Plot | null>(null)
+const versions = shallowRef<readonly PlotVersion[] | null>(null)
+const loading = ref(true)
+const failure = ref<Failure | null>(null)
+const dialog = ref<'rename' | 'delete' | null>(null)
+const busy = ref(false)
+const dialogFailure = ref<Failure | null>(null)
+const reporting = ref(false)
+
+const layer = computed(() => layers[preferences.layer()])
+const pending = computed(() => plot.value !== null && isPending(plot.value))
+const canWrite = computed(() => profile.value === null || hasScope(profile.value, Scope.PlotsWrite))
+const canReport = computed(() => profile.value === null || hasScope(profile.value, Scope.ReportsWrite))
+const pendingHint = computed(() => t('plot.pending'))
+const confirmations = useConfirmationsStore()
+const followed = useFollowedPlots()
+const phase = computed(() => confirmations.entries[props.id]?.phase ?? null)
+const cancelled = ref(false)
+
+function followIfPending(current: Plot): void {
+  if (isPending(current)) {
+    followed.follow(current.id)
+  }
+}
+
+async function reloadVersions(id: string): Promise<void> {
+  try {
+    versions.value = await service.versions(id)
+  } catch (error) {
+    await handle(error)
+  }
+}
+
+watch(
+  () => confirmations.entries[props.id],
+  (entry) => {
+    if (entry === undefined) {
+      return
+    }
+    if ((entry.phase === 'confirmed' || entry.phase === 'reverted') && entry.plot !== null) {
+      plot.value = entry.plot
+      plotsStore.replace(entry.plot)
+      void reloadVersions(entry.plot.id)
+    } else if (entry.phase === 'cancelled') {
+      cancelled.value = true
+      plotsStore.forget(props.id)
+    }
+  },
+)
+
+async function load(id: string): Promise<void> {
+  followed.releaseAll()
+  cancelled.value = false
+  loading.value = true
+  failure.value = null
+  plot.value = null
+  versions.value = null
+  try {
+    const [loadedPlot, loadedVersions] = await Promise.all([service.get(id), service.versions(id)])
+    plot.value = loadedPlot
+    versions.value = loadedVersions
+    followIfPending(loadedPlot)
+  } catch (error) {
+    failure.value = await handle(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+watch(() => props.id, load, { immediate: true })
+
+function open(kind: 'rename' | 'delete'): void {
+  dialogFailure.value = null
+  dialog.value = kind
+}
+
+async function rename(name: string): Promise<void> {
+  if (plot.value === null) {
+    return
+  }
+  busy.value = true
+  try {
+    const previousName = plot.value.name
+    const renamed = await service.rename(plot.value.id, name)
+    confirmations.expect(renamed.id, { intent: 'update', name: previousName, expected: { name } })
+    plot.value = renamed
+    plotsStore.replace(renamed)
+    followIfPending(renamed)
+    dialog.value = null
+    toasts.show(t('plot.renameSent'))
+  } catch (error) {
+    dialogFailure.value = await handle(error)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function remove(): Promise<void> {
+  if (plot.value === null) {
+    return
+  }
+  const { id, name } = plot.value
+  busy.value = true
+  try {
+    await service.remove(id)
+    plotsStore.forget(id)
+    dialog.value = null
+    toasts.show(t('plot.deleted', { name }))
+    await router.push('/plots')
+  } catch (error) {
+    dialogFailure.value = await handle(error)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function createReport(): Promise<void> {
+  if (plot.value === null) {
+    return
+  }
+  reporting.value = true
+  try {
+    const report = await service.createReport(plot.value.id)
+    await router.push(`/reports/${report.id}`)
+  } catch (error) {
+    await handle(error, { toast: true })
+  } finally {
+    reporting.value = false
+  }
+}
+</script>
+
+<template>
+  <article
+    class="detail"
+    :aria-busy="loading"
+  >
+    <div
+      v-if="loading"
+      class="detail__skeleton"
+      :aria-label="$t('plot.loading')"
+    >
+      <div class="detail__skeleton-line motion-shimmer" />
+      <div class="detail__skeleton-map motion-shimmer" />
+      <div class="detail__skeleton-line detail__skeleton-line--short motion-shimmer" />
+    </div>
+
+    <div
+      v-else-if="failure"
+      class="detail__failure"
+      role="alert"
+    >
+      <p>{{ failure.text }}</p>
+      <small v-if="failure.requestId">{{ $t('app.requestId', { id: failure.requestId }) }}</small>
+      <RouterLink to="/plots">
+        {{ $t('app.toPlots') }}
+      </RouterLink>
+    </div>
+
+    <div
+      v-else-if="cancelled"
+      class="detail__failure"
+      role="alert"
+    >
+      <p>
+        {{ $t('plot.cancelled') }}
+      </p>
+      <RouterLink to="/plots">
+        {{ $t('app.toPlots') }}
+      </RouterLink>
+    </div>
+
+    <template v-else-if="plot">
+      <div class="detail__bar">
+        <RouterLink
+          class="detail__back"
+          to="/plots"
+          :aria-label="$t('plot.back')"
+        >
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M15 5 L8 12 L15 19"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </RouterLink>
+        <span class="detail__bar-title">{{ plot.name }}</span>
+        <button
+          v-if="canWrite"
+          type="button"
+          class="detail__trash"
+          :aria-label="$t('plot.delete')"
+          :disabled="pending"
+          :title="pending ? pendingHint : undefined"
+          @click="open('delete')"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M5 7 H19 M10 7 V4 H14 V7 M7 7 L8 20 H16 L17 7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <header class="detail__head">
+        <div class="detail__heading">
+          <h2 class="detail__title">
+            {{ plot.name }}
+          </h2>
+          <span class="detail__meta">
+            {{ $t('plot.created', { date: formatDate(plot.createdAt), points: formatPointCount(plot.points.length) }) }}
+            <PlotStatusBadge :status="plot.status" />
+          </span>
+        </div>
+        <div class="detail__actions">
+          <template v-if="canWrite">
+            <RouterLink
+              v-if="!pending"
+              class="detail__button detail__edit ui-secondary"
+              :to="`/plots/${plot.id}/edit`"
+            >
+              {{ $t('plot.editBoundary') }}
+            </RouterLink>
+            <button
+              v-else
+              type="button"
+              class="detail__button detail__edit ui-secondary"
+              disabled
+              :title="pendingHint"
+            >
+              {{ $t('plot.editBoundary') }}
+            </button>
+            <button
+              type="button"
+              class="detail__button detail__rename ui-secondary"
+              :disabled="pending"
+              :title="pending ? pendingHint : undefined"
+              @click="open('rename')"
+            >
+              {{ $t('plot.rename') }}
+            </button>
+            <button
+              type="button"
+              class="detail__button detail__button--danger detail__delete ui-secondary"
+              :disabled="pending"
+              :title="pending ? pendingHint : undefined"
+              @click="open('delete')"
+            >
+              {{ $t('plot.remove') }}
+            </button>
+          </template>
+          <button
+            v-if="canReport"
+            type="button"
+            class="detail__button detail__button--primary detail__report ui-primary"
+            :disabled="pending || reporting"
+            :title="pending ? pendingHint : undefined"
+            @click="createReport"
+          >
+            {{ reporting ? $t('plot.creatingReport') : $t('plot.createReport') }}
+          </button>
+        </div>
+        <StalledNotice
+          v-if="pending && phase === 'stalled'"
+          class="detail__pending"
+          @retry="confirmations.retry(plot.id)"
+        />
+        <p
+          v-else-if="pending"
+          class="detail__pending"
+        >
+          {{ $t('plot.pendingDetails') }}
+        </p>
+      </header>
+
+      <PlotViewMap
+        class="detail__map"
+        :points="plot.points"
+        :layer="layer"
+        :style="{ viewTransitionName: plotTransitionName(plot.id) }"
+      />
+
+      <div class="detail__summary">
+        <p class="detail__hectares">
+          {{ formatHectares(plot.measurement.area.hectares) }}
+          <span
+            v-if="plot.accuracy"
+            class="detail__margin"
+          >{{ formatMargin(plot.accuracy) }}</span>
+        </p>
+        <p class="detail__line">
+          {{
+            $t('plot.summaryLine', {
+              squareMeters: formatSquareMeters(plot.measurement.area.squareMeters),
+              ares: formatAres(plot.measurement.area.ares),
+              perimeter: formatMeters(plot.measurement.perimeterMeters),
+            })
+          }}
+        </p>
+      </div>
+
+      <dl class="detail__tiles">
+        <div class="detail__tile">
+          <dt>{{ $t('plot.area') }}</dt>
+          <dd>
+            {{ formatHectares(plot.measurement.area.hectares) }}
+            <span
+              v-if="plot.accuracy"
+              class="detail__margin"
+            >{{ formatMargin(plot.accuracy) }}</span>
+          </dd>
+        </div>
+        <div class="detail__tile">
+          <dt>{{ $t('plot.inSquareMeters') }}</dt>
+          <dd>{{ formatSquareMeters(plot.measurement.area.squareMeters) }}</dd>
+        </div>
+        <div class="detail__tile">
+          <dt>{{ $t('plot.perimeter') }}</dt>
+          <dd>{{ formatMeters(plot.measurement.perimeterMeters) }}</dd>
+        </div>
+      </dl>
+
+      <AccuracyNotes
+        v-if="plot.accuracy"
+        class="detail__accuracy"
+        :accuracy="plot.accuracy"
+        :obstructions="plot.obstructions"
+        :point-count="plot.points.length"
+      />
+
+      <section
+        class="detail__history"
+        aria-labelledby="history-title"
+      >
+        <h3
+          id="history-title"
+          class="detail__history-title"
+        >
+          {{ $t('plot.history') }}
+        </h3>
+        <p
+          v-if="versions && versions.length === 0"
+          class="detail__muted"
+        >
+          {{ $t('plot.noVersions') }}
+        </p>
+        <template v-else-if="versions">
+          <div class="detail__table-wrap">
+            <table class="detail__table">
+              <thead>
+                <tr>
+                  <th scope="col">
+                    {{ $t('plot.version') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('plot.date') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('plot.area') }}
+                  </th>
+                  <th scope="col">
+                    {{ $t('plot.perimeter') }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="version in versions"
+                  :key="version.version"
+                >
+                  <td>{{ version.version }}</td>
+                  <td>{{ formatDate(version.createdAt) }}</td>
+                  <td>{{ formatHectares(version.measurement.area.hectares) }}</td>
+                  <td>{{ formatMeters(version.measurement.perimeterMeters) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ul class="detail__versions">
+            <li
+              v-for="version in versions"
+              :key="version.version"
+              class="detail__version"
+              :class="{ 'detail__version--current': version.version === plot.version }"
+            >
+              <span class="detail__version-text">
+                <span class="detail__version-name">{{ $t('plot.versionNumber', { n: version.version })
+                }}<template v-if="version.version === plot.version"> · {{ $t('plot.current') }}</template></span>
+                <span class="detail__version-meta">{{ formatDate(version.createdAt) }},
+                  {{ formatPointCount(version.points.length) }}</span>
+              </span>
+              <span class="detail__version-area">{{ formatHectares(version.measurement.area.hectares) }}</span>
+            </li>
+          </ul>
+        </template>
+      </section>
+
+      <button
+        v-if="canReport"
+        type="button"
+        class="detail__button detail__button--primary detail__report-mobile ui-primary"
+        :disabled="pending || reporting"
+        @click="createReport"
+      >
+        {{ reporting ? $t('plot.creatingReport') : $t('plot.createReport') }}
+      </button>
+    </template>
+
+    <RenamePlotDialog
+      v-if="dialog === 'rename' && plot"
+      :name="plot.name"
+      :busy="busy"
+      :failure="dialogFailure"
+      @confirm="rename"
+      @close="dialog = null"
+    />
+    <DeletePlotDialog
+      v-if="dialog === 'delete' && plot"
+      :name="plot.name"
+      :version-count="versions?.length ?? null"
+      :busy="busy"
+      :failure="dialogFailure"
+      @confirm="remove"
+      @close="dialog = null"
+    />
+  </article>
+</template>
+
+<style scoped>
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface);
+}
+
+.detail__bar,
+.detail__summary,
+.detail__versions {
+  display: none;
+}
+
+.detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.detail__heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.detail__title {
+  margin: 0;
+  font-size: var(--fs-title-lg);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--fs-control);
+}
+
+.detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.detail__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--touch-min);
+  padding: 0 var(--space-4);
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--fs-control);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.detail__button.detail__report-mobile {
+  display: none;
+}
+
+.detail__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.detail__button--danger {
+  --ui-secondary-border-hover: var(--color-danger-border);
+}
+
+.detail__button--danger,
+.detail__button--primary,
+.detail__pending {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--fs-sm);
+}
+
+.detail__map {
+  height: 280px;
+}
+
+.detail__margin {
+  color: var(--color-ink-2);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.detail__accuracy {
+  margin-bottom: var(--space-4);
+}
+
+.detail__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.detail__tile {
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.detail__tile dt {
+  color: var(--color-muted);
+  font-size: var(--fs-xs);
+}
+
+.detail__tile dd {
+  margin: 0;
+  font-size: var(--fs-title-md);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detail__history-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.detail__muted {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--fs-control);
+}
+
+.detail__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.detail__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-control);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__table th {
+  padding: 10px 14px;
+  background: var(--color-surface-muted);
+  font-weight: 700;
+  text-align: left;
+}
+
+.detail__table td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.detail__failure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--color-danger-ink);
+}
+
+.detail__failure p {
+  margin: 0;
+}
+
+.detail__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.detail__skeleton-line,
+.detail__skeleton-map {
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.detail__skeleton-line--short {
+  width: 40%;
+}
+
+.detail__skeleton-map {
+  height: 280px;
+  border-radius: var(--radius-lg);
+}
+
+@media (max-width: 767.98px) {
+  .detail {
+    gap: 14px;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+
+  .detail__bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-3)) 0;
+  }
+
+  .detail__back,
+  .detail__trash {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--touch-min);
+    height: var(--touch-min);
+    border: none;
+    background: transparent;
+    color: var(--color-ink);
+    cursor: pointer;
+  }
+
+  .detail__trash {
+    color: var(--color-danger);
+  }
+
+  .detail__trash:disabled {
+    opacity: 0.4;
+  }
+
+  .detail__bar-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail__head {
+    display: contents;
+  }
+
+  .detail__heading,
+  .detail__delete,
+  .detail__tiles,
+  .detail__table-wrap {
+    display: none;
+  }
+
+  .detail__map {
+    order: 1;
+    height: 210px;
+    border-radius: var(--radius-xl);
+  }
+
+  .detail__summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    order: 2;
+  }
+
+  .detail__hectares {
+    margin: 0;
+    font-size: var(--fs-metric);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+  }
+
+  .detail__line {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: var(--fs-control);
+  }
+
+  .detail__actions {
+    display: grid;
+    grid-template-areas: 'edit rename';
+    grid-template-columns: 1fr 1fr;
+    order: 3;
+  }
+
+  .detail__pending {
+    order: 4;
+  }
+
+  .detail__edit {
+    grid-area: edit;
+  }
+
+  .detail__rename {
+    grid-area: rename;
+  }
+
+  .detail__report {
+    display: none;
+  }
+
+  .detail__edit,
+  .detail__rename {
+    height: var(--control-h);
+    font-weight: 700;
+  }
+
+  .detail__history {
+    order: 5;
+  }
+
+  .detail__versions {
+    display: block;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    list-style: none;
+  }
+
+  .detail__version {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) 14px;
+    font-size: var(--fs-control);
+  }
+
+  .detail__version + .detail__version {
+    border-top: 1px solid var(--color-border);
+  }
+
+  .detail__version-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .detail__version-name {
+    font-weight: 600;
+  }
+
+  .detail__version--current .detail__version-name,
+  .detail__version--current .detail__version-area {
+    font-weight: 700;
+  }
+
+  .detail__version-meta {
+    color: var(--color-muted);
+    font-size: var(--fs-sm);
+  }
+
+  .detail__version-area {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .detail__button.detail__report-mobile {
+    display: flex;
+    order: 6;
+    height: var(--control-h-lg);
+    margin-top: var(--space-2);
+    border-radius: var(--radius-lg);
+    font-size: var(--fs-md);
+  }
+}
+</style>
