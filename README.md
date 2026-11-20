@@ -1,8 +1,8 @@
 # Land Plot System
 
-A microservice backend for storing land plots as geographic polygons and calculating their area and perimeter. Users register, describe a plot by its corner coordinates, and get area figures and saved reports in square metres, ares, and hectares.
+A microservice system for storing land plots as geographic polygons and calculating their area and perimeter. Users sign in through Keycloak (also with a Google account), draw a plot on a map or send its corner coordinates, and get area figures and saved reports in square metres, ares, and hectares.
 
-The system is written in Go and runs locally with Docker Compose.
+The backend is written in Go, the web app Arqetra (`apps/web`) in Vue 3 and TypeScript, and everything runs locally with Docker Compose.
 
 ## Architecture
 
@@ -20,18 +20,30 @@ The system is written in Go and runs locally with Docker Compose.
                         │                   ▲
                         └── RabbitMQ events ┘
 
+ Keycloak (:8180): OAuth 2.0 / OpenID Connect server that issues all access tokens
  Consul: service registry + health checks
  RabbitMQ: durable plot events and report-side projections
 ```
 
 | Component           | Responsibility                                                                                     |
 |---------------------|----------------------------------------------------------------------------------------------------|
-| `api-gateway`       | Single entry point. Routes requests by path prefix, validates JWTs, balances across healthy instances. |
-| `identity-service`  | User registration, login, and profile. Hashes passwords with bcrypt and issues HS256 JWTs.          |
+| `api-gateway`       | Single entry point. Applies CORS, verifies Keycloak tokens and scopes, routes by path prefix, balances across healthy instances. |
+| `identity-service`  | Profile of the signed-in user, created from the access token on the first request.                 |
 | `land-plot-service` | Plot CRUD for the owner, polygon validation, calculations, and plot event publication.             |
 | `report-service`    | Builds immutable reports over REST and maintains plot summaries from RabbitMQ events.              |
 
 Each service owns its own database and does not read another service's data directly.
+
+The web app `apps/web` (Arqetra) is a client of the gateway like any other: an installable PWA served by nginx on `http://localhost:4173` that signs users in through Keycloak and draws plots on a Leaflet map. It calculates nothing itself: area, perimeter and validation come from the server (see [`apps/web/README.md`](apps/web/README.md)).
+
+The `ai/` module adds AI access to the same API (see [`ai/README.md`](ai/README.md)). It is a separate Go module and works only through the gateway, like any other client:
+
+| Component        | Responsibility                                                                                        |
+|------------------|-------------------------------------------------------------------------------------------------------|
+| `fc-client`      | Console LLM client: Gemini function calling over the REST API with token and prompt injection guardrails. |
+| `mcp-server`     | MCP server with the plot and report tools, resources and prompts over stdio and Streamable HTTP.       |
+| `producer-agent` | A2A agent over `land-plot-service`: creates and updates plots and waits for the saga.                  |
+| `consumer-agent` | A2A agent over `report-service`: builds reports and delegates plot creation to the producer over A2A.  |
 
 ### Service discovery and routing
 
@@ -39,17 +51,20 @@ Every Go service registers a unique instance with an HTTP health check in Consul
 
 | Path prefix              | Target service      | Auth required |
 |--------------------------|---------------------|---------------|
-| `/api/v1/auth/*`         | `identity-service`  | no            |
 | `/api/v1/users/profile`  | `identity-service`  | yes           |
+| `POST /api/v1/plots/preview` | `land-plot-service` | no, limited per IP |
 | `/api/v1/plots/*`        | `land-plot-service` | yes           |
 | `/api/v1/reports/*`      | `report-service`    | yes           |
-| `/api/v1/demo/chain`     | `report-service`    | no            |
+| `/api/v1/demo/chain`     | `report-service`    | yes           |
 
 ### Security
 
-- The gateway checks the bearer token on protected routes, removes any client-supplied `X-User-*` headers, and forwards trusted identity headers to the target service.
-- Each service also verifies the JWT itself, so no service relies only on the gateway.
+- Keycloak issues all tokens; the gateway and every service verify them through the Keycloak JWKS (RS256) and check the scope of each route, so no service relies only on the gateway (Zero Trust).
+- The gateway removes any client-supplied `X-User-*` headers and forwards trusted identity headers to the target service.
+- The gateway applies a CORS policy that allows `https://cad.kpi.ua` and the local frontends.
 - Users can read and change only their own plots and reports.
+
+See [Authentication and authorization](#authentication-and-authorization) for the details.
 
 ### Area calculation
 
@@ -60,9 +75,68 @@ The calculation sits behind the `AreaCalculator` interface (`LocalEllipsoidCalcu
 - coordinates out of range,
 - duplicate points,
 - self-intersections,
-- zero area.
+- zero area,
+- more than 1000 points.
 
 For plots up to a few kilometres across, the method itself adds almost no error: on a reference square it matches GeographicLib within 0.01 %. The real accuracy is limited by the input coordinates, because an error of d metres per point changes the area by about perimeter × d. The result is therefore not a cadastral or legal measurement.
+
+### Area accuracy
+
+Every area comes with its margin, because points placed on a map are never exact. The plot service estimates it in the domain (`AccuracyModel` in `internal/domain/accuracy.go`) from two optional facts the client sends with the points:
+
+- `capture`: `{"zoom": 18, "layer": "map" | "satellite", "pointer": "mouse" | "touch" | "pen"}`;
+- `obstructions`: `[{"side": 1, "reason": "trees" | "buildings" | "unclear"}]`, where `side` is the side from point `side` to point `side + 1`, counted from 0.
+
+The error of one point is `σ_i = √(σ_click² + σ_obst²)` metres on each axis:
+
+- `σ_click = k · r`, where `r = 156543.03 · cos φ / 2^zoom` is the ground size of a screen pixel at the mean latitude `φ`, and `k` is the click size in pixels (a pen counts as a mouse);
+- `σ_obst` comes from the reason of a marked side and applies to both of its end points; a point between two marked sides takes the larger one.
+
+The variance of the area is `σ_A² = ¼ · Σ σ_i² · |P(i+1) − P(i−1)|²` on the same local plane as the area, and the API reports `± 2σ_A` (about 95 %). For a square with side `L` and the same `σ` everywhere this gives `σ_A = √2 · σ · L`.
+
+The map layer error `σ_geo` is not in `σ_A`: a shifted layer moves every point the same way, which does not change the area. It is reported apart as `ground_shift_m`, the possible shift of the whole boundary on the ground.
+
+Without `capture` the service assumes the worst case (zoom 16, satellite, touch). The web app sends as `capture.zoom` the smallest zoom at which any of the current points was placed or moved, not the zoom of the last change, so zooming in at the end cannot make the margin smaller.
+
+Example: a square plot of 2.48 ha placed at zoom 18 near Kyiv has a margin of ± 0.05 ha with a mouse and ± 0.13 ha with touch.
+
+A preview of the five-point plot of 4.68 ha from `make demo-web`, placed at zoom 17 by touch on the satellite layer, with side 1 marked as hard to see:
+
+```sh
+curl -X POST http://localhost:8080/api/v1/plots/preview -H 'Content-Type: application/json' \
+  -d '{"points":[...],"capture":{"zoom":17,"layer":"satellite","pointer":"touch"},
+       "obstructions":[{"side":1,"reason":"unclear"}]}'
+```
+
+```json
+"accuracy": {
+  "area_m2_margin": 4149,
+  "area_hectares_margin": 0.415,
+  "percent": 8.9,
+  "confidence": 0.95,
+  "contributions": { "scale": 0.79, "obstructions": 0.21 },
+  "worst_side": 1,
+  "ground_shift_m": 4,
+  "basis": "capture"
+}
+```
+
+The numbers are rounded here; the API returns full precision. Without `capture` the same plot gets the worst case (zoom 16, satellite, touch) and `basis: "assumed"`.
+
+The constants are assumptions, set in the environment of `land-plot-service`:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ACCURACY_MOUSE_CLICK_PX` | `3` | click size with a mouse or pen, pixels |
+| `ACCURACY_TOUCH_CLICK_PX` | `8` | click size with a finger, pixels |
+| `ACCURACY_MAP_SHIFT_M` | `2` | possible shift of the map layer, metres |
+| `ACCURACY_SATELLITE_SHIFT_M` | `4` | possible shift of the satellite layer, metres |
+| `ACCURACY_TREES_M` | `3` | boundary hidden by trees, metres |
+| `ACCURACY_BUILDINGS_M` | `2` | boundary hidden by buildings or shadows, metres |
+| `ACCURACY_UNCLEAR_M` | `5` | boundary hard to see, metres |
+| `ACCURACY_FALLBACK_ZOOM`, `ACCURACY_FALLBACK_LAYER`, `ACCURACY_FALLBACK_POINTER` | `16`, `satellite`, `touch` | capture assumed when the client sends none |
+
+The margin is calculated when a plot or version is read, from its points, `capture` and `obstructions`, so it is not stored and follows the constants.
 
 Updating a plot replaces its geometry and increments `version`. Concurrent updates are detected with optimistic locking, and the losing request gets `409 Conflict`. Each report records the plot `version` it was built from.
 
@@ -73,10 +147,22 @@ Updating a plot replaces its geometry and increments `version`. Concurrent updat
 ├── docker-compose.yml          # full local environment
 ├── .env.example                # overridable settings
 ├── .golangci.yml               # formatter and linter configuration
-├── Makefile                    # fmt / lint / test / vet / compose checks, demo
+├── Makefile                    # fmt / lint / test / vet / compose checks, demos
 ├── deploy/postgres/            # creates per-service databases and roles
+├── infra/keycloak/            # Keycloak realm land-plot (imported on the first start) and the Arqetra login theme
+├── infra/observability/       # Prometheus, Alertmanager, Grafana, Loki, Alloy, OpenTelemetry Collector and Jaeger configuration
+├── postman/                   # Postman collection with OAuth 2.0 Authorization Code + PKCE
 ├── scripts/demo.sh             # end-to-end demo against the running stack
+├── scripts/demo_lr3.sh         # transactional outbox and saga demo
+├── scripts/demo_lr4.sh         # function calling, MCP and A2A demo
+├── scripts/demo_lr5.sh         # CORS, Keycloak tokens, scopes and Zero Trust demo
+├── scripts/demo_web.sh         # preview, deletion, history, report list, Mailpit, accuracy, terrain, climate, PDF, GeoJSON and rate limit demo
+├── scripts/observability_check.sh # health of the Prometheus targets and the observability UIs
+├── scripts/keycloak_idp.sh     # adds the Google login to Keycloak
+├── scripts/keycloak_realm.sh   # applies realm settings to a running Keycloak
 ├── tools/stripcomments/        # comment check used by make lint
+├── ai/                         # AI agents module: fc-client, MCP server, A2A agents
+├── apps/web/                   # Arqetra web app: Vue 3, PWA, nginx image
 └── services/
     ├── api-gateway/
     ├── identity-service/
@@ -91,20 +177,20 @@ Each service is an independent Go module with an N-layered structure:
 ├── main.go
 └── internal/
     ├── handler/               # HTTP: router, endpoint handlers, DTOs, request errors
-    │   ├── middleware/        # bearer token authentication
+    │   ├── middleware/        # bearer token authentication and route scopes
     │   └── respond/           # JSON responses, request decoding, error → HTTP mapping
-    ├── service/               # use cases and ports (interfaces) they depend on
+    ├── service/               # use cases, saga steps, outbox relay, and the ports they depend on
     ├── domain/                # entities, invariants, calculations, domain errors
-    ├── repository/postgres/   # PostgreSQL adapter (schema.sql is applied on startup)
-    ├── messaging/rabbitmq/    # event publisher (land-plot) or consumer (report)
+    ├── repository/postgres/   # PostgreSQL adapter: tables, transactions, outbox (schema.sql is applied on startup)
+    ├── messaging/rabbitmq/    # outbox publisher and reconnecting consumer
     ├── client/httpclient/     # land-plot-service client (report)
     ├── discovery/consul/      # Consul registration and instance resolution
-    ├── auth/                  # JWT verification (and issuing in identity)
+    ├── auth/                  # Keycloak access token verification through JWKS
     ├── config/                # typed configuration from environment variables
     └── bootstrap/             # composition root: wiring, start, graceful shutdown
 ```
 
-Dependencies point inward: `handler` → `service` → `domain`. `domain` imports nothing from the project, and `service` does not depend on PostgreSQL, RabbitMQ or HTTP. Adapters implement interfaces declared by their consumers, and only `bootstrap` knows the concrete types. Each layer has its own data model — DTOs in `handler`, rows in `repository`, messages in `messaging` — with mappers at the boundaries.
+Dependencies point inward: `handler` → `service` → `domain`. `domain` imports nothing from the project, and `service` does not depend on PostgreSQL, RabbitMQ or HTTP. A use case that must change several tables atomically asks the repository for a transaction (`InTransaction`) and works through the `PlotStore` port inside it. Adapters implement interfaces declared by their consumers, and only `bootstrap` knows the concrete types. Each layer has its own data model — DTOs in `handler`, rows in `repository`, messages in `messaging` — with mappers at the boundaries.
 
 Not every service has every package. The gateway has no domain or database; its layers are `handler` (middleware chain) → `proxy` (routes, reverse proxy) → `balancer`. Code that is the same in several services, such as the Consul registry or config helpers, is copied rather than shared, so each service can be built and deployed on its own.
 
@@ -115,18 +201,36 @@ Requirements: Docker with the Compose plugin. Go 1.26+ is needed only to run the
 ```sh
 cp .env.example .env   # optional: override the defaults
 docker compose up -d --build
+./scripts/keycloak_idp.sh   # optional: Google login, see "Google login"
 curl http://localhost:8080/health
 ```
+
+Moving from an earlier lab to Lab 5 needs empty volumes, because tokens and users now come from Keycloak: run `docker compose --profile ai down -v` first.
 
 The stack publishes these ports on the host:
 
 | URL                       | What                                       |
 |---------------------------|--------------------------------------------|
 | `http://localhost:8080`   | API gateway                                |
+| `http://localhost:4173`   | Arqetra web app                            |
+| `http://localhost:8180`   | Keycloak (login pages, tokens, admin console) |
+| `http://localhost:8025`   | Mailpit: emails sent by Keycloak           |
 | `http://localhost:8500`   | Consul UI                                  |
 | `http://localhost:15672`  | RabbitMQ management UI                     |
 
-The business services and PostgreSQL are reachable only inside the Compose network.
+The business services are reachable only inside the Compose network. PostgreSQL listens on `127.0.0.1:55432` for the integration tests.
+
+The AI services run only with the `ai` profile, so the other demos need no LLM key:
+
+```sh
+docker compose --profile ai up -d --build
+```
+
+| URL                            | What                         |
+|--------------------------------|------------------------------|
+| `http://127.0.0.1:8090/mcp`    | MCP server (bearer token)    |
+| `http://127.0.0.1:8091`        | A2A producer agent           |
+| `http://127.0.0.1:8092`        | A2A consumer agent           |
 
 ### RabbitMQ web UI
 
@@ -141,6 +245,262 @@ The port and credentials can be changed through `RABBITMQ_MANAGEMENT_PORT`, `RAB
 
 The **Exchanges** tab contains `land.events` and `land.events.dead`. The **Queues and Streams** tab contains `report.plot-events` and `report.plot-events.dead`, where message counts, consumers, bindings, acknowledgements, and dead-lettered messages can be inspected.
 
+### Observability and incident response
+
+The system is monitored with metrics, logs and traces, and alerts open incidents in Jira through n8n. The terms of a distributed database map onto the system as follows:
+
+| Term | In the system |
+|---|---|
+| coordinator | `api-gateway`; every request goes through it |
+| shards | `identity-service`, `land-plot-service`, `report-service` |
+| node down | the container of a service is unavailable (`up == 0`, or no Prometheus target at all) — alert [`ServiceDown`](#servicedown); a running service whose `/health` fails — [`ServiceUnhealthy`](#serviceunhealthy) |
+| replication lag | delay of the asynchronous events: the age of the oldest unpublished outbox row (`outbox_oldest_age_seconds`) and the number and age of messages in the RabbitMQ queues — [`ReplicationLagHigh`](#replicationlaghigh), [`QueueBacklog`](#queuebacklog), [`BacklogPredicted`](#backlogpredicted) |
+| shard distribution | share of requests and errors per service, requests per replica, plots and reports in the databases (dashboard section «Shard distribution») |
+| cluster health | `up` of every Prometheus target, `/health` of the Go services, PostgreSQL and RabbitMQ (dashboard section «Cluster health») |
+
+Everything runs in the `observability` profile of `docker-compose.yml`, so the system also starts without it.
+
+| Component | Version | Role |
+|---|---|---|
+| OpenTelemetry SDK for Go | v1.47.0 | traces in the four services and in `ai/` |
+| OpenTelemetry Collector (contrib) | 0.164.0 | receives OTLP and sends the traces to Jaeger |
+| Jaeger | 2.20.0 | trace storage (Badger) and UI |
+| Prometheus | v3.15.1 | metrics, recording rules, alerts |
+| Alertmanager | v0.34.2 | groups alerts and sends them to n8n |
+| Loki, Grafana Alloy | 3.7.9, v1.21.3 | logs of every container |
+| Grafana | 13.2.5 | dashboard, data sources Prometheus, Loki, Jaeger, Alertmanager |
+| postgres-exporter, `rabbitmq_prometheus` | v0.20.1, built into RabbitMQ | database and broker metrics |
+| n8n | 2.46.6 | incident response: Jira Cloud ticket and Mailpit mail |
+| autoheal | 1.2.0 (by digest) | restarts unhealthy Go services |
+
+Every UI listens on `127.0.0.1` only; the ports can be changed in `.env`:
+
+| URL | What | Variable |
+|---|---|---|
+| `http://localhost:13000` | Grafana (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`) | `GRAFANA_PORT` |
+| `http://localhost:19090` | Prometheus | `PROMETHEUS_PORT` |
+| `http://localhost:19093` | Alertmanager | `ALERTMANAGER_PORT` |
+| `http://localhost:16686` | Jaeger | `JAEGER_UI_PORT` |
+| `http://localhost:5678` | n8n | `N8N_PORT` |
+| `http://localhost:8025` | Mailpit, incident mails | `MAILPIT_UI_PORT` |
+| `127.0.0.1:4317`, `127.0.0.1:4318` | OTLP gRPC and HTTP of the Collector, for programs started on the host | `OTLP_GRPC_PORT`, `OTLP_HTTP_PORT` |
+
+The ports differ from the usual 3000, 9090 and 9093 so that other local stacks do not collide. Loki, Alloy, postgres-exporter and the `/metrics` port of the services (`:9464`) are not published.
+
+```sh
+make obs-up      # docker compose --profile observability up -d --wait: the system and the stack
+make obs-check   # health of every Prometheus target and of the Grafana, Jaeger, Alertmanager and Prometheus UIs
+make demo-lr6    # load, one request in logs and traces, four incidents with Jira tickets (see "End-to-end demo")
+make tracing-overhead   # gateway latency with tracing on and off (see "Tracing overhead")
+```
+
+**`.env`.** Copy `.env.example` and set these variables; `.env.example` has only placeholders:
+
+- `GRAFANA_ADMIN_PASSWORD`, `ALERTMANAGER_WEBHOOK_TOKEN`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` — **required even without the `observability` profile.** They have no default, and Docker Compose resolves the variables of every service before it does anything, so without them every `docker compose` command fails, including `docker compose up` of the main system and the demos.
+- `N8N_ENCRYPTION_KEY` — the key n8n encrypts its credentials with; keep it once n8n has started, or the imported credentials cannot be read. Compose passes it as a secret and does not check it, so set it before the first `make obs-up`.
+- Generate the password, the key and the token, for example, with `openssl rand -hex 32`.
+- `JIRA_PROJECT_KEY` (default `INC`) — the Jira project of the tickets.
+- `LLM_API_KEY` — the Gemini key of the AI agents; without it the tickets get the template text instead of the model's analysis.
+- optional: `INCIDENT_MAIL_TO`, `AUTOHEAL_INTERVAL`, `DEMO_FAULTS_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `JAEGER_RETENTION`, `PROMETHEUS_RETENTION`, `GRAFANA_ADMIN_USER` and the ports above.
+
+In short:
+
+- **[Metrics](#metrics):** every Go service serves `/metrics` on an internal port: request duration per route template, calls to other services and Open-Meteo, outbox and queues, business counters. No label holds a user, plot or trace identifier.
+- **[Logs](#logs):** JSON lines with the same fields in every program, collected by Alloy into Loki; `request_id` and `trace_id` connect them across the services.
+- **[Tracing](#tracing):** OpenTelemetry with W3C Trace Context from the browser and the AI agents through the gateway, the services, PostgreSQL and RabbitMQ; a saga is one trace.
+- **[Dashboard](#dashboard):** one Grafana dashboard from files with seven sections.
+- **[Alerts and runbook](#alerts-and-runbook):** ten Prometheus alerts, unit tested with `promtool` in `make check`, each with a runbook section.
+- **[Incident response](#incident-response):** Alertmanager → n8n → AI analysis → Jira ticket and a mail to Mailpit; resolved closes the ticket.
+- **[Autoheal and demo faults](#autoheal-and-demo-faults):** unhealthy Go services are restarted, and the restart is written into the ticket.
+- **[CPU and memory](#cpu-and-memory-why-not-cadvisor):** from the Go process metrics, because cAdvisor does not work on Docker Desktop for macOS.
+
+### Metrics
+
+Prometheus scrapes RabbitMQ (`rabbitmq_prometheus`, also per queue through `/metrics/detailed`), PostgreSQL (postgres-exporter), the Go services and the stack itself. The services serve `/metrics` on the internal port `METRICS_ADDRESS` (`:9464`), which is not published and not routed by the gateway (`/metrics` through the gateway is `404`). Prometheus finds every replica through Docker DNS.
+
+**Gateway metrics** (`prometheus/client_golang`, plus the Go runtime and process metrics for CPU and memory):
+
+| Metric | Labels |
+|---|---|
+| `http_server_request_duration_seconds` (histogram, 5 ms … 10 s) | `service`, `route`, `method`, `status_class` |
+| `gateway_upstream_request_duration_seconds` (histogram) | `upstream` (service name), `outcome` (`2xx` … `5xx`, `error`, `timeout`) |
+| `gateway_rejected_requests_total` | `status` (`401`, `403`, `429`), `origin` (`gateway` or `upstream`) |
+
+`route` is the template of the route (`/api/v1/plots/{id}`), never the raw path; any path the gateway does not know is `unmatched`, so scanners cannot create new series. No label holds a user, plot or trace identifier.
+
+**Service metrics.** `identity-service`, `land-plot-service` and `report-service` measure every request with the same `http_server_request_duration_seconds{service, route, method, status_class}`; `route` is the pattern the Go `ServeMux` matched (`/api/v1/plots/{id}`), or `unmatched`.
+
+| Metric | Service | Meaning |
+|---|---|---|
+| `http_client_request_duration_seconds{target, outcome}` | report | calls to `land-plot-service`, `open-meteo-elevation` and `open-meteo-archive`; `outcome` is the status class, `error` or `timeout` |
+| `outbox_pending`, `outbox_failed`, `outbox_oldest_age_seconds` | land-plot, report | read from `outbox_events` on every scrape; the age is the replication lag of the outbox |
+| `outbox_published_total`, `outbox_publish_errors_total{failure}` | land-plot, report | messages confirmed by RabbitMQ; failures that are retried or abandoned |
+| `messages_processed_total{queue, outcome}` | land-plot, report | consumed messages: `ack`, `retry` (requeued) or `reject` (dead-lettered) |
+| `message_age_seconds{queue}` | land-plot, report | time from writing the event to the outbox until the consumer processed it (header `x-created-at-ms`, AMQP timestamp as fallback) |
+| `plots_changed_total{change}` | land-plot | plots `created`, `updated`, `deleted` |
+| `plot_previews_total{result}`, `plot_preview_problems_total{reason}` | land-plot | previews `valid` or `invalid`, and every problem code (`self_intersection`, `duplicate_point`, `invalid_capture`, …) |
+| `sagas_finished_total{kind, result, reason}` | land-plot | sagas `confirmed`, `cancelled` (a create compensated) or `reverted` (an update compensated), with `dlq` or `timeout` |
+| `plots_stored{state}`, `reports_stored{plot}` | land-plot, report | rows in the databases (`pending`, `confirmed`, `cancelled`, `deleted`; reports of `active` or `deleted` plots) |
+| `reports_created_total`, `report_blocks_unavailable_total{block}`, `report_downloads_total{format}` | report | reports, reports whose `terrain` or `climate` source did not answer, PDF and GeoJSON files built |
+| `identity_profiles_served_total`, `identity_users_created_total` | identity | profiles returned (one per sign-in of the web app) and users created just in time |
+| `database_stats_up` | land-plot, report | `0` when the statistics above could not be read on that scrape |
+| `service_health_status` | all four | `1` while `/health` answers 200, `0` after a demo fault (see [Autoheal and demo faults](#autoheal-and-demo-faults)) |
+
+The conversions (valid preview → saved plot, plot → report) are recording rules over these counters. Every replica reports the same database gauges, so dashboards take `max` of them, not `sum`.
+
+### Logs
+
+Grafana Alloy reads the stdout of every container of the project through the Docker socket and sends it to Loki with the labels `container`, `service` and `level`; `trace_id`, `span_id` and `request_id` of JSON logs go to structured metadata. In Grafana a `trace_id` in a log line opens the trace in Jaeger, and a span opens its logs.
+
+The four services and the AI programs (`mcp-server`, `producer-agent`, `consumer-agent`, `fc-client`) write JSON lines with `log/slog` and the same fields: `time`, `level`, `service`, `msg`, `request_id`, `trace_id` and `span_id` (taken from the context; left out while there is no span), and for requests `method`, `route`, `status`, `duration_ms`.
+
+- Every HTTP request gives one access line: `error` for 5xx, `warn` for 4xx, `info` otherwise. `route` is the route template (`/api/v1/plots/{id}`), never the path with its query. Health checks are logged only at `debug`; `/metrics` runs on its own port and is not logged.
+- `request_id` comes from `X-Request-ID` (the gateway creates one when the client sends none and returns it in the response). It goes on to the services over HTTP, is stored with the outbox row (`outbox_events.request_id`) and travels as the RabbitMQ header `x-request-id`, so the consumer of `report-service` and the saga in `land-plot-service` log the request that started them. The AI programs forward it to the gateway.
+- Logs never contain headers, tokens, cookies, passwords or request bodies; tests send all of them, also in a failing request, and check the output.
+
+One request across the services in Grafana → Explore → Loki:
+
+```
+{service="land-plot-service"} | json | request_id="lab6-step4-bc584dac"
+```
+
+### Tracing
+
+OpenTelemetry with W3C Trace Context. Every Go service starts the SDK and exports spans over OTLP/HTTP to `OTEL_EXPORTER_OTLP_ENDPOINT` (`http://otel-collector:4318`; empty turns tracing off, and an unreachable collector is only logged at `debug`). The Collector sends them to Jaeger, which keeps them for `JAEGER_RETENTION` (72 h) in Badger on the `jaeger-data` volume. Jaeger is pinned to 2.20.0 because 2.21 removed the HTTP API that the Jaeger data source of Grafana 13 uses.
+
+- The gateway continues the trace from an incoming `traceparent` or starts a new one, returns its ID in `X-Trace-ID` (exposed through CORS, which also allows `traceparent` and `tracestate`) and puts `trace_id` next to `request_id` in every error body of the gateway and the services.
+- Spans: one server span per request named after the route (`POST /api/v1/plots`, health checks are not traced), a client span for every call to another service, which carries `traceparent` (`otelhttp`), and a span for every PostgreSQL query (`otelpgx`, without parameters). Calls to Open-Meteo get a client span too, but no `traceparent` is sent to an external API.
+- The logger takes `trace_id` and `span_id` from the context, so in Grafana a log line opens its trace in Jaeger (derived field `trace_id`) and a span opens the logs of its trace (`{container=~".+"} | trace_id = "<id>"`).
+- **A saga is one trace.** The trace context of the request is written with the outbox row (`outbox_events.trace_context`) and with the saga (`plot_sagas.trace_context`) in the same transaction. The relay publishes each row in a `publish <routing key>` span (producer) under that context and sends `traceparent` and `tracestate` as AMQP headers. A consumer starts `process <queue>` (consumer) as a child of the publication with a link to it; the handler, its queries and its own outbox row run in that span. Dead-lettered and requeued messages keep their headers, so the compensation stays in the trace, and the saga timeout continues the trace stored with the saga.
+
+  ```
+  api-gateway        POST /api/v1/plots
+  land-plot-service    POST /api/v1/plots → publish plot.created
+  report-service         process report.plot-events → publish plot.summary.applied
+  land-plot-service        process land-plot.saga-events (CONFIRMED)
+  ```
+
+  `make saga-trace-check` creates a plot that is confirmed and one named `FAIL…` that is cancelled through the dead letter queue, and checks in Jaeger that each saga is a single trace.
+- **Traces start in the browser and in the AI agents.** The web app has no tracing SDK: for every request to the gateway it creates a W3C `traceparent` (a new trace ID, kept when the request is repeated after a token renewal), so the trace in Jaeger starts with the gateway span whose parent is the browser. Nominatim and the map tiles never get `traceparent`. The AI programs run the same SDK as the services: `mcp-server`, `producer-agent` and `consumer-agent` continue an incoming trace, and their calls to the gateway and from the consumer to the producer (A2A) carry `traceparent` and `X-Request-ID`, so an MCP tool call or a delegated task is one trace with the gateway and the services.
+
+### Tracing overhead
+
+`make tracing-overhead` sends 50 warm-up and then 1500 sequential requests through the gateway with tracing on, recreates the four Go services with `OTEL_EXPORTER_OTLP_ENDPOINT` empty (no spans are exported, `otelhttp` and `otelpgx` stay in the chain) and repeats the series, then restores tracing. The time is measured by `curl` on the host (Docker Desktop for macOS, 20.11.2026):
+
+| Request | Tracing | p50, ms | p95, ms |
+|---|---|---|---|
+| `GET /api/v1/plots` without a token (`401` from the gateway) | on | 1.1 | 2.1 |
+| | off | 1.0 | 2.1 |
+| `GET /api/v1/plots/summary` (gateway → land-plot-service → PostgreSQL) | on | 2.0 | 2.9 |
+| | off | 1.9 | 2.5 |
+
+Tracing adds about 0.1 ms to the median and up to 0.4 ms to p95 of a request that reaches the database, the order of the run-to-run noise: a shorter run of 500 requests the same day had the gateway-only request faster with tracing on (0.6 against 1.6 ms). Spans are exported in batches outside the request, so the collector is not on the request path.
+
+### CPU and memory: why not cAdvisor
+
+CPU and memory come from the process metrics of the Go services (`process_cpu_seconds_total`, `process_resident_memory_bytes`, registered by `client_golang`), not from cAdvisor. cAdvisor v0.60.6 was tried twice on Docker Desktop for macOS (Docker Engine 29 with the containerd image store) and dropped:
+
+1. With `/var/run` mounted it saw only the root cgroup: its Docker factory could not reach `/var/run/docker.sock`, because Docker Desktop passes the socket into a container only when it is mounted on its own.
+2. With the socket mounted the Docker factory reached the API, but with the containerd image store it also needs `/run/containerd/containerd.sock`, and mounting that socket from the Docker Desktop VM fails with «read-only file system».
+
+cAdvisor also has to run privileged with the host mounted. Per-container figures of the infrastructure (PostgreSQL, RabbitMQ, Keycloak) are therefore not collected; the Go services, which carry the load, are.
+
+### Dashboard
+
+Grafana loads the dashboard «Land plot system» (`uid: land-plot-overview`, folder «Land plot system») from `infra/observability/grafana/provisioning/dashboards/land-plot-overview.json`; it cannot be changed in the UI, so edits go into the file. Open it at [http://localhost:13000/d/land-plot-overview/land-plot-system](http://localhost:13000/d/land-plot-overview/land-plot-system). The variables `service` and `route` narrow the per-service and per-route panels, and `trace_id` filters the logs.
+
+| Section | Panels |
+|---|---|
+| Cluster health | `up` of every target, dependency checks (PostgreSQL, each service reading its database), PostgreSQL connections, RabbitMQ connections, consumers and messages, firing alerts |
+| Golden signals | p50 / p95 / p99, requests per second and share of 5xx per service, p95 against the anomaly baseline, gateway p99 per route, gateway to upstream p99, 401 / 403 / 429, p99 and RPS per route |
+| Replication lag | age of the oldest outbox row, pending and failed rows, published and failed per second, queue messages with the 15-minute forecast, message age at processing, messages processed by outcome |
+| Shard distribution | share of requests and of 5xx per service, requests per second per replica, plots and reports in the databases |
+| Business | sagas by result and reason, failed calls to other services and Open-Meteo, plots created, updated and deleted, previews by problem, reports and downloads, conversions, call duration, sign-ins |
+| Resources | CPU and resident memory of each Go service (process metrics) |
+| Logs | Loki lines of the selected services filtered by `trace_id` (a `trace_id` opens the trace in Jaeger) and log lines per service and level |
+
+The thresholds of the alerts are drawn as red lines on their panels (p99 1 s, 5xx 5 %, anomaly floor 100 ms, outbox and message age 30 s, queue 100, compensations 5, external failures 50 %), and every alert links to its panel.
+
+### Alerts and runbook
+
+Prometheus records the series the dashboards and alerts read (`infra/observability/prometheus/rules/recording.yml`): p50, p95 and p99, requests per second and the share of 5xx per service and per route (health checks left out of the per-service series), the p99 of the gateway to each upstream, the share of failed calls to each external target, the outbox and queue backlog, compensated sagas in 10 minutes and two conversions over the last hour, `land_plot:preview_to_plot:ratio_rate1h` (valid previews that became plots) and `land_plot:plot_to_report:ratio_rate1h` (reports per created plot).
+
+The alerts are in `infra/observability/prometheus/rules/alerts.yml`. Each has `for`, `severity`, `service`, a summary, a description, the runbook section below and the dashboard panel. The thresholds are the numbers in `expr` and `for`, each named in a comment above its rule; after changing one run `make rules-check` and restart Prometheus. `make rules-check` (part of `make check`) runs `promtool check config` and `promtool test rules` from the pinned `prom/prometheus` image; `infra/observability/prometheus/tests/alerts_test.yml` has a case where each alert fires and one where it stays quiet. Alertmanager groups by `alertname` and `service` and sends every alert, firing and resolved, to n8n (see [Incident response](#incident-response)).
+
+| Alert | Fires when | Severity |
+|---|---|---|
+| `ServiceDown` | a Go service, RabbitMQ or PostgreSQL target is `up == 0`, or a Go service has no target at all (its container is stopped), for 1 minute | critical |
+| `ServiceUnhealthy` | `/health` of a Go service answered 503 within the last minute while the process still serves `/metrics` (`service_health_status` is 0); no `for`, because autoheal restarts the container within about 40 seconds | warning |
+| `HighLatencyP99` | p99 of a service above 1 s for 5 minutes | warning |
+| `HighErrorRate` | more than 5 % of the requests of a service end with 5xx for 5 minutes, at 0.05 requests per second or more | critical |
+| `LatencyAnomaly` | p95 more than three standard deviations above its mean of the previous hour (the last 15 minutes left out of the baseline) and above 100 ms, for 5 minutes | warning |
+| `ReplicationLagHigh` | the oldest outbox row, or the p95 age of consumed messages, above 30 s for 1 minute | warning |
+| `QueueBacklog` | more than 100 messages in a queue (dead letter queues left out) for 5 minutes | warning |
+| `BacklogPredicted` | `predict_linear` over 30 minutes says the outbox or a queue passes 100 messages within 15 minutes, for 10 minutes | info |
+| `SagaCompensationsSpike` | more than 5 sagas cancelled or reverted within 10 minutes | warning |
+| `ExternalDependencyDown` | more than 50 % of the calls to an Open-Meteo API fail or time out for 5 minutes | warning |
+
+#### ServiceDown
+Check `docker compose ps` and `docker compose logs --tail 100 <service>`: a crash, a failed health check, or PostgreSQL, RabbitMQ, Consul or Keycloak not ready at start. The Go services restart on their own (`restart: unless-stopped`); if the container stays stopped, start it with `docker compose up -d <service>`. The alert resolves once Prometheus scrapes the service again. A stopped container is not restarted by autoheal, which acts only on running containers that are unhealthy.
+
+#### ServiceUnhealthy
+The process runs but `/health` answers 503, so Docker marks the container unhealthy after three failed checks and autoheal restarts it. Read the logs from before the restart (Loki keeps them; the ticket names the restart). If the service becomes unhealthy again after the restart, the cause is not transient: look at its dependencies and at the latest deployment.
+
+#### HighLatencyP99
+Find the slow route on the dashboard and a slow trace in Jaeger (sort by duration): a slow PostgreSQL query, a slow upstream (`gateway_upstream_request_duration_seconds`) or Open-Meteo. **Roll back** when the spike started right after a deployment of that service and nothing outside it changed: redeploy the previous image (`docker compose up -d <service>` after checking out the previous commit, or the previous image tag) and watch p99 fall back within 5–10 minutes. Do not roll back for a slow external API or a database problem; that is fixed where it happens.
+
+#### HighErrorRate
+Filter the logs of the service in Loki by `level="ERROR"` and open the `trace_id` of a failing request in Jaeger. Usual causes: the database or RabbitMQ is unavailable, or `land-plot-service` is unreachable from `report-service`. A rise of 5xx right after a deployment is a reason to roll back as for `HighLatencyP99`.
+
+#### LatencyAnomaly
+The service is clearly slower than in the previous hour even if p99 is still below 1 s. Compare the routes on the dashboard, check whether the traffic changed (RPS) and look at recent traces. If it follows a deployment, prepare the rollback described in `HighLatencyP99`; if it lasts, `HighLatencyP99` may follow.
+
+#### ReplicationLagHigh
+Events wait in the outbox or in RabbitMQ. Check that RabbitMQ is up (`docker compose ps rabbitmq`, the management UI), that the relay logs no `relay outbox messages` errors and that the consumers run (`messages_processed_total`, `retry` outcomes). Once the broker is back the relay publishes the backlog by itself; a PENDING plot whose saga times out is compensated.
+
+#### QueueBacklog
+A consumer does not keep up or does not run. Check the consumers of the queue in the RabbitMQ UI, the `retry` outcomes and the logs of the consuming service. Scale the consumer (`docker compose up -d --scale land-plot-service=2`) or fix the failing handler; messages that cannot be processed go to the dead letter queue.
+
+#### BacklogPredicted
+An early warning: the backlog grows steadily. Act as for `ReplicationLagHigh` or `QueueBacklog` before it reaches them.
+
+#### SagaCompensationsSpike
+Many plots are cancelled or their changes reverted. Look at `reason` on the dashboard: `dlq` means `report-service` rejects events (its logs and the `.dead` queues), `timeout` means replies do not arrive in `SAGA_TIMEOUT` (see `ReplicationLagHigh`). Plots named `FAIL…` are rejected on purpose.
+
+#### ExternalDependencyDown
+Open-Meteo does not answer. Reports are still created with the terrain or climate block `unavailable`, and «Оновити звіт» tries again later. Check that `api.open-meteo.com` answers from the host, the `OPEN_METEO_*` settings and the outgoing network; nothing needs to be restarted.
+
+### Incident response
+
+Alertmanager posts every alert group, firing and resolved, to the n8n workflow «Incident response» (`infra/observability/n8n/incident-response.json`) at `http://n8n:5678/webhook/alertmanager` with `Authorization: Bearer <ALERTMANAGER_WEBHOOK_TOKEN>`; the token reaches Alertmanager as the compose secret `alertmanager_webhook_token`, and the workflow answers `401` to a request without it or with another one. n8n listens on `127.0.0.1:${N8N_PORT:-5678}`, keeps its data in the `n8n-data` volume and reads its encryption key from the compose secret `n8n_encryption_key` (`N8N_ENCRYPTION_KEY` in `.env`), so neither secret is an environment variable of a container.
+
+For every alert of a notification the workflow:
+
+1. looks for an open ticket with the label `fp-<fingerprint>` in the Jira project `JIRA_PROJECT_KEY` (JQL), so one incident is one ticket;
+2. for a new incident reads the alert expression over the last 30 minutes from Prometheus, the last errors and warnings of the service with their `trace_id` from Loki and, for `ServiceDown` and `ServiceUnhealthy`, whether the process restarted (`changes(process_start_time_seconds)`) and whether autoheal did it (its log lines in Loki);
+3. asks the AI Agent (Gemini, the `LLM_API_KEY` of the AI agents) for «What happened», «Probable cause» and «First steps» from the runbook; when the model does not answer, a template with the runbook steps is used, and the ticket says which one it got;
+4. creates a `Bug` named `[severity] alertname — service` with the priority Highest, High or Medium for critical, warning or info, the labels `incident`, `service-<name>` and `fp-<fingerprint>`, the start time, the analysis, the metric, the errors with links to their traces in Jaeger and the link to the Grafana panel;
+5. mails the ticket link to Mailpit (`INCIDENT_MAIL_TO`, by default `incidents@land-plot.local`, at `http://localhost:8025`). If Jira does not answer after three tries the mail is still sent, and the ticket is created when Alertmanager repeats the notification (`repeat_interval: 1h`);
+6. on resolved adds a comment with the duration (and the restart facts) and moves the ticket to Done, then mails that too.
+
+The one-off service `n8n-import` runs before n8n on every `docker compose --profile observability up`: `infra/observability/n8n/credentials.js` builds the credentials from `.env` inside the container (Jira Software Cloud: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`; Google Gemini: `LLM_API_KEY`; SMTP to Mailpit) into a temporary file, and `import.sh` imports them and the workflow and publishes it; nothing with a credential is written to the repository. The workflow reads only non-secret settings and the webhook token from the environment (`N8N_BLOCK_ENV_ACCESS_IN_NODE=false`).
+
+n8n needs an owner account for its UI. Open `http://localhost:5678` once and create it; the workflow runs without it. (n8n can also take the owner from `N8N_INSTANCE_OWNER_*`, but only with a bcrypt hash of the password, which is not set up here.)
+
+### Autoheal and demo faults
+
+`autoheal` (`willfarrell/autoheal:1.2.0`, pinned by digest; its only numbered release, July 2021, because `latest` is rebuilt every day) restarts containers with the label `autoheal=true` that Docker marks unhealthy. Only the four Go services carry the label; their image health check calls `/health` every 10 seconds and fails after three misses.
+
+To show it without breaking anything, a Go service started with `DEMO_FAULTS_ENABLED=true` (default `false`) adds `POST /debug/unhealthy` to its internal metrics port `:9464`, which is not published and not routed by the gateway. The call makes `/health` answer 503 while the rest of the API keeps working; the state lives in memory, so the restart by autoheal clears it. `service_health_status` reports it to Prometheus.
+
+```sh
+DEMO_FAULTS_ENABLED=true docker compose up -d report-service
+docker compose exec report-service wget -qO- --post-data= http://127.0.0.1:9464/debug/unhealthy
+docker compose up -d report-service   # back to the normal configuration
+```
+
+**Risks.** autoheal and Grafana Alloy mount `/var/run/docker.sock`; `:ro` does not make the Docker API read-only, so whoever controls either container controls Docker on the host. Both are images pinned by digest or version and run only in the `observability` profile. While `DEMO_FAULTS_ENABLED=true`, any container of the network can make that service unhealthy, so the flag is for demonstrations only.
+
 Stop the stack with `docker compose down`. Add `-v` to also delete the database volume.
 
 ## API
@@ -151,6 +511,29 @@ All requests go through the gateway at `http://localhost:8080`. Errors use one J
 { "code": "plot_not_found", "message": "plot not found", "request_id": "..." }
 ```
 
+Validation errors may add `details` with zero-based point indices, so a client can show which sides cross or which points are wrong:
+
+```json
+{ "code": "self_intersection", "message": "polygon must not intersect itself", "request_id": "...",
+  "details": { "segments": [[1, 2], [3, 0]], "swap": [2, 3], "point": { "lat": 50.45045, "lon": 30.5207 } } }
+```
+
+`point` is where the two sides cross, calculated by the server, so clients only draw it.
+
+`duplicate_point` adds `{"indices": [i, j]}` and `invalid_coordinate` adds `{"index": i}`. Clients that do not know `details` can ignore it.
+
+| HTTP | Codes |
+|------|-------|
+| 400 | `invalid_request`, `no_changes`, `invalid_plot_id`, `invalid_report_id`, `invalid_query`, `invalid_capture`, `invalid_obstruction` |
+| 401 | `unauthorized` |
+| 403 | `forbidden`, `insufficient_scope`, `origin_not_allowed` |
+| 404 | `plot_not_found`, `report_not_found`, `route_not_found` |
+| 409 | `version_conflict`, `plot_not_confirmed` |
+| 410 | `plot_deleted` |
+| 422 | `invalid_name`, `insufficient_points`, `invalid_coordinate`, `duplicate_point`, `self_intersection`, `zero_area`, `too_many_points` |
+| 429 | `rate_limited` (with `Retry-After`) |
+| 500, 502, 503 | `internal_error`, `bad_gateway`, `service_unavailable`, `plot_service_unavailable` |
+
 Each service keeps its errors in one catalog, `internal/domain/errors.go`, plus `service/errors.go` and `handler/errors.go` for dependency and request errors. An entry declares the error kind, the stable `code` and the client message:
 
 ```go
@@ -160,23 +543,15 @@ ErrPlotNotFound = NewError(KindNotFound, "plot_not_found",
 
 The kind does not depend on the transport. The HTTP handler maps it to a status code in one place (`statusByKind` in `handler/error_mapper.go`), so adding an error means adding one catalog entry. Any error that is not in a catalog becomes `500 internal_error` without internal details. The gateway has no domain layer, so its catalog in `proxy/errors.go` holds HTTP statuses directly.
 
-### Auth
+### Profile
 
-| Method | Path                     | Description                          |
-|--------|--------------------------|--------------------------------------|
-| POST   | `/api/v1/auth/register`  | Create a user (`email`, `password`)  |
-| POST   | `/api/v1/auth/login`     | Get an `access_token`                |
-| GET    | `/api/v1/users/profile`  | Current user                         |
+| Method | Path                     | Description                                                   |
+|--------|--------------------------|---------------------------------------------------------------|
+| GET    | `/api/v1/users/profile`  | Current user: `sub`, `email`, `name` and the token `scopes`   |
+
+Tokens come from Keycloak; see [Getting a token in Postman](#getting-a-token-in-postman) for the browser flow and a `curl` example.
 
 ```sh
-curl -X POST http://localhost:8080/api/v1/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"user@example.com","password":"password123"}'
-
-TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"user@example.com","password":"password123"}' | jq -r .access_token)
-
 curl http://localhost:8080/api/v1/users/profile -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -184,10 +559,14 @@ curl http://localhost:8080/api/v1/users/profile -H "Authorization: Bearer $TOKEN
 
 | Method | Path                  | Description                                          |
 |--------|-----------------------|------------------------------------------------------|
-| POST   | `/api/v1/plots`       | Create a plot (`name`, `points[]` with `lat`/`lon`)  |
-| GET    | `/api/v1/plots`       | List the current user's plots                        |
+| POST   | `/api/v1/plots`       | Create a plot (`name`, `points[]` with `lat`/`lon`, optional `capture` and `obstructions`) |
+| POST   | `/api/v1/plots/preview` | Measure and validate `points[]` without saving; no token needed |
+| GET    | `/api/v1/plots/summary` | `count` and `total_area_hectares` (and `total_area_m2`) of the plots in the list |
+| GET    | `/api/v1/plots`       | List the current user's plots, recently changed first |
 | GET    | `/api/v1/plots/{id}`  | Get one plot                                         |
-| PATCH  | `/api/v1/plots/{id}`  | Update `name` and/or `points`                        |
+| GET    | `/api/v1/plots/{id}/versions` | Confirmed versions of a plot, newest first    |
+| PATCH  | `/api/v1/plots/{id}`  | Update `name`, `points`, `capture` and `obstructions` |
+| DELETE | `/api/v1/plots/{id}`  | Delete a confirmed plot (`204`)                      |
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/plots \
@@ -201,14 +580,40 @@ curl -X PATCH http://localhost:8080/api/v1/plots/<plot_id> \
   -d '{"name":"North field (renamed)"}'
 ```
 
-A plot response includes `area_m2`, `perimeter_m`, `version`, and timestamps.
+A plot response includes `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, `capture` (or `null`), `obstructions`, `accuracy`, `outline`, `version`, `status`, and timestamps. `outline` is the boundary projected by the server into a unit square (`x` to the east, `y` down, north on top, aspect kept), so a client draws a thumbnail by scaling it only. `GET /plots` stays an array, because the AI agents and the older demos read it so; the totals of the list come from `GET /plots/summary`. `accuracy` is
+
+```json
+{
+  "area_m2_margin": 520.4,
+  "area_hectares_margin": 0.052,
+  "percent": 2.1,
+  "confidence": 0.95,
+  "contributions": { "scale": 0.4, "obstructions": 0.6 },
+  "worst_side": 1,
+  "ground_shift_m": 4,
+  "basis": "capture"
+}
+```
+
+with the shares of `σ_A²` per source, `worst_side` as the marked side that adds the most, or `null` without marks, and `basis`: `capture` when the margin comes from the sent capture, `assumed` when there was none and the worst case was taken (see [Area accuracy](#area-accuracy)).
+
+`PATCH` with `points` takes `capture` and `obstructions` from the same request: without them the worst case and no marks apply. `PATCH` with only `obstructions` replaces the marks of the current boundary and keeps its `capture`; a `PATCH` with only `name` keeps both. `capture` without `points` is `400 invalid_capture`. A new or changed plot is `PENDING` until `report-service` confirms its projection, then `CONFIRMED`. `PATCH` and `DELETE` on a `PENDING` plot return `409 plot_not_confirmed`. A cancelled plot is hidden: the list skips it and `GET` returns `404 plot_not_found`.
+
+**Preview.** `POST /api/v1/plots/preview` takes `{"points": [...]}` with optional `capture` and `obstructions` and answers `200` with `{area_m2, area_ares, area_hectares, perimeter_m, accuracy, valid, errors[]}`; for an invalid polygon the numbers and `accuracy` are `null` and `errors` lists every problem with its `details`. It uses the same validation as `POST /api/v1/plots`, saves nothing, calls no external service and needs no token. An invalid `capture` or `obstructions` gives `400 invalid_capture` or `400 invalid_obstruction` (with `{"index": i}`). The gateway allows `PREVIEW_RATE_LIMIT_PER_MINUTE` requests per minute from one IP (60 by default) and answers `429 rate_limited` with `Retry-After` above that. On macOS all requests from the host reach the gateway from one Docker network address, so the limit is shared by the whole host.
+
+**Deletion.** `DELETE` is soft: the plot gets `deleted_at`, a new version and the `plot.deleted` event through the outbox, without a saga. Afterwards `GET`, `PATCH`, `DELETE` and `/versions` return `410 plot_deleted` and the list no longer shows it.
+
+**History.** A row in `plot_versions` is written every time a plot becomes `CONFIRMED`, also when a compensated update restores the previous boundary. Each version has `name`, `points`, `area_*`, `perimeter_m`, `capture`, `obstructions`, `accuracy` and `created_at`.
 
 ### Reports
 
 | Method | Path                    | Description                         |
 |--------|-------------------------|-------------------------------------|
 | POST   | `/api/v1/reports`       | Create a report for a plot (`plot_id`) |
+| GET    | `/api/v1/reports`       | List the current user's reports, newest first; `plot_id` and `limit` (50 by default, at most 100) are optional |
 | GET    | `/api/v1/reports/{id}`  | Get a saved report                  |
+| GET    | `/api/v1/reports/{id}/pdf?lang=uk\|en` | The report as a PDF (`application/pdf`, attachment «Звіт-<name>-<number>.pdf» or «Report-…») |
+| GET    | `/api/v1/reports/{id}/geojson` | The boundary of the report as GeoJSON (`application/geo+json`, attachment) |
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/reports \
@@ -216,11 +621,100 @@ curl -X POST http://localhost:8080/api/v1/reports \
   -d '{"plot_id":"<plot_id>"}'
 ```
 
-A report contains `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, and the `plot_version` it was built from.
+A report contains `area_m2`, `area_ares`, `area_hectares`, `perimeter_m`, the `plot_version` it was built from and `plot_deleted`. Reports are built only for `CONFIRMED` plots; otherwise the request returns `409 plot_not_confirmed`, and for a deleted plot `410 plot_deleted`. A wrong `limit` or `plot_id` in the list query gives `400 invalid_query`. When a plot is deleted, its reports stay and are marked with `plot_deleted: true`.
+
+A report also keeps a snapshot of three blocks, so a report never changes after it is created:
+
+- `accuracy`: the area margin of the plot version, as `GET /api/v1/plots/{id}` returned it (see [Area accuracy](#area-accuracy));
+- `terrain`: `status`, the mean `slope_degrees`, `surface_area_m2` and `surface_area_hectares`, `surface_increase_percent`, `min_elevation_m`, `max_elevation_m`, `relief_m`, `coarse` and `source`;
+- `climate`: `status`, `first_year` and `last_year`, four `seasons` (`winter`, `spring`, `summer`, `autumn`, each with `mean_c`, `mean_min_c`, `mean_max_c`, `precipitation_mm`, `frost_days`, `heat_days`), `last_spring_frost` and `first_autumn_frost` as `MM-DD` or `null`, `growing_days` and `source`.
+
+Reports created before these blocks existed have them as `null`.
+
+A report also stores the `boundary` of the plot version, returns it as `boundary` (`[{lat, lon}]`, empty for older reports) and adds:
+
+- `generated_from`: `climate_first_year` and `climate_last_year` of the climate block and `terrain_at`, the time the elevations were read (each `null` when the block is unavailable);
+- `latest_report_id` and `latest_report_created_at`: the newest report of the same plot, in every list item and in `GET /reports/{id}`, so `/reports?plot_id=…` and a single report both tell whether a newer one exists.
+
+**PDF and GeoJSON.** Both files are built only from the stored report, without calling Open-Meteo or `land-plot-service`, so they also work for reports of deleted plots and always show what the report showed. Only the owner gets them (`reports:read`; another user's report is `403`), `lang` is `uk` (default) or `en` and anything else is `400 invalid_language`. The file name keeps letters, digits and dashes and is sent both as an ASCII `filename` and as `filename*=UTF-8''…`; the gateway exposes `Content-Disposition` to the browser. The PDF is drawn with [`github.com/signintech/gopdf`](https://github.com/signintech/gopdf) v0.38.4 (maintained, embeds TrueType fonts as subsets) with Montserrat Regular and Bold embedded for Cyrillic (`internal/document/fonts`, SIL Open Font License). It contains the logo, the plot name, the report number and date, the boundary as vector lines without map tiles, the area with its margin (marked approximate for `basis: assumed`), the perimeter, the surface area and slope, the climate by season with the frost dates and growing days, the coordinates (over several pages when needed) and the data sources «Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90»; an unavailable block or an older report says «Даних немає» / «No data». An older report without a stored boundary has no GeoJSON (`409 boundary_not_recorded`).
+
+### Terrain and climate in reports
+
+**Terrain.** `report-service` takes elevations from the Open-Meteo Elevation API (Copernicus DEM GLO-90, 90 m) on a 10 × 10 grid over the plot's bounding box, widened by 90 m on each side (100 points, the limit of one request). A least-squares plane through them gives the mean slope `α` and the surface area `A / cos α`: 5° adds 0.4 %, 10° adds 1.5 %, 15° adds 3.5 %. Plots under 1 ha are marked `coarse`, because the model step is 90 m. The legal (cadastral) area is the horizontal one; the surface area is for reference only.
+
+A plot of 19.86 ha on a slope near Vorokhta in the Carpathians:
+
+```json
+"terrain": {
+  "status": "available",
+  "slope_degrees": 16.7,
+  "surface_area_m2": 207381,
+  "surface_area_hectares": 20.74,
+  "surface_increase_percent": 4.42,
+  "min_elevation_m": 1301,
+  "max_elevation_m": 1532,
+  "relief_m": 231,
+  "coarse": false,
+  "source": "Open-Meteo.com (CC BY 4.0), Copernicus DEM GLO-90"
+}
+```
+
+A plot of the same size on the flat left bank of Kyiv gets a slope of 0.1°, a relief of 5 m and practically no difference between the two areas.
+
+**Climate.** Daily mean, minimum and maximum temperature and precipitation for the last ten full calendar years come from the Open-Meteo Historical Weather API (ERA5) for the centre of the 0.1° cell (about 11 km) around the plot. Seasons are meteorological, winter includes the December of the previous year, and every value is the average over the years. Frost days have a minimum below 0 °C and heat days a maximum of at least 30 °C; the last spring frost is the median of the last frost before 1 July, the first autumn frost the median of the first one after it, and `growing_days` counts days with a mean of at least 5 °C. Profiles are cached in `climate_cache` per cell and period for a year, because neighbouring plots share a climate; ten years of daily data count as about 260 calls of the free Open-Meteo limit.
+
+The same Carpathian plot (one season shown, the others have the same fields):
+
+```json
+"climate": {
+  "status": "available",
+  "first_year": 2016,
+  "last_year": 2025,
+  "seasons": [
+    {
+      "season": "winter",
+      "mean_c": -4.2,
+      "mean_min_c": -7.3,
+      "mean_max_c": -1.2,
+      "precipitation_mm": 300,
+      "frost_days": 85.2,
+      "heat_days": 0
+    }
+  ],
+  "last_spring_frost": "05-13",
+  "first_autumn_frost": "10-03",
+  "growing_days": 180.4,
+  "source": "Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5"
+}
+```
+
+For Kyiv the profile gives the last spring frost on `04-05`, the first autumn frost on `10-30` and about 239 days with a mean of at least 5 °C.
+
+**When Open-Meteo is unavailable.**
+
+Both requests run in parallel with a 3 s timeout, below the 5 s the gateway waits. If Open-Meteo fails or is slow, the report is still created (`201`) and the block has `status: "unavailable"` with empty values; creating a new report for the plot tries again. The public preview never calls Open-Meteo.
+
+```json
+"terrain": { "status": "unavailable", "slope_degrees": 0, "...": "...", "source": "Open-Meteo.com (CC BY 4.0), Copernicus DEM GLO-90" },
+"climate": { "status": "unavailable", "first_year": 2016, "last_year": 2025, "seasons": [], "...": "..." }
+```
+
+**Data sources.** The data are under CC BY 4.0 and must be credited next to them. The web app shows «Дані: Open-Meteo.com (CC BY 4.0), Copernicus C3S ERA5, Copernicus DEM GLO-90» (English: «Data: …») under the report blocks, with a link to open-meteo.com. ERA5 is generated using Copernicus Climate Change Service information; elevations come from the Copernicus DEM GLO-90.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `OPEN_METEO_ELEVATION_URL` | `https://api.open-meteo.com/v1/elevation` | Elevation API |
+| `OPEN_METEO_ARCHIVE_URL` | `https://archive-api.open-meteo.com/v1/archive` | Historical Weather API |
+| `OPEN_METEO_TIMEOUT` | `3s` | timeout of each Open-Meteo request |
+| `TERRAIN_GRID_SIDE` | `10` | grid side, 2 to 10 (at most 100 points) |
+| `TERRAIN_MARGIN_M` | `90` | margin around the plot, metres |
+| `TERRAIN_COARSE_AREA_M2` | `10000` | plots below this area are `coarse` |
+| `CLIMATE_YEARS` | `10` | full calendar years in the profile |
+| `CLIMATE_CACHE_TTL` | `8760h` | lifetime of a cached climate profile |
 
 ### Plot events
 
-After committing a new or changed plot, `land-plot-service` publishes a persistent JSON event to the durable topic exchange `land.events`. The routing keys are `plot.created` and `plot.updated`. The versioned contract contains:
+`land-plot-service` publishes persistent JSON events to the durable topic exchange `land.events`. The routing keys are `plot.created`, `plot.updated`, `plot.cancelled`, and `plot.deleted`. The versioned contract contains:
 
 ```json
 {
@@ -236,22 +730,180 @@ After committing a new or changed plot, `land-plot-service` publishes a persiste
 }
 ```
 
-`report-service` consumes the durable `report.plot-events` queue with manual acknowledgements. In one PostgreSQL transaction it records `event_id` in `processed_events` and inserts or updates `plot_summaries`. Duplicate IDs have no effect, and an event with an older or equal plot version cannot overwrite a newer summary. Invalid events and database failures are rejected without requeue and are retained in `report.plot-events.dead`.
+`report-service` consumes the durable `report.plot-events` queue with manual acknowledgements. In one PostgreSQL transaction it records `event_id` in `processed_events` (inbox), inserts or updates `plot_summaries`, and writes a `plot.summary.applied` reply to its own outbox. Duplicate IDs have no effect, and an event with an older or equal plot version cannot overwrite a newer summary. `plot.cancelled` marks the summary with `cancelled_at` and a higher version, so a late `plot.created` cannot bring the plot back. Invalid events and errors that wrap `domain.ErrRejectedEvent` (the simulated write failure) are rejected without requeue and are retained in `report.plot-events.dead`, which compensates the saga. Any other error, such as a `report_db` timeout, is treated as temporary: the event goes back to the queue after one second.
 
-The producer uses publish-after-commit. RabbitMQ publisher confirms detect an immediate publication failure, but a process crash between the PostgreSQL commit and publish can still lose an event. A transactional outbox would close that gap and is not implemented.
+### Transactional outbox
 
-If the broker does not confirm the event, `POST` and `PATCH` still succeed because the plot change is already saved. The service logs the failure at `ERROR` level with `plot_id`, `event_type`, and `error`, and the report projection stays behind until the plot changes again. Returning an error instead would invite a retry, and a retried `POST` would create a second plot.
+Neither service publishes to RabbitMQ inside a request. The plot or summary change and the event are written to the `outbox_events` table in the same PostgreSQL transaction, so both are saved or neither is. A relay in each service polls the table every `OUTBOX_POLL_INTERVAL`, locks unpublished rows with `FOR UPDATE SKIP LOCKED` (several instances never take the same row), and publishes them in order with publisher confirms and the `mandatory` flag. After the broker confirms a message the relay sets `published_at`. If publishing fails it stores `last_error` and retries on the next tick. Only a rejection of the message itself (no queue is bound for the routing key, or the broker returns nack) increases `attempts`; after `OUTBOX_MAX_ATTEMPTS` rejections the row gets `failed_at`, is skipped from then on, and is logged at `ERROR`. An unavailable broker never counts as an attempt, so events survive a RabbitMQ outage. Delivery is at least once, and the inbox removes duplicates. Every `OUTBOX_CLEANUP_INTERVAL` the relay deletes published rows older than `OUTBOX_RETENTION`.
 
-Inspect the asynchronous projection after creating or updating a plot:
+While RabbitMQ is down, `POST` and `PATCH` still return `201`/`200` and the events wait in the outbox. Publishers connect lazily, and consumers reconnect on their own, so no service restarts when the broker does.
+
+### Saga
+
+Creating or changing a plot is a choreographed saga between `land-plot-service` and `report-service`. In one transaction `land-plot-service` saves the plot as `PENDING`, a `plot_sagas` row (`STARTED`, the previous plot state for an update, and a deadline of now + `SAGA_TIMEOUT`), and the event in the outbox.
+
+- **Success.** `report-service` applies the event and replies with `plot.summary.applied`. `land-plot-service` marks the saga `COMPLETED` and the plot `CONFIRMED`.
+- **Failure in the consumer.** When `report-service` cannot write the summary, it rejects the message and RabbitMQ moves it to `land.events.dead`. `land-plot-service` receives a copy in `land-plot.saga-events` and compensates with reason `dlq`.
+- **Timeout.** Every 5 seconds `land-plot-service` compensates `STARTED` sagas whose deadline has passed, with reason `timeout`.
+
+Compensation of a create marks the plot `CANCELLED` and publishes `plot.cancelled`. Compensation of an update restores the previous name, points, and area with a new version and publishes `plot.updated`. Confirmation and compensation both start with `UPDATE plot_sagas … WHERE status = 'STARTED'`, so a repeated DLQ message, a late reply, or a race between timeout and success changes nothing.
+
+To demonstrate a consumer failure, `report-service` fails to write the summary of a created or updated plot whose name starts with `REPORT_FAIL_NAME_PREFIX` (`FAIL` in `docker-compose.yml`, disabled when empty).
+
+Inspect the asynchronous projection, the outbox, and the sagas after creating or updating a plot:
 
 ```sh
 docker compose exec postgres psql -U report_user -d report_db \
-  -c 'SELECT plot_id, name, area_m2, version FROM plot_summaries ORDER BY updated_at DESC;'
+  -c 'SELECT plot_id, name, area_m2, version, cancelled_at FROM plot_summaries ORDER BY updated_at DESC;'
+docker compose exec postgres psql -U plot_user -d plot_db \
+  -c 'SELECT routing_key, published_at, attempts FROM outbox_events ORDER BY position DESC LIMIT 5;' \
+  -c 'SELECT plot_id, kind, status, reason FROM plot_sagas ORDER BY created_at DESC LIMIT 5;'
 ```
 
 ### Request chain trace
 
-`GET /api/v1/demo/chain?message=hello` goes through gateway → report-service → land-plot-service and returns the list of instances that handled the request. It is useful for checking discovery and inter-service calls.
+`GET /api/v1/demo/chain?message=hello` (any valid token) goes through gateway → report-service → land-plot-service and returns the list of instances that handled the request. It is useful for checking discovery and inter-service calls.
+
+## Authentication and authorization
+
+Users and programs get tokens from **Keycloak**, an OAuth 2.0 and OpenID Connect authorization server. The system issues no tokens of its own: `identity-service` has no passwords, no registration and no login.
+
+### Keycloak
+
+Keycloak runs in Docker Compose on `http://localhost:8180` and keeps its data in the `keycloak_db` database of the shared PostgreSQL. The realm `land-plot` is configuration as code: it is imported on the first start from `infra/keycloak/realm-land-plot.json`, which holds no secrets. Passwords and the client secret come from the environment (`${OLENA_KOVAL_PASSWORD}`, `${TARAS_MELNYK_PASSWORD}`, `${AI_CLIENT_SECRET}`).
+
+The admin console is at `http://localhost:8180/admin` (`KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD`, `admin` / `keycloak_admin_dev_password` by default).
+
+The realm allows self-registration and password reset, and its pages are in Ukrainian by default (`uk`, with `en`). Keycloak sends its emails, such as the password reset link, to the development mail catcher **Mailpit**: nothing leaves the machine, and the messages are at `http://localhost:8025`.
+
+The login pages use the **Arqetra theme** from `infra/keycloak/themes/arqetra/login`, mounted read-only into the container: sign-in, registration, password reset, the new password after the email, one-time password setup and entry, the error page and the expired page look like the web app. The theme extends `keycloak.v2`; it changes the look through its own CSS (the design tokens of `apps/web`, a local Montserrat font) and Ukrainian texts in `messages_uk.properties` with English as the fallback, and overrides only `login.ftl` and `register.ftl` (sign-in and register tabs) and `footer.ftl`. `start-dev` does not cache themes, so changes appear after a page reload. A test in `apps/web/tests/keycloakTheme.test.ts` keeps the theme tokens equal to the app tokens.
+
+Keycloak imports the realm only when it does not exist yet. `./scripts/keycloak_realm.sh` applies the display name, login theme, registration, password reset, language and SMTP settings from the realm file to a running Keycloak without deleting volumes; it can be run any number of times and prints no passwords or secrets. To start from a clean realm, recreate the volumes:
+
+```sh
+docker compose --profile ai down -v
+docker compose --profile ai up -d --build
+./scripts/keycloak_idp.sh   # adds the Google login again
+```
+
+**Moving to Lab 5.** Earlier versions issued HS256 tokens from `identity-service`, and their users and plots do not exist in Keycloak. Start Lab 5 from empty volumes with `docker compose --profile ai down -v`; old data is not migrated.
+
+### Clients
+
+| Client ID           | Type         | Flow                                       | Used by                                                     |
+|---------------------|--------------|--------------------------------------------|-------------------------------------------------------------|
+| `land-plot-web`     | public       | Authorization Code with PKCE (S256 required) | the web app `apps/web` and Postman                        |
+| `land-plot-ai`      | confidential | Client Credentials (service account)       | `fc-client`, `mcp-server`, `producer-agent`, `consumer-agent` |
+| `land-plot-dev-cli` | public       | Direct Access Grants (password)            | the `demo*.sh` scripts only                                 |
+
+`land-plot-web` accepts the redirect URIs `https://oauth.pstmn.io/v1/callback`, `http://localhost:5173/auth/callback` and `http://localhost:4173/auth/callback`, and the web origins `https://cad.kpi.ua`, `http://localhost:5173` and `http://localhost:4173`. Direct Access Grants are disabled on it.
+
+`land-plot-dev-cli` exists only so that the demo scripts can get a token without a browser. **In production this client is disabled**, because the password grant hands user passwords to the client.
+
+The realm has two test users: `olena.koval@example.com` and `taras.melnyk@example.com` (passwords from `.env`). `olena.koval` must set up a one-time password on the first login, which shows multi-factor authentication; the password grant cannot sign her in until that is done, so the scripts use `taras.melnyk`.
+
+### Scopes
+
+All access tokens carry the audience `aud = land-plot-api` (the default client scope `land-plot-audience`). The API scopes are optional client scopes, so a client gets only the scopes it asks for:
+
+| Scope           | Allows                                |
+|-----------------|---------------------------------------|
+| `plots:read`    | read your plots                       |
+| `plots:write`   | create and change your plots          |
+| `reports:read`  | read your reports                     |
+| `reports:write` | create reports                        |
+
+| Method and path                                          | Required scope                     |
+|----------------------------------------------------------|------------------------------------|
+| `POST /api/v1/plots/preview`                             | none (public, rate limited)        |
+| `GET /api/v1/plots`, `GET /api/v1/plots/{id}`, `GET /api/v1/plots/{id}/versions` | `plots:read` |
+| `POST /api/v1/plots`, `PATCH /api/v1/plots/{id}`, `DELETE /api/v1/plots/{id}` | `plots:write` |
+| `GET /api/v1/reports`, `GET /api/v1/reports/{id}`        | `reports:read`                     |
+| `POST /api/v1/reports`                                   | `reports:write` and `plots:read`   |
+| `GET /api/v1/users/profile`                              | `openid`                           |
+| `GET /api/v1/demo/chain`                                 | any valid token                    |
+
+`POST /api/v1/reports` also needs `plots:read` because `report-service` forwards the user's token to `land-plot-service` (`GET /internal/plots/{id}`, which requires `plots:read`) to read the plot. If `land-plot-service` refuses, the user gets `403`, not `502`.
+
+The AI programs follow the principle of least privilege; Docker Compose gives each of them only what it needs through `AI_SCOPES`:
+
+| Program                     | Scopes                                    |
+|-----------------------------|-------------------------------------------|
+| `producer-agent`            | `plots:read plots:write`                  |
+| `consumer-agent`            | `plots:read reports:read reports:write`   |
+| `fc-client`, `mcp-server`   | all four                                  |
+
+### Token verification (Zero Trust)
+
+The gateway **and** every service verify each token themselves; no service trusts the gateway alone, and a request sent directly to a service is checked the same way. Each module has its own `internal/auth.OIDCVerifier`:
+
+- signing keys come from the JWKS of Keycloak (`OIDC_JWKS_URL`), are cached, refreshed every hour and, for an unknown `kid`, at most once every 30 seconds;
+- only `RS256` and keys with `use=sig` are accepted, so `alg: none` and HS256 tokens are rejected;
+- the signature, `iss` (`OIDC_ISSUER`), `aud` containing `land-plot-api`, a required `exp` and `nbf` are checked with 30 seconds of clock leeway;
+- `sub` is required; `email` may be empty, as for a service account.
+
+Browsers and Postman reach Keycloak at `http://localhost:8180`, containers at `http://keycloak:8080`. Keycloak runs with `KC_HOSTNAME=http://localhost:8180` and `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, so a token has the same `iss = http://localhost:8180/realms/land-plot` wherever it was requested, while containers load the JWKS and request tokens over the internal address.
+
+Every service keeps its route-to-scope rules in one table (`protectedRoutes` in `handler/router.go`, `scopeRules` in the gateway `proxy/scopes.go`). Responses follow RFC 6750:
+
+| Situation                       | Response                                                                                  |
+|---------------------------------|-------------------------------------------------------------------------------------------|
+| no token or an invalid token    | `401 unauthorized`, `WWW-Authenticate: Bearer error="invalid_token"`                       |
+| a missing scope                 | `403 insufficient_scope`, `WWW-Authenticate: Bearer error="insufficient_scope", scope="plots:write"` |
+| a method the gateway does not route | `404 route_not_found`                                                                  |
+
+`identity-service` creates the user in `identity_db` from the token on the first `GET /api/v1/users/profile` (the user ID is the token `sub`) and updates the email and name on later requests.
+
+### CORS
+
+The gateway lets the department site `https://cad.kpi.ua` and the local frontends call the API from a browser. Its CORS middleware runs before authentication, so a preflight `OPTIONS` request without a token is answered with `204` instead of `401`.
+
+- Allowed origins come from `CORS_ALLOWED_ORIGINS` (by default `https://cad.kpi.ua,http://localhost:5173,http://localhost:4173`) and are compared exactly; `*` is never used, and `https://cad.kpi.ua.evil.com` is not allowed.
+- An allowed origin gets `Access-Control-Allow-Origin: <origin>`, `Vary: Origin` and `Access-Control-Expose-Headers: X-Request-ID, X-Trace-ID, Retry-After, Content-Disposition`, so the browser can read the request and trace IDs, the wait after `429` and the file name of a download. A preflight also gets `Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`, `Allow-Headers: Authorization, Content-Type, X-Request-ID, traceparent, tracestate`, `Max-Age: 600` and, when the browser asks for it, `Access-Control-Allow-Private-Network: true`, because a public page calls `localhost`.
+- `Access-Control-Allow-Credentials` is not sent: the token travels in the `Authorization` header, not in a cookie.
+- A foreign origin gets no `Access-Control-*` headers, and its preflight gets `403 origin_not_allowed`.
+- The gateway removes `Access-Control-*` headers that a service might return (`ReverseProxy.ModifyResponse`), so each response carries exactly one set.
+
+### Google login
+
+The Keycloak login page has a **Google** button, and a frontend can skip the Keycloak page by adding `kc_idp_hint=google` to the authorization request.
+
+1. In the Google Cloud Console open **APIs & Services → OAuth consent screen**, choose **External**, keep the app in **Testing** and add your Google account to **Test users**.
+2. Open **Credentials → Create credentials → OAuth client ID**, choose **Web application** and add the authorized redirect URI `http://localhost:8180/realms/land-plot/broker/google/endpoint`.
+3. Put the client ID and secret into `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+4. With Keycloak running, run `./scripts/keycloak_idp.sh`.
+
+The script adds or updates the identity provider `google` through `kcadm.sh` inside the Keycloak container and is safe to run again; without the two variables it prints a warning and exits with `0`. The first Google login creates the user in Keycloak, the email from Google counts as verified, and the email and name are refreshed on each login. Open `http://localhost:8180/realms/land-plot/account` and press **Google** to check it.
+
+### Getting a token in Postman
+
+The collection `postman/lr5_collection.json` uses OAuth 2.0 on the collection level:
+
+| Setting            | Value                                                                              |
+|--------------------|------------------------------------------------------------------------------------|
+| Grant type         | Authorization Code (With PKCE), code challenge method `SHA-256`                   |
+| Auth URL           | `http://localhost:8180/realms/land-plot/protocol/openid-connect/auth`             |
+| Access token URL   | `http://localhost:8180/realms/land-plot/protocol/openid-connect/token`            |
+| Client ID          | `land-plot-web` (no secret, public client)                                         |
+| Callback URL       | `https://oauth.pstmn.io/v1/callback` (authorize using the browser)                 |
+| Scope              | `openid profile email plots:read plots:write reports:read reports:write`           |
+
+Import the collection, open its **Authorization** tab, press **Get New Access Token**, sign in with Google or a test user and press **Use Token**. The requests then show the profile, list and create plots and build a report. The request **Create plot with plots:read only (403)** has its own OAuth settings with the scope `openid plots:read` and gets `403 insufficient_scope`.
+
+Without a browser a token for a test user comes from the development client:
+
+```sh
+TOKEN=$(curl -s http://localhost:8180/realms/land-plot/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=land-plot-dev-cli \
+  -d username=taras.melnyk@example.com -d password=TarasDevPassword123 \
+  --data-urlencode 'scope=openid plots:read plots:write reports:read reports:write' | jq -r .access_token)
+
+cut -d. -f2 <<<"$TOKEN" | tr '_-' '/+' | base64 -d 2>/dev/null | jq '{iss, aud, sub, scope, exp}'
+```
+
+### Production
+
+The Compose setup is for local development. In production Keycloak runs with `start` instead of `start-dev`, behind TLS on its own hostname, `land-plot-dev-cli` and every password grant are disabled, the bootstrap admin is replaced by a real administrator account, and all secrets come from a secret store.
 
 ## Scaling
 
@@ -279,17 +931,68 @@ make demo
 
 It requires `docker`, `curl`, and `jq`. The script creates isolated demonstration records and temporarily stops one Land Plot container, which it always starts again during cleanup.
 
+The outbox and saga demo shows a confirmed plot, compensation after a consumer write failure (`FAIL` name) and after a timeout (stopped `report-service`), a compensated update, an event that waits in the outbox while RabbitMQ is stopped, and a temporary `report_db` failure (a locked `plot_summaries` table) that is retried instead of cancelling the saga. It ends by checking that no outbox row was abandoned:
+
+```sh
+make demo-lr3
+```
+
+It stops `report-service` for about 30 seconds and RabbitMQ for about 10 seconds and starts them again during cleanup. It reads `SAGA_TIMEOUT` and `MESSAGE_PROCESSING_TIMEOUT` (whole seconds, such as `30s`) to size its waits and the table lock.
+
+The AI demo checks the MCP server and both A2A agents without the LLM, then runs every LLM scenario once when `LLM_API_KEY` is set in `.env`. It also needs `MCP_ACCESS_TOKEN` and Go:
+
+```sh
+make demo-lr4
+```
+
+The security demo runs without a browser. It shows a decoded Keycloak token, a CORS preflight from `https://cad.kpi.ua` and from a foreign origin, exactly one `Access-Control-Allow-Origin` on a response, `401` with `WWW-Authenticate` without a token, `401` for a forged and an HS256 token, `403 insufficient_scope` for a token with `plots:read` only, a plot, saga and report with all scopes, `401` from `land-plot-service` called directly without a token, the profile created in `identity_db`, and `403` for the producer agent credentials on `POST /api/v1/reports`:
+
+```sh
+make demo-lr5
+```
+
+The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, a report while Open-Meteo is unreachable (`201` with `unavailable` blocks; the script restarts `report-service` with a broken URL), the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), after which `report-service` gets the real Open-Meteo back, a CORS preflight for `DELETE`, a password reset email in Mailpit, the area margin with `capture` and an obstruction (`worst_side`, `basis: assumed` without a capture), `400 invalid_capture` and `invalid_obstruction`, a `PATCH` with only obstructions, reports with terrain and climate for the Carpathians and Kyiv, the PDF of a report in Ukrainian and English and its GeoJSON (`400 invalid_language` for `lang=de`), the plot list summary from `GET /api/v1/plots/summary` and the preview rate limit (`429` with `Retry-After`). The reports of the list and the deletion are made while Open-Meteo is switched off, so only the Carpathian and the Kyiv report spend its free daily quota:
+
+```sh
+make demo-web
+```
+
+The observability demo (about 22 minutes, most of it waiting for the `for` of the alerts) needs `.env` with the Jira values (see [Observability and incident response](#observability-and-incident-response)):
+
+1. starts the system with the `observability` profile and checks that every Prometheus target is up;
+2. makes a load: ten previews (every third one self-intersecting), four plots and one report, the only report of the demo that calls Open-Meteo;
+3. creates a plot and follows its `X-Trace-ID`: the lines with that `trace_id` from `api-gateway`, `land-plot-service` and `report-service` in Loki, and the trace in Jaeger with its HTTP, PostgreSQL and RabbitMQ spans;
+4. **ServiceDown:** stops `report-service`, waits for the alert, the Jira ticket and its mail in Mailpit, starts the service and waits for resolved, the comment and Done;
+5. **ServiceUnhealthy:** restarts `report-service` with `DEMO_FAULTS_ENABLED=true`, calls `/debug/unhealthy`, waits until autoheal restarts it, checks that the closing comment names autoheal, and restarts the service without the flag;
+6. **ReplicationLagHigh:** stops RabbitMQ, creates three plots while it is down (their sagas time out and are cancelled), prints the outbox growing until the alert fires, starts RabbitMQ and waits until the outbox is published and the ticket closed. The stopped broker also opens a `ServiceDown` ticket for `rabbitmq`;
+7. **HighLatencyP99:** restarts `report-service` with Open-Meteo on the unroutable `10.255.255.1`, so the terrain request of every report hangs until the 3 s timeout (the climate of the plot comes from the cache, and no request reaches Open-Meteo); reports are created every 15 seconds until the alert fires, then the real Open-Meteo comes back and the alert resolves once the slow reports leave the 5-minute window. The same slow reports also fire `HighLatencyP99` for `api-gateway`, `ExternalDependencyDown` and `LatencyAnomaly`, each with its own ticket;
+8. prints the links to the dashboard, the trace of step 3, n8n and Mailpit, and the keys of the Jira tickets it opened.
+
+When the script stops for any reason, a `trap` starts RabbitMQ again and recreates `report-service` with its normal configuration. Tickets are read back from Jira with the `JIRA_*` values of `.env`; without them the demo relies on the mails.
+
+```sh
+make demo-lr6
+```
+
+All demo scripts get tokens from Keycloak: the user `taras.melnyk@example.com` through `land-plot-dev-cli`, and the AI service account through client credentials.
+
 ## Configuration
 
 All settings come from environment variables. `docker-compose.yml` sets development defaults, and `.env.example` lists everything you can override:
 
 - public ports,
 - timeouts (HTTP shutdown, Consul, database, upstream),
-- JWT secret and TTL,
-- bcrypt cost,
-- PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch.
+- Keycloak: port, database, bootstrap admin, test user passwords and the `land-plot-ai` client secret,
+- token verification (`OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_TIMEOUT`), the CORS origins (`CORS_ALLOWED_ORIGINS`) and the preview limit (`PREVIEW_RATE_LIMIT_PER_MINUTE`),
+- the Mailpit web UI port (`MAILPIT_UI_PORT`),
+- the observability stack: ports, Prometheus and Jaeger retention, the Grafana admin (`GRAFANA_ADMIN_PASSWORD` is required for every compose command, also without the profile),
+- the web app container: port, the gateway and Keycloak addresses built into the bundle and the CSP origins (`WEB_*`, see [`apps/web/README.md`](apps/web/README.md)),
+- the Google client (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, only in `.env`),
+- PostgreSQL and RabbitMQ credentials, connection and message-processing timeouts, and consumer prefetch,
+- outbox poll interval, saga timeout, and the name prefix that makes `report-service` fail on purpose,
+- the LLM key and model, agent token and step limits, the AI client credentials and scopes, and the MCP access token (see [`ai/README.md`](ai/README.md)).
 
-Set a strong `JWT_SECRET` and real passwords for any environment other than local development.
+Set real passwords and secrets for any environment other than local development, and never commit `.env`.
 
 ## Development
 
@@ -301,7 +1004,10 @@ make lint      # formatting, whitespace, code quality and no-comments checks
 make lint-fix  # remove comments, apply formatters and automatic lint fixes
 make strip-comments  # only remove comments (tool directives are kept)
 make test      # tests only
-make check     # lint, go test, go vet for every service, and a docker compose config check
+make check     # lint, go test, go vet for every module, including ai/, and docker compose config checks
+make web-check # web app: lint (with layer boundaries), tests, build
+make check-all # make check and make web-check
+make ai-mcp-inspector  # MCP Inspector with the MCP server over stdio
 ```
 
 The linter configuration lives in `.golangci.yml` and is shared by all modules. Besides the standard checks, it enforces:
