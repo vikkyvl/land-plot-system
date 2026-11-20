@@ -179,9 +179,9 @@ create_plot() {
 }
 
 report_for() {
-	plot_id=$(create_plot "$1" "$2" "\"capture\":$3")
-	wait_for_status "$plot_id" CONFIRMED
-	status=$(api POST /reports --data "{\"plot_id\":\"$plot_id\"}")
+	report_plot_id=$(create_plot "$1" "$2" "\"capture\":$3")
+	wait_for_status "$report_plot_id" CONFIRMED
+	status=$(api POST /reports --data "{\"plot_id\":\"$report_plot_id\"}")
 	expect_status "$status" 201 "report for $1"
 }
 
@@ -242,7 +242,19 @@ body '.[] | {version, area_hectares: (.area_hectares*100|round/100), perimeter_m
 expect_body 'length == 2 and .[0].version > .[1].version' "the history must contain two versions, newest first"
 
 echo
-echo "6. Reports: list of the plot, limit and an invalid query"
+echo "6. Report while Open-Meteo is unreachable: still 201, the blocks are unavailable"
+open_meteo_broken=true
+OPEN_METEO_ELEVATION_URL=$unreachable_open_meteo/elevation OPEN_METEO_ARCHIVE_URL=$unreachable_open_meteo/archive \
+	docker compose up -d report-service >/dev/null 2>&1
+wait_for_open_meteo_url "$unreachable_open_meteo/archive"
+wait_for_report_service
+report_for "Сад на заході" "$(uncached_square)" "$mouse_capture"
+expect_body '.terrain.status == "unavailable" and .climate.status == "unavailable"' "report without Open-Meteo"
+echo "   $status, $(body '{terrain: .terrain.status, climate: .climate.status, accuracy_basis: .accuracy.basis}')"
+echo "   Open-Meteo stays unreachable for the next two steps, so their reports spend none of its daily quota"
+
+echo
+echo "7. Reports: list of the plot, limit and an invalid query"
 first_report=$(api POST /reports --data "{\"plot_id\":\"$plot_id\"}" >/dev/null && jq -er .id "$demo_tmp/body.json")
 second_report=$(api POST /reports --data "{\"plot_id\":\"$plot_id\"}" >/dev/null && jq -er .id "$demo_tmp/body.json")
 status=$(api GET "/reports?plot_id=$plot_id")
@@ -257,7 +269,7 @@ echo "   limit=500: $status, $(body '{code}')"
 expect_status "$status" 400 "GET /reports?limit=500"
 
 echo
-echo "7. Deletion: a pending plot, the confirmed plot, 410 afterwards and the marked report"
+echo "8. Deletion: a pending plot, the confirmed plot, 410 afterwards and the marked report"
 pending_id=$(create_plot "Ще обробляється" "$square")
 status=$(api DELETE "/plots/$pending_id")
 echo "   DELETE of a PENDING plot: $status, $(body '{code}')"
@@ -280,9 +292,13 @@ echo "   report after plot.deleted: $(body '{id, plot_name, plot_deleted}')"
 status=$(api POST /reports --data "{\"plot_id\":\"$plot_id\"}")
 echo "   new report for the deleted plot: $status, $(body '{code}')"
 expect_status "$status" 410 "POST /reports for a deleted plot"
+restore_open_meteo
+wait_for_open_meteo_url https://archive-api.open-meteo.com/v1/archive
+wait_for_report_service
+echo "   report-service is back with the real Open-Meteo endpoints"
 
 echo
-echo "8. CORS preflight for DELETE from $allowed_origin"
+echo "9. CORS preflight for DELETE from $allowed_origin"
 status=$(request --request OPTIONS --header "Origin: $allowed_origin" \
 	--header 'Access-Control-Request-Method: DELETE' "$gateway_url/api/v1/plots/$plot_id")
 echo "   status $status, Access-Control-Allow-Methods: $(header_value Access-Control-Allow-Methods)"
@@ -290,7 +306,7 @@ expect_status "$status" 204 "preflight for DELETE"
 header_value Access-Control-Allow-Methods | grep -q DELETE || fail "DELETE is not allowed by CORS"
 
 echo
-echo "9. Password reset email from Keycloak arrives in Mailpit ($mailpit_url)"
+echo "10. Password reset email from Keycloak arrives in Mailpit ($mailpit_url)"
 mails_before=$(mail_count)
 docker compose exec -T keycloak bash -c '
 	kcadm() { /opt/keycloak/bin/kcadm.sh "$@" --config /tmp/kcadm.config; }
@@ -307,7 +323,7 @@ done
 curl -fsS "$mailpit_url/api/v1/messages?limit=1" | jq -c '.messages[0] | {to: [.To[].Address], subject: .Subject}' | sed 's/^/   /'
 
 echo
-echo "10. Preview with how the points were placed: area margin, its sources and the worst side"
+echo "11. Preview with how the points were placed: area margin, its sources and the worst side"
 status=$(preview_with "{\"points\":$square,\"capture\":$mouse_capture}")
 expect_status "$status" 200 "preview with capture"
 expect_body '.accuracy.basis == "capture" and .accuracy.worst_side == null' "preview with capture"
@@ -320,7 +336,7 @@ expect_body '.accuracy.basis == "assumed"' "preview without capture"
 echo "   without capture: $(body '{margin_ha: (.accuracy.area_hectares_margin * 1000 | round / 1000), basis: .accuracy.basis}')"
 
 echo
-echo "11. Invalid capture and obstruction are rejected with 400"
+echo "12. Invalid capture and obstruction are rejected with 400"
 status=$(preview_with "{\"points\":$square,\"capture\":{\"zoom\":30,\"layer\":\"map\",\"pointer\":\"mouse\"}}")
 expect_status "$status" 400 "preview with zoom 30"
 echo "   zoom 30: $status, $(body '{code}')"
@@ -329,7 +345,7 @@ expect_status "$status" 400 "preview with side 9"
 echo "   side 9 of a five-point plot: $status, $(body '{code, details}')"
 
 echo
-echo "12. PATCH with only obstructions keeps the capture and records a new version"
+echo "13. PATCH with only obstructions keeps the capture and records a new version"
 plot_id=$(create_plot "Поле з позначками" "$square" "\"capture\":$mouse_capture")
 wait_for_status "$plot_id" CONFIRMED
 status=$(api PATCH "/plots/$plot_id" --data '{"obstructions":[{"side":2,"reason":"trees"}]}')
@@ -341,7 +357,7 @@ api GET "/plots/$plot_id/versions" >/dev/null
 echo "   versions: $(body '[.[] | {version, obstructions}]')"
 
 echo
-echo "13. Reports with terrain and climate from Open-Meteo: the Carpathians and Kyiv"
+echo "14. Reports with terrain and climate from Open-Meteo: the Carpathians and Kyiv (the only two that call it)"
 report_for "Полонина над Ворохтою" "$carpathians" "$touch_capture"
 expect_body '.terrain.status == "available" and .climate.status == "available" and .terrain.slope_degrees > 5' "Carpathian report"
 echo "   Carpathians: $(surroundings_summary)"
@@ -352,7 +368,7 @@ echo "   Kyiv: $(surroundings_summary)"
 echo "   sources: $(body '{terrain: .terrain.source, climate: .climate.source}')"
 
 echo
-echo "14. PDF and GeoJSON come from the stored report, plots have a summary"
+echo "15. PDF and GeoJSON come from the stored report, plots have a summary"
 for language in uk en; do
 	status=$(request --header "Authorization: Bearer $token" "$gateway_url/api/v1/reports/$carpathian_report/pdf?lang=$language")
 	expect_status "$status" 200 "PDF in $language"
@@ -371,21 +387,6 @@ echo "   lang=de: $status, $(body '{code}')"
 status=$(api GET /plots/summary)
 expect_status "$status" 200 "plot summary"
 echo "   plots summary: $(body '{count, total_area_hectares: (.total_area_hectares * 100 | round / 100)}')"
-
-echo
-echo "15. Report while Open-Meteo is unreachable: still 201, the blocks are unavailable"
-open_meteo_broken=true
-OPEN_METEO_ELEVATION_URL=$unreachable_open_meteo/elevation OPEN_METEO_ARCHIVE_URL=$unreachable_open_meteo/archive \
-	docker compose up -d report-service >/dev/null 2>&1
-wait_for_open_meteo_url "$unreachable_open_meteo/archive"
-wait_for_report_service
-report_for "Сад на заході" "$(uncached_square)" "$mouse_capture"
-expect_body '.terrain.status == "unavailable" and .climate.status == "unavailable"' "report without Open-Meteo"
-echo "   $status, $(body '{terrain: .terrain.status, climate: .climate.status, accuracy_basis: .accuracy.basis}')"
-restore_open_meteo
-wait_for_open_meteo_url https://archive-api.open-meteo.com/v1/archive
-wait_for_report_service
-echo "   report-service is back with the real Open-Meteo endpoints"
 
 echo
 echo "16. Preview rate limit on the gateway"

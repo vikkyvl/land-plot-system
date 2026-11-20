@@ -290,6 +290,8 @@ The ports differ from the usual 3000, 9090 and 9093 so that other local stacks d
 ```sh
 make obs-up      # docker compose --profile observability up -d --wait: the system and the stack
 make obs-check   # health of every Prometheus target and of the Grafana, Jaeger, Alertmanager and Prometheus UIs
+make demo-lr6    # load, one request in logs and traces, four incidents with Jira tickets (see "End-to-end demo")
+make tracing-overhead   # gateway latency with tracing on and off (see "Tracing overhead")
 ```
 
 **`.env`.** Copy `.env.example` and set these variables; `.env.example` has only placeholders:
@@ -380,6 +382,19 @@ OpenTelemetry with W3C Trace Context. Every Go service starts the SDK and export
 
   `make saga-trace-check` creates a plot that is confirmed and one named `FAIL…` that is cancelled through the dead letter queue, and checks in Jaeger that each saga is a single trace.
 - **Traces start in the browser and in the AI agents.** The web app has no tracing SDK: for every request to the gateway it creates a W3C `traceparent` (a new trace ID, kept when the request is repeated after a token renewal), so the trace in Jaeger starts with the gateway span whose parent is the browser. Nominatim and the map tiles never get `traceparent`. The AI programs run the same SDK as the services: `mcp-server`, `producer-agent` and `consumer-agent` continue an incoming trace, and their calls to the gateway and from the consumer to the producer (A2A) carry `traceparent` and `X-Request-ID`, so an MCP tool call or a delegated task is one trace with the gateway and the services.
+
+### Tracing overhead
+
+`make tracing-overhead` sends 50 warm-up and then 1500 sequential requests through the gateway with tracing on, recreates the four Go services with `OTEL_EXPORTER_OTLP_ENDPOINT` empty (no spans are exported, `otelhttp` and `otelpgx` stay in the chain) and repeats the series, then restores tracing. The time is measured by `curl` on the host (Docker Desktop for macOS, 20.11.2026):
+
+| Request | Tracing | p50, ms | p95, ms |
+|---|---|---|---|
+| `GET /api/v1/plots` without a token (`401` from the gateway) | on | 1.1 | 2.1 |
+| | off | 1.0 | 2.1 |
+| `GET /api/v1/plots/summary` (gateway → land-plot-service → PostgreSQL) | on | 2.0 | 2.9 |
+| | off | 1.9 | 2.5 |
+
+Tracing adds about 0.1 ms to the median and up to 0.4 ms to p95 of a request that reaches the database, the order of the run-to-run noise: a shorter run of 500 requests the same day had the gateway-only request faster with tracing on (0.6 against 1.6 ms). Spans are exported in batches outside the request, so the collector is not on the request path.
 
 ### CPU and memory: why not cAdvisor
 
@@ -936,10 +951,27 @@ The security demo runs without a browser. It shows a decoded Keycloak token, a C
 make demo-lr5
 ```
 
-The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), a CORS preflight for `DELETE`, a password reset email in Mailpit, the area margin with `capture` and an obstruction (`worst_side`, `basis: assumed` without a capture), `400 invalid_capture` and `invalid_obstruction`, a `PATCH` with only obstructions, reports with terrain and climate for the Carpathians and Kyiv, the PDF of a report in Ukrainian and English and its GeoJSON (`400 invalid_language` for `lang=de`), the plot list summary from `GET /api/v1/plots/summary`, a report while Open-Meteo is unreachable (`201` with `unavailable` blocks; the script restarts `report-service` with a broken URL and restores it) and the preview rate limit (`429` with `Retry-After`):
+The web backend demo shows the preview with and without errors and its `details`, `422` with the same details on save, a changed boundary and its version history, a report while Open-Meteo is unreachable (`201` with `unavailable` blocks; the script restarts `report-service` with a broken URL), the report list with `plot_id` and `limit`, deletion (`409` while pending, `204`, then `410` and a report marked `plot_deleted`), after which `report-service` gets the real Open-Meteo back, a CORS preflight for `DELETE`, a password reset email in Mailpit, the area margin with `capture` and an obstruction (`worst_side`, `basis: assumed` without a capture), `400 invalid_capture` and `invalid_obstruction`, a `PATCH` with only obstructions, reports with terrain and climate for the Carpathians and Kyiv, the PDF of a report in Ukrainian and English and its GeoJSON (`400 invalid_language` for `lang=de`), the plot list summary from `GET /api/v1/plots/summary` and the preview rate limit (`429` with `Retry-After`). The reports of the list and the deletion are made while Open-Meteo is switched off, so only the Carpathian and the Kyiv report spend its free daily quota:
 
 ```sh
 make demo-web
+```
+
+The observability demo (about 22 minutes, most of it waiting for the `for` of the alerts) needs `.env` with the Jira values (see [Observability and incident response](#observability-and-incident-response)):
+
+1. starts the system with the `observability` profile and checks that every Prometheus target is up;
+2. makes a load: ten previews (every third one self-intersecting), four plots and one report, the only report of the demo that calls Open-Meteo;
+3. creates a plot and follows its `X-Trace-ID`: the lines with that `trace_id` from `api-gateway`, `land-plot-service` and `report-service` in Loki, and the trace in Jaeger with its HTTP, PostgreSQL and RabbitMQ spans;
+4. **ServiceDown:** stops `report-service`, waits for the alert, the Jira ticket and its mail in Mailpit, starts the service and waits for resolved, the comment and Done;
+5. **ServiceUnhealthy:** restarts `report-service` with `DEMO_FAULTS_ENABLED=true`, calls `/debug/unhealthy`, waits until autoheal restarts it, checks that the closing comment names autoheal, and restarts the service without the flag;
+6. **ReplicationLagHigh:** stops RabbitMQ, creates three plots while it is down (their sagas time out and are cancelled), prints the outbox growing until the alert fires, starts RabbitMQ and waits until the outbox is published and the ticket closed. The stopped broker also opens a `ServiceDown` ticket for `rabbitmq`;
+7. **HighLatencyP99:** restarts `report-service` with Open-Meteo on the unroutable `10.255.255.1`, so the terrain request of every report hangs until the 3 s timeout (the climate of the plot comes from the cache, and no request reaches Open-Meteo); reports are created every 15 seconds until the alert fires, then the real Open-Meteo comes back and the alert resolves once the slow reports leave the 5-minute window. The same slow reports also fire `HighLatencyP99` for `api-gateway`, `ExternalDependencyDown` and `LatencyAnomaly`, each with its own ticket;
+8. prints the links to the dashboard, the trace of step 3, n8n and Mailpit, and the keys of the Jira tickets it opened.
+
+When the script stops for any reason, a `trap` starts RabbitMQ again and recreates `report-service` with its normal configuration. Tickets are read back from Jira with the `JIRA_*` values of `.env`; without them the demo relies on the mails.
+
+```sh
+make demo-lr6
 ```
 
 All demo scripts get tokens from Keycloak: the user `taras.melnyk@example.com` through `land-plot-dev-cli`, and the AI service account through client credentials.

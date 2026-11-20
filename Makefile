@@ -19,7 +19,7 @@ PLOT_TEST_DATABASE_URL ?= postgres://plot_user:plot_dev_password@localhost:$(POS
 REPORT_TEST_DATABASE_URL ?= postgres://report_user:report_dev_password@localhost:$(POSTGRES_PORT)/report_db?sslmode=disable
 INTEGRATION_TEST := go test -count=1 -tags=integration ./internal/repository/postgres/...
 
-.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web ai-mcp-inspector obs-up obs-check saga-trace-check rules-check
+.PHONY: fmt lint lint-fix strip-comments test test-integration vet check check-all web-check compose-config demo demo-lr3 demo-lr4 demo-lr5 demo-web demo-lr6 tracing-overhead ai-mcp-inspector obs-up obs-check saga-trace-check rules-check
 
 # Formats code: gofumpt, import groups (gci) and long lines (golines).
 fmt:
@@ -94,6 +94,15 @@ demo-lr5:
 # and the preview rate limit.
 demo-web:
 	./scripts/demo_web.sh
+
+# Shows the observability stack: targets, a load, one request in logs and traces, and the incidents ServiceDown,
+# ServiceUnhealthy, ReplicationLagHigh and HighLatencyP99 with their Jira tickets and mails; restores the system.
+demo-lr6:
+	./scripts/demo_lr6.sh
+
+# Measures the gateway latency with tracing on and off (OTEL_EXPORTER_OTLP_ENDPOINT empty) and restores tracing.
+tracing-overhead:
+	./scripts/tracing_overhead.sh
 
 # Starts the system with the observability stack.
 obs-up:
