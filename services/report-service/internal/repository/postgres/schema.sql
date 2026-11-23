@@ -1,0 +1,91 @@
+BEGIN;
+
+SELECT pg_advisory_xact_lock(82003);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    plot_id UUID NOT NULL,
+    plot_name TEXT NOT NULL,
+    plot_version BIGINT NOT NULL,
+    area_m2 DOUBLE PRECISION NOT NULL,
+    area_ares DOUBLE PRECISION NOT NULL,
+    area_hectares DOUBLE PRECISION NOT NULL,
+    perimeter_m DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS reports_owner_id_idx ON reports (owner_id);
+
+CREATE TABLE IF NOT EXISTS plot_summaries (
+    plot_id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    area_m2 DOUBLE PRECISION NOT NULL CHECK (area_m2 > 0),
+    version BIGINT NOT NULL CHECK (version > 0),
+    occurred_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS plot_summaries_owner_id_idx ON plot_summaries (owner_id);
+
+CREATE TABLE IF NOT EXISTS processed_events (
+    event_id UUID PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL
+);
+
+ALTER TABLE plot_summaries ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ NULL;
+
+ALTER TABLE plot_summaries ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL;
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS plot_deleted_at TIMESTAMPTZ NULL;
+
+CREATE INDEX IF NOT EXISTS reports_plot_id_idx ON reports (plot_id);
+
+CREATE INDEX IF NOT EXISTS reports_owner_created_idx ON reports (owner_id, created_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id UUID PRIMARY KEY,
+    position BIGSERIAL NOT NULL,
+    routing_key TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at TIMESTAMPTZ NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    last_error TEXT NULL
+);
+
+ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ NULL;
+
+ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS request_id TEXT NULL;
+
+ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS trace_context JSONB NULL;
+
+DROP INDEX IF EXISTS outbox_events_unpublished_idx;
+
+CREATE INDEX IF NOT EXISTS outbox_events_pending_idx
+    ON outbox_events (position) WHERE published_at IS NULL AND failed_at IS NULL;
+
+-- Reports created before the accuracy, terrain and climate blocks keep them empty.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS accuracy JSONB NULL;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS terrain JSONB NULL;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS climate JSONB NULL;
+
+-- The boundary of the plot version, so PDF and GeoJSON come from the report alone; older reports have none.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS boundary JSONB NULL;
+
+CREATE INDEX IF NOT EXISTS reports_owner_plot_created_idx ON reports (owner_id, plot_id, created_at DESC, id DESC);
+
+-- Climate profiles per 0.1° cell and period of years; neighbouring plots share the same climate.
+CREATE TABLE IF NOT EXISTS climate_cache (
+    cell_latitude_tenths INT NOT NULL,
+    cell_longitude_tenths INT NOT NULL,
+    first_year INT NOT NULL,
+    last_year INT NOT NULL,
+    profile JSONB NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (cell_latitude_tenths, cell_longitude_tenths, first_year, last_year)
+);
+
+COMMIT;

@@ -1,0 +1,1065 @@
+{
+  "id": "landPlotIncident",
+  "name": "Incident response",
+  "active": false,
+  "nodes": [
+    {
+      "id": "alertmanager",
+      "name": "Alertmanager",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alertmanager",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "5b1d3c2e-7a4f-4e1b-9c6d-2f8e0a1b3c4d"
+    },
+    {
+      "id": "check-token",
+      "name": "Check token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst request = $input.first().json;\nconst header = request.headers?.authorization ?? '';\nconst token = $env.ALERTMANAGER_WEBHOOK_TOKEN ?? '';\n\nreturn [{ json: { authorized: token.length > 0 && header === `Bearer ${token}`, body: request.body ?? {} } }];\n"
+      }
+    },
+    {
+      "id": "token-valid",
+      "name": "Token valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Token valid?",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "accepted",
+      "name": "Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'accepted' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "unauthorized",
+      "name": "Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        420
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'unauthorized' }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "id": "split-alerts",
+      "name": "Split alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "jsCode": "\nconst body = $('Check token').first().json.body;\nconst project = $env.JIRA_PROJECT_KEY;\n\nreturn (body.alerts ?? []).map((alert) => {\n  const labels = alert.labels ?? {};\n  const encoded = /[?&]g0\\.expr=([^&]*)/.exec(alert.generatorURL ?? '')?.[1] ?? '';\n  let expr = '';\n  try {\n    expr = decodeURIComponent(encoded.replace(/\\+/g, ' '));\n  } catch (error) {\n    expr = '';\n  }\n\n  return {\n    json: {\n      status: alert.status,\n      alertname: labels.alertname ?? 'unknown',\n      severity: labels.severity ?? 'warning',\n      service: labels.service ?? labels.job ?? 'unknown',\n      labels,\n      annotations: alert.annotations ?? {},\n      startsAt: alert.startsAt,\n      endsAt: alert.endsAt,\n      fingerprint: alert.fingerprint,\n      expr,\n      jql: `project = \"${project}\" AND labels = \"fp-${alert.fingerprint}\" AND statusCategory != Done ORDER BY created DESC`,\n    },\n  };\n});\n"
+      }
+    },
+    {
+      "id": "find-open-ticket",
+      "name": "Find open ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        200
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.JIRA_BASE_URL.replace(/\\/+$/, '') }}/rest/api/3/search/jql",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "jql",
+              "value": "={{ $json.jql }}"
+            },
+            {
+              "name": "fields",
+              "value": "summary,status"
+            },
+            {
+              "name": "maxResults",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "landPlotJira0001",
+          "name": "Jira (land plot incidents)"
+        }
+      }
+    },
+    {
+      "id": "decide",
+      "name": "Decide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        200
+      ],
+      "parameters": {
+        "jsCode": "\nreturn $input.all().map((item, index) => {\n  const alert = $('Split alerts').itemMatching(index).json;\n  const existing = item.json.issues?.[0]?.key ?? null;\n  let action = 'skip';\n  if (alert.status === 'firing' && !existing) action = 'create';\n  if (alert.status === 'resolved' && existing) action = 'resolve';\n\n  return { json: { ...alert, existing, action } };\n});\n"
+      }
+    },
+    {
+      "id": "new-incident",
+      "name": "New incident?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "New incident?",
+              "leftValue": "={{ $json.action === 'create' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resolved-incident",
+      "name": "Resolved incident?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Resolved incident?",
+              "leftValue": "={{ $json.action === 'resolve' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "query-metric",
+      "name": "Query metric",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://prometheus:9090/api/v1/query_range",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.expr || 'up' }}"
+            },
+            {
+              "name": "start",
+              "value": "={{ Math.floor(Date.now() / 1000) - 1800 }}"
+            },
+            {
+              "name": "end",
+              "value": "={{ Math.floor(Date.now() / 1000) }}"
+            },
+            {
+              "name": "step",
+              "value": "60"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query-errors",
+      "name": "Query errors",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://loki:3100/loki/api/v1/query_range",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ '{service=\"' + $('Decide').item.json.service + '\"} | json | level=~\"ERROR|WARN\"' }}"
+            },
+            {
+              "name": "since",
+              "value": "30m"
+            },
+            {
+              "name": "limit",
+              "value": "5"
+            },
+            {
+              "name": "direction",
+              "value": "backward"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query-restarts",
+      "name": "Query restarts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://prometheus:9090/api/v1/query",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ 'sum(changes(process_start_time_seconds{job=\"' + $('Decide').item.json.service + '\"}[' + Math.max(60, Math.ceil((Date.now() - Date.parse($('Decide').item.json.startsAt)) / 1000) + 60) + 's]))' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query-autoheal",
+      "name": "Query autoheal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://loki:3100/loki/api/v1/query_range",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ '{container=\"autoheal\"} |= \"' + $('Decide').item.json.service + '\"' }}"
+            },
+            {
+              "name": "start",
+              "value": "={{ new Date(Date.parse($('Decide').item.json.startsAt) - 60000).toISOString() }}"
+            },
+            {
+              "name": "limit",
+              "value": "5"
+            },
+            {
+              "name": "direction",
+              "value": "backward"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "build-context",
+      "name": "Build context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        100
+      ],
+      "parameters": {
+        "jsCode": "\nconst runbooks = {\n  ServiceDown: 'docker compose ps and docker compose logs --tail 100 <service>; the Go services restart on their own (restart: unless-stopped); start a stopped container with docker compose up -d <service>.',\n  ServiceUnhealthy: '/health answers 503 while the process runs; autoheal restarts a container that stays unhealthy; check the logs before and after the restart.',\n  HighLatencyP99: 'find the slow route and a slow trace in Jaeger (database, upstream, Open-Meteo); roll back when the spike started right after a deployment of that service and nothing outside it changed.',\n  HighErrorRate: 'filter the service logs by level ERROR and open a trace_id in Jaeger; usual causes are the database, RabbitMQ or an unreachable upstream; a rise right after a deployment is a reason to roll back.',\n  LatencyAnomaly: 'compare routes and RPS with the previous hour and look at recent traces; prepare a rollback if it follows a deployment.',\n  ReplicationLagHigh: 'check that RabbitMQ is up, the relay logs no errors and the consumers run; the relay publishes the backlog once the broker is back.',\n  QueueBacklog: 'check the consumers of the queue, retry outcomes and the logs of the consuming service; scale the consumer or fix the failing handler.',\n  BacklogPredicted: 'early warning: act as for ReplicationLagHigh or QueueBacklog before they fire.',\n  SagaCompensationsSpike: 'look at the reason: dlq means report-service rejects events, timeout means replies do not arrive in time.',\n  ExternalDependencyDown: 'Open-Meteo does not answer; reports are still created with unavailable blocks; check the network and the OPEN_METEO_* settings.',\n};\n\nconst format = (value) => (Number.isFinite(value) ? Number(value.toPrecision(4)).toString() : 'n/a');\n\nfunction restartFacts(alertname, restarts, autoheal) {\n  const count = Number(restarts?.data?.result?.[0]?.value?.[1] ?? 0);\n  const autohealLines = (autoheal?.data?.result ?? []).flatMap((stream) => stream.values.map((value) => value[1]));\n  if (count > 0) {\n    return autohealLines.length > 0\n      ? `The process restarted ${count} time(s) since the alert started; autoheal restarted the container: ${autohealLines[0]}`\n      : `The process restarted ${count} time(s) since the alert started, not by autoheal (Docker restart policy or a manual start).`;\n  }\n  if (alertname === 'ServiceDown') {\n    return 'No restart so far: the container is not running, and autoheal only restarts running containers that are unhealthy.';\n  }\n\n  return 'No restart since the alert started.';\n}\n\nreturn $input.all().map((item, index) => {\n  const alert = $('Decide').itemMatching(index).json;\n  const metric = $('Query metric').itemMatching(index).json;\n  const errors = $('Query errors').itemMatching(index).json;\n  const restarts = $('Query restarts').itemMatching(index).json;\n\n  const ownSeries = (metric?.data?.result ?? []).filter((entry) => [entry.metric.service, entry.metric.job].includes(alert.service));\n  const series = ownSeries.length > 0 ? ownSeries : (metric?.data?.result ?? []).filter((entry) => !entry.metric.service && !entry.metric.job);\n  const metricText = series.length === 0\n    ? `No series of ${alert.service} matched the alert expression in the last 30 minutes (for ServiceDown: the target is gone).`\n    : series.slice(0, 5).map((entry) => {\n      const values = entry.values.map((value) => Number(value[1])).filter(Number.isFinite);\n      const labels = Object.entries(entry.metric).map(([key, value]) => `${key}=${value}`).join(', ');\n      return `${labels || 'value'}: last ${format(values.at(-1))}, max ${format(Math.max(...values))}`;\n    }).join('\\n');\n\n  const errorLines = (errors?.data?.result ?? [])\n    .flatMap((stream) => stream.values.map((value) => ({ time: value[0], line: value[1], traceId: stream.stream.trace_id ?? '' })))\n    .sort((left, right) => (left.time < right.time ? 1 : -1))\n    .slice(0, 5)\n    .map((entry) => {\n      let message = entry.line;\n      try {\n        const parsed = JSON.parse(entry.line);\n        const request = parsed.route ? ` ${parsed.method ?? ''} ${parsed.route} ${parsed.status ?? ''}`.replace(/\\s+/g, ' ') : '';\n        message = `${parsed.level} ${parsed.msg}${request}${parsed.error ? `: ${parsed.error}` : ''}`;\n      } catch (error) {\n        message = entry.line.slice(0, 200);\n      }\n      return { message, traceId: entry.traceId };\n    });\n\n  const restartText = ['ServiceDown', 'ServiceUnhealthy'].includes(alert.alertname)\n    ? restartFacts(alert.alertname, restarts, item.json)\n    : '';\n  const runbook = runbooks[alert.alertname] ?? 'see the runbook in README.md';\n\n  const prompt = [\n    `Alert: ${alert.alertname} (${alert.severity}) on ${alert.service}, firing since ${alert.startsAt}.`,\n    `Summary: ${alert.annotations.summary ?? ''}`,\n    `Description: ${alert.annotations.description ?? ''}`,\n    `Expression: ${alert.expr}`,\n    `Metric over the last 30 minutes:\\n${metricText}`,\n    `Recent errors and warnings:\\n${errorLines.map((entry) => `- ${entry.message} (trace ${entry.traceId || 'none'})`).join('\\n') || '- none'}`,\n    restartText ? `Restarts: ${restartText}` : '',\n    `Runbook: ${runbook}`,\n  ].filter(Boolean).join('\\n\\n');\n\n  return { json: { ...alert, metricText, errorLines, restartText, runbook, prompt } };\n});\n"
+      }
+    },
+    {
+      "id": "incident-analyst",
+      "name": "Incident analyst",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2860,
+        100
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "You are an on-call engineer of a land plot system made of Go microservices (api-gateway, identity-service, land-plot-service, report-service) with PostgreSQL, RabbitMQ and an outbox saga. From the alert, metrics, logs and runbook you get, write three short sections in English with these headings: 'What happened', 'Probable cause', 'First steps'. Use plain text, no Markdown tables, at most 120 words. Mention a rollback only when the runbook suggests it for this alert."
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        2860,
+        320
+      ],
+      "parameters": {
+        "modelName": "={{ 'models/' + $env.LLM_MODEL }}",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "landPlotGemini01",
+          "name": "Google Gemini (LLM_API_KEY)"
+        }
+      }
+    },
+    {
+      "id": "ticket",
+      "name": "Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        100
+      ],
+      "parameters": {
+        "jsCode": "\nconst priorities = { critical: 'Highest', warning: 'High', info: 'Medium' };\n\nconst paragraph = (text) => ({ type: 'paragraph', content: [{ type: 'text', text }] });\nconst heading = (text) => ({ type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text }] });\nconst link = (text, href) => ({ type: 'paragraph', content: [{ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] }] });\n\nreturn $input.all().map((item, index) => {\n  const context = $('Build context').itemMatching(index).json;\n  const fromModel = typeof item.json.output === 'string' && item.json.output.trim().length > 0;\n  const analysis = fromModel\n    ? item.json.output.trim()\n    : `What happened: ${context.annotations.summary ?? context.alertname}.\\nProbable cause: see the metric and the errors below.\\nFirst steps: ${context.runbook}`;\n  const jaeger = $env.JAEGER_URL;\n  const traceLinks = context.errorLines.filter((entry) => entry.traceId).slice(0, 3)\n    .map((entry) => link(`Trace ${entry.traceId}: ${entry.message}`, `${jaeger}/trace/${entry.traceId}`));\n\n  const content = [\n    paragraph(`Started at ${context.startsAt}. Severity ${context.severity}. Fingerprint ${context.fingerprint}.`),\n    heading(fromModel ? 'Analysis (Gemini)' : 'Analysis (template, the LLM did not answer)'),\n    ...analysis.split(/\\n+/).map(paragraph),\n    heading('Metric'),\n    ...context.metricText.split('\\n').map(paragraph),\n    heading('Recent errors'),\n    ...(context.errorLines.length ? context.errorLines.map((entry) => paragraph(`${entry.message} (trace ${entry.traceId || 'none'})`)) : [paragraph('No errors or warnings in the last 30 minutes.')]),\n    ...(context.restartText ? [heading('Restart'), paragraph(context.restartText)] : []),\n    heading('Links'),\n    link('Grafana panel', context.annotations.dashboard ?? `${$env.GRAFANA_URL}/d/land-plot-overview/land-plot-system`),\n    link(`Runbook: ${context.annotations.runbook ?? 'README.md'}`, `${$env.GRAFANA_URL}/d/land-plot-overview/land-plot-system`),\n    ...(traceLinks.length ? traceLinks : [link('Jaeger', `${jaeger}/search?service=${context.service}`)]),\n  ];\n\n  return {\n    json: {\n      ...context,\n      analysisSource: fromModel ? 'gemini' : 'template',\n      issue: {\n        fields: {\n          project: { key: $env.JIRA_PROJECT_KEY },\n          issuetype: { name: 'Bug' },\n          summary: `[${context.severity}] ${context.alertname} — ${context.service}`,\n          priority: { name: priorities[context.severity] ?? 'Medium' },\n          labels: ['incident', `service-${context.service}`, `fp-${context.fingerprint}`],\n          description: { type: 'doc', version: 1, content },\n        },\n      },\n    },\n  };\n});\n"
+      }
+    },
+    {
+      "id": "create-ticket",
+      "name": "Create ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JIRA_BASE_URL.replace(/\\/+$/, '') }}/rest/api/3/issue",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.issue) }}"
+      },
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "landPlotJira0001",
+          "name": "Jira (land plot incidents)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "mail-new-incident",
+      "name": "Mail new incident",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3520,
+        100
+      ],
+      "parameters": {
+        "fromEmail": "alertmanager@land-plot.local",
+        "toEmail": "={{ $env.INCIDENT_MAIL_TO }}",
+        "subject": "={{ '[' + $('Ticket').item.json.severity + '] ' + $('Ticket').item.json.alertname + ' — ' + $('Ticket').item.json.service + ($json.key ? ' (' + $json.key + ')' : ' (no ticket yet)') }}",
+        "emailFormat": "text",
+        "text": "={{ $('Ticket').item.json.annotations.summary + '\\n\\n' + ($json.key ? 'Ticket: ' + $env.JIRA_BASE_URL.replace(/\\/+$/, '') + '/browse/' + $json.key : 'Jira did not answer; the ticket will be created when Alertmanager repeats the notification.') + '\\n\\nStarted at ' + $('Ticket').item.json.startsAt + '\\nPanel: ' + $('Ticket').item.json.annotations.dashboard + '\\nAnalysis: ' + $('Ticket').item.json.analysisSource }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "landPlotMailpit1",
+          "name": "Mailpit SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "restarts-on-resolve",
+      "name": "Restarts on resolve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        420
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://prometheus:9090/api/v1/query",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ 'max(process_start_time_seconds{job=\"' + $('Decide').item.json.service + '\"})' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "autoheal-on-resolve",
+      "name": "Autoheal on resolve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        420
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://loki:3100/loki/api/v1/query_range",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ '{container=\"autoheal\"} |= \"' + $('Decide').item.json.service + '\"' }}"
+            },
+            {
+              "name": "start",
+              "value": "={{ new Date(Date.parse($('Decide').item.json.startsAt) - 60000).toISOString() }}"
+            },
+            {
+              "name": "limit",
+              "value": "5"
+            },
+            {
+              "name": "direction",
+              "value": "backward"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "resolution",
+      "name": "Resolution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        420
+      ],
+      "parameters": {
+        "jsCode": "\nconst runbooks = {\n  ServiceDown: 'docker compose ps and docker compose logs --tail 100 <service>; the Go services restart on their own (restart: unless-stopped); start a stopped container with docker compose up -d <service>.',\n  ServiceUnhealthy: '/health answers 503 while the process runs; autoheal restarts a container that stays unhealthy; check the logs before and after the restart.',\n  HighLatencyP99: 'find the slow route and a slow trace in Jaeger (database, upstream, Open-Meteo); roll back when the spike started right after a deployment of that service and nothing outside it changed.',\n  HighErrorRate: 'filter the service logs by level ERROR and open a trace_id in Jaeger; usual causes are the database, RabbitMQ or an unreachable upstream; a rise right after a deployment is a reason to roll back.',\n  LatencyAnomaly: 'compare routes and RPS with the previous hour and look at recent traces; prepare a rollback if it follows a deployment.',\n  ReplicationLagHigh: 'check that RabbitMQ is up, the relay logs no errors and the consumers run; the relay publishes the backlog once the broker is back.',\n  QueueBacklog: 'check the consumers of the queue, retry outcomes and the logs of the consuming service; scale the consumer or fix the failing handler.',\n  BacklogPredicted: 'early warning: act as for ReplicationLagHigh or QueueBacklog before they fire.',\n  SagaCompensationsSpike: 'look at the reason: dlq means report-service rejects events, timeout means replies do not arrive in time.',\n  ExternalDependencyDown: 'Open-Meteo does not answer; reports are still created with unavailable blocks; check the network and the OPEN_METEO_* settings.',\n};\n\nconst format = (value) => (Number.isFinite(value) ? Number(value.toPrecision(4)).toString() : 'n/a');\n\nfunction restartFacts(alertname, restarts, autoheal) {\n  const count = Number(restarts?.data?.result?.[0]?.value?.[1] ?? 0);\n  const autohealLines = (autoheal?.data?.result ?? []).flatMap((stream) => stream.values.map((value) => value[1]));\n  if (count > 0) {\n    return autohealLines.length > 0\n      ? `The process restarted ${count} time(s) since the alert started; autoheal restarted the container: ${autohealLines[0]}`\n      : `The process restarted ${count} time(s) since the alert started, not by autoheal (Docker restart policy or a manual start).`;\n  }\n  if (alertname === 'ServiceDown') {\n    return 'No restart so far: the container is not running, and autoheal only restarts running containers that are unhealthy.';\n  }\n\n  return 'No restart since the alert started.';\n}\n\nreturn $input.all().map((item, index) => {\n  const alert = $('Decide').itemMatching(index).json;\n  const restarts = $('Restarts on resolve').itemMatching(index).json;\n  const minutes = Math.max(0, (new Date(alert.endsAt) - new Date(alert.startsAt)) / 60000);\n  const duration = minutes < 1 ? `${Math.round(minutes * 60)} s` : `${Math.round(minutes * 10) / 10} min`;\n  const startedAt = Number(restarts?.data?.result?.[0]?.value?.[1] ?? 0) * 1000;\n  const autohealLines = (item.json?.data?.result ?? []).flatMap((stream) => stream.values.map((value) => value[1]));\n  let restartText = '';\n  if (['ServiceDown', 'ServiceUnhealthy'].includes(alert.alertname)) {\n    if (startedAt > Date.parse(alert.startsAt)) {\n      restartText = autohealLines.length > 0\n        ? `autoheal restarted the container (${autohealLines[0]}); the process started again at ${new Date(startedAt).toISOString()}.`\n        : `The process started again at ${new Date(startedAt).toISOString()}, not by autoheal (started by hand or by the Docker restart policy; autoheal only restarts running containers that are unhealthy).`;\n    } else {\n      restartText = 'The process did not restart: the service recovered without a restart.';\n    }\n  }\n  const text = `Resolved at ${alert.endsAt} after ${duration} (started at ${alert.startsAt}).${restartText ? ' ' + restartText : ''}`;\n\n  return {\n    json: {\n      ...alert,\n      duration,\n      comment: { body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] } },\n    },\n  };\n});\n"
+      }
+    },
+    {
+      "id": "comment",
+      "name": "Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JIRA_BASE_URL.replace(/\\/+$/, '') }}/rest/api/3/issue/{{ $json.existing }}/comment",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.comment) }}"
+      },
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "landPlotJira0001",
+          "name": "Jira (land plot incidents)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "transitions",
+      "name": "Transitions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        420
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.JIRA_BASE_URL.replace(/\\/+$/, '') }}/rest/api/3/issue/{{ $('Resolution').item.json.existing }}/transitions",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi"
+      },
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "landPlotJira0001",
+          "name": "Jira (land plot incidents)"
+        }
+      }
+    },
+    {
+      "id": "done-transition",
+      "name": "Done transition",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        420
+      ],
+      "parameters": {
+        "jsCode": "\nreturn $input.all().map((item, index) => {\n  const resolution = $('Resolution').itemMatching(index).json;\n  const done = (item.json.transitions ?? []).find((transition) => transition.to?.statusCategory?.key === 'done');\n\n  return { json: { ...resolution, transition: { transition: { id: done?.id ?? '' } } } };\n});\n"
+      }
+    },
+    {
+      "id": "close-ticket",
+      "name": "Close ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.JIRA_BASE_URL.replace(/\\/+$/, '') }}/rest/api/3/issue/{{ $json.existing }}/transitions",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.transition) }}"
+      },
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "landPlotJira0001",
+          "name": "Jira (land plot incidents)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "mail-resolved",
+      "name": "Mail resolved",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3520,
+        420
+      ],
+      "parameters": {
+        "fromEmail": "alertmanager@land-plot.local",
+        "toEmail": "={{ $env.INCIDENT_MAIL_TO }}",
+        "subject": "={{ 'Resolved: ' + $('Done transition').item.json.alertname + ' — ' + $('Done transition').item.json.service + ' (' + $('Done transition').item.json.existing + ')' }}",
+        "emailFormat": "text",
+        "text": "={{ 'Resolved after ' + $('Done transition').item.json.duration + '.\\n\\nTicket: ' + $env.JIRA_BASE_URL.replace(/\\/+$/, '') + '/browse/' + $('Done transition').item.json.existing + ' (moved to Done).' }}",
+        "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "landPlotMailpit1",
+          "name": "Mailpit SMTP"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Alertmanager": {
+      "main": [
+        [
+          {
+            "node": "Check token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check token": {
+      "main": [
+        [
+          {
+            "node": "Token valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token valid?": {
+      "main": [
+        [
+          {
+            "node": "Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accepted": {
+      "main": [
+        [
+          {
+            "node": "Split alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split alerts": {
+      "main": [
+        [
+          {
+            "node": "Find open ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find open ticket": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "New incident?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New incident?": {
+      "main": [
+        [
+          {
+            "node": "Query metric",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resolved incident?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query metric": {
+      "main": [
+        [
+          {
+            "node": "Query errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query errors": {
+      "main": [
+        [
+          {
+            "node": "Query restarts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query restarts": {
+      "main": [
+        [
+          {
+            "node": "Query autoheal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query autoheal": {
+      "main": [
+        [
+          {
+            "node": "Build context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build context": {
+      "main": [
+        [
+          {
+            "node": "Incident analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Incident analyst",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident analyst": {
+      "main": [
+        [
+          {
+            "node": "Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ticket": {
+      "main": [
+        [
+          {
+            "node": "Create ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create ticket": {
+      "main": [
+        [
+          {
+            "node": "Mail new incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolved incident?": {
+      "main": [
+        [
+          {
+            "node": "Restarts on resolve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restarts on resolve": {
+      "main": [
+        [
+          {
+            "node": "Autoheal on resolve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Autoheal on resolve": {
+      "main": [
+        [
+          {
+            "node": "Resolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolution": {
+      "main": [
+        [
+          {
+            "node": "Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comment": {
+      "main": [
+        [
+          {
+            "node": "Transitions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transitions": {
+      "main": [
+        [
+          {
+            "node": "Done transition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done transition": {
+      "main": [
+        [
+          {
+            "node": "Close ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Close ticket": {
+      "main": [
+        [
+          {
+            "node": "Mail resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "pinData": {},
+  "tags": []
+}

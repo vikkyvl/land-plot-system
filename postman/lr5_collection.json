@@ -1,0 +1,516 @@
+{
+  "info": {
+    "name": "Land Plot System - Lab 5 (Keycloak OAuth 2.0)",
+    "description": "Requests through the API gateway with tokens from Keycloak. The collection uses OAuth 2.0 Authorization Code with PKCE for the public client land-plot-web: open the collection Authorization tab, press Get New Access Token, sign in with Google or a test user and press Use Token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "grant_type",
+        "value": "authorization_code_with_pkce",
+        "type": "string"
+      },
+      {
+        "key": "challengeAlgorithm",
+        "value": "S256",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "{{keycloak_url}}/realms/{{realm}}/protocol/openid-connect/auth",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "{{keycloak_url}}/realms/{{realm}}/protocol/openid-connect/token",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "{{client_id}}",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "body",
+        "type": "string"
+      },
+      {
+        "key": "useBrowser",
+        "value": true,
+        "type": "boolean"
+      },
+      {
+        "key": "redirect_uri",
+        "value": "https://oauth.pstmn.io/v1/callback",
+        "type": "string"
+      },
+      {
+        "key": "scope",
+        "value": "openid profile email plots:read plots:write reports:read reports:write",
+        "type": "string"
+      },
+      {
+        "key": "tokenName",
+        "value": "Keycloak land-plot (all scopes)",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      },
+      {
+        "key": "headerPrefix",
+        "value": "Bearer",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "keycloak_url",
+      "value": "http://localhost:8180"
+    },
+    {
+      "key": "realm",
+      "value": "land-plot"
+    },
+    {
+      "key": "client_id",
+      "value": "land-plot-web"
+    },
+    {
+      "key": "plot_id",
+      "value": ""
+    },
+    {
+      "key": "report_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Profile",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/users/profile",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users",
+            "profile"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('profile comes from the token', () => {",
+              "  pm.response.to.have.status(200);",
+              "  const profile = pm.response.json();",
+              "  pm.expect(profile.sub).to.be.a('string');",
+              "  pm.expect(profile.scopes).to.include('openid');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List plots",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/plots",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "plots"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('plots are listed', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create plot",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/plots",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "plots"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Ділянка з Postman\",\n  \"points\": [\n    {\n      \"lat\": 50.4501,\n      \"lon\": 30.5234\n    },\n    {\n      \"lat\": 50.4501,\n      \"lon\": 30.525\n    },\n    {\n      \"lat\": 50.451,\n      \"lon\": 30.525\n    },\n    {\n      \"lat\": 50.451,\n      \"lon\": 30.5234\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('plot is created and waits for the saga', () => {",
+              "  pm.response.to.have.status(201);",
+              "  const plot = pm.response.json();",
+              "  pm.expect(plot.status).to.eql('PENDING');",
+              "  pm.collectionVariables.set('plot_id', plot.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get plot",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/plots/{{plot_id}}",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "plots",
+            "{{plot_id}}"
+          ]
+        },
+        "description": "Send it a second after Create plot: the saga confirms the plot asynchronously."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('plot is returned', () => pm.response.to.have.status(200));",
+              "pm.test('status is CONFIRMED after the saga', () => pm.expect(pm.response.json().status).to.eql('CONFIRMED'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create report",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/reports",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "reports"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"plot_id\": \"{{plot_id}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('report is created', () => {",
+              "  pm.response.to.have.status(201);",
+              "  pm.collectionVariables.set('report_id', pm.response.json().id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get report",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/reports/{{report_id}}",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "reports",
+            "{{report_id}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('report is returned', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create plot with plots:read only (403)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/plots",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "plots"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Без права запису\",\n  \"points\": [\n    {\n      \"lat\": 50.4501,\n      \"lon\": 30.5234\n    },\n    {\n      \"lat\": 50.4501,\n      \"lon\": 30.525\n    },\n    {\n      \"lat\": 50.451,\n      \"lon\": 30.525\n    },\n    {\n      \"lat\": 50.451,\n      \"lon\": 30.5234\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "grant_type",
+              "value": "authorization_code_with_pkce",
+              "type": "string"
+            },
+            {
+              "key": "challengeAlgorithm",
+              "value": "S256",
+              "type": "string"
+            },
+            {
+              "key": "authUrl",
+              "value": "{{keycloak_url}}/realms/{{realm}}/protocol/openid-connect/auth",
+              "type": "string"
+            },
+            {
+              "key": "accessTokenUrl",
+              "value": "{{keycloak_url}}/realms/{{realm}}/protocol/openid-connect/token",
+              "type": "string"
+            },
+            {
+              "key": "clientId",
+              "value": "{{client_id}}",
+              "type": "string"
+            },
+            {
+              "key": "client_authentication",
+              "value": "body",
+              "type": "string"
+            },
+            {
+              "key": "useBrowser",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "key": "redirect_uri",
+              "value": "https://oauth.pstmn.io/v1/callback",
+              "type": "string"
+            },
+            {
+              "key": "scope",
+              "value": "openid plots:read",
+              "type": "string"
+            },
+            {
+              "key": "tokenName",
+              "value": "Keycloak land-plot (plots:read only)",
+              "type": "string"
+            },
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            },
+            {
+              "key": "headerPrefix",
+              "value": "Bearer",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "This request has its own OAuth settings with the scope openid plots:read. Press Get New Access Token on its Authorization tab first."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('a token without plots:write is forbidden', () => {",
+              "  pm.response.to.have.status(403);",
+              "  pm.expect(pm.response.json().code).to.eql('insufficient_scope');",
+              "  pm.expect(pm.response.headers.get('WWW-Authenticate')).to.include('scope=\"plots:write\"');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List plots without a token (401)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/plots",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "plots"
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('a request without a token is unauthorized', () => {",
+              "  pm.response.to.have.status(401);",
+              "  pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer error=\"invalid_token\"');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "CORS preflight from cad.kpi.ua",
+      "request": {
+        "method": "OPTIONS",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "https://cad.kpi.ua"
+          },
+          {
+            "key": "Access-Control-Request-Method",
+            "value": "POST"
+          },
+          {
+            "key": "Access-Control-Request-Headers",
+            "value": "authorization, content-type"
+          }
+        ],
+        "url": {
+          "raw": "{{gateway_url}}/api/v1/plots",
+          "host": [
+            "{{gateway_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "plots"
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('preflight from the department site is allowed', () => {",
+              "  pm.response.to.have.status(204);",
+              "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('https://cad.kpi.ua');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

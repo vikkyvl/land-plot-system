@@ -1,0 +1,27 @@
+package logging
+
+const (
+	KeyAddress    = "address"
+	KeyAttempts   = "attempts"
+	KeyCount      = "count"
+	KeyDurationMS = "duration_ms"
+	KeyError      = "error"
+	KeyEventType  = "event_type"
+	KeyInstanceID = "instance_id"
+	KeyLastError  = "last_error"
+	KeyMessageID  = "message_id"
+	KeyMethod     = "method"
+	KeyPlotID     = "plot_id"
+	KeyPort       = "port"
+	KeyQueue      = "queue"
+	KeyReason     = "reason"
+	KeyRequestID  = "request_id"
+	KeyRoute      = "route"
+	KeyRoutingKey = "routing_key"
+	KeySagaID     = "saga_id"
+	KeySagaKind   = "saga_kind"
+	KeyService    = "service"
+	KeySpanID     = "span_id"
+	KeyStatus     = "status"
+	KeyTraceID    = "trace_id"
+)

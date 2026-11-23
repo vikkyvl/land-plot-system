@@ -1,0 +1,473 @@
+# promtool test rules: every alert has a case where it fires and a case where it stays quiet.
+# Run with `make rules-check`.
+
+rule_files:
+  - ../rules/recording.yml
+  - ../rules/alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ServiceDown
+  - name: a service target answers with up 0
+    interval: 1m
+    input_series:
+      - series: 'up{job="api-gateway", instance="10.0.0.2:9464"}'
+        values: "1x10"
+      - series: 'up{job="identity-service", instance="10.0.0.3:9464"}'
+        values: "1x10"
+      - series: 'up{job="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "1x10"
+      - series: 'up{job="report-service", instance="10.0.0.5:9464"}'
+        values: "0x10"
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: report-service
+              job: report-service
+              instance: 10.0.0.5:9464
+            exp_annotations:
+              summary: report-service is down
+              description: Prometheus has not reached report-service for more than a minute.
+              runbook: README.md#servicedown
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=1
+
+  - name: a stopped service has no target at all
+    interval: 1m
+    input_series:
+      - series: 'up{job="api-gateway", instance="10.0.0.2:9464"}'
+        values: "1x10"
+      - series: 'up{job="identity-service", instance="10.0.0.3:9464"}'
+        values: "1x10"
+      - series: 'up{job="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: report-service
+              job: report-service
+            exp_annotations:
+              summary: report-service is down
+              description: Prometheus has not reached report-service for more than a minute.
+              runbook: README.md#servicedown
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=1
+
+  - name: every service is up
+    interval: 1m
+    input_series:
+      - series: 'up{job="api-gateway", instance="10.0.0.2:9464"}'
+        values: "1x10"
+      - series: 'up{job="identity-service", instance="10.0.0.3:9464"}'
+        values: "1x10"
+      - series: 'up{job="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "1x10"
+      - series: 'up{job="report-service", instance="10.0.0.5:9464"}'
+        values: "1x10"
+      - series: 'up{job="rabbitmq", instance="rabbitmq:15692"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ServiceDown
+        exp_alerts: []
+
+  # ServiceUnhealthy
+  - name: a service reports itself unhealthy and is restarted
+    interval: 1m
+    input_series:
+      - series: 'service_health_status{service="report-service", job="report-service", instance="10.0.0.5:9464"}'
+        values: "1 1 0 0 1 1 1 1"
+      - series: 'service_health_status{service="land-plot-service", job="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "1x8"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ServiceUnhealthy
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: ServiceUnhealthy
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: report-service
+            exp_annotations:
+              summary: report-service reports itself unhealthy
+              description: /health of report-service answered 503 within the last minute; autoheal restarts a container that stays unhealthy.
+              runbook: README.md#serviceunhealthy
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=6
+      - eval_time: 6m
+        alertname: ServiceUnhealthy
+        exp_alerts: []
+
+  # HighLatencyP99
+  - name: every request takes between 1 and 2.5 seconds
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="0.5"}'
+        values: "0x20"
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="1"}'
+        values: "0x20"
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="2.5"}'
+        values: "0+60x20"
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="+Inf"}'
+        values: "0+60x20"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HighLatencyP99
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: HighLatencyP99
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: report-service
+            exp_annotations:
+              summary: report-service answers slowly (p99 above 1 s)
+              description: The 99th percentile of the request duration of report-service has been above 1 second for 5 minutes.
+              runbook: README.md#highlatencyp99
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=10
+
+  - name: every request takes less than half a second
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="0.5"}'
+        values: "0+60x20"
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="1"}'
+        values: "0+60x20"
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="2.5"}'
+        values: "0+60x20"
+      - series: 'http_server_request_duration_seconds_bucket{service="report-service", route="/api/v1/reports", method="POST", status_class="2xx", le="+Inf"}'
+        values: "0+60x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighLatencyP99
+        exp_alerts: []
+
+  # HighErrorRate
+  - name: half of the requests fail
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service="land-plot-service", route="/api/v1/plots", method="POST", status_class="5xx"}'
+        values: "0+60x20"
+      - series: 'http_server_request_duration_seconds_count{service="land-plot-service", route="/api/v1/plots", method="POST", status_class="2xx"}'
+        values: "0+60x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: land-plot-service
+            exp_annotations:
+              summary: land-plot-service fails more than 5 % of requests
+              description: More than 5 % of the requests of land-plot-service have ended with a 5xx status for 5 minutes.
+              runbook: README.md#higherrorrate
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=12
+
+  - name: few failures among many requests
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service="land-plot-service", route="/api/v1/plots", method="POST", status_class="5xx"}'
+        values: "0+1x20"
+      - series: 'http_server_request_duration_seconds_count{service="land-plot-service", route="/api/v1/plots", method="POST", status_class="2xx"}'
+        values: "0+600x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts: []
+
+  - name: a single failure while there is almost no traffic
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service="land-plot-service", route="/api/v1/plots", method="POST", status_class="5xx"}'
+        values: "0+1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts: []
+
+  # LatencyAnomaly
+  - name: p95 jumps from 50 ms to a second after a quiet hour
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="0.05"}'
+        values: "0+60x70 4200x30"
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="0.5"}'
+        values: "0+60x70 4200x30"
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="1"}'
+        values: "0+60x70 4260+60x29"
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="+Inf"}'
+        values: "0+60x70 4260+60x29"
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: LatencyAnomaly
+        exp_alerts: []
+      - eval_time: 85m
+        alertname: LatencyAnomaly
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api-gateway
+            exp_annotations:
+              summary: api-gateway is slower than usual
+              description: The p95 of api-gateway is more than three standard deviations above its mean of the previous hour.
+              runbook: README.md#latencyanomaly
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=10
+
+  - name: p95 stays at 50 ms
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="0.05"}'
+        values: "0+60x100"
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="+Inf"}'
+        values: "0+60x100"
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: LatencyAnomaly
+        exp_alerts: []
+
+  # ReplicationLagHigh
+  - name: the oldest outbox row waits 45 seconds
+    interval: 1m
+    input_series:
+      - series: 'outbox_oldest_age_seconds{service="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "45x10"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ReplicationLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: land-plot-service
+            exp_annotations:
+              summary: Events of land-plot-service are delayed
+              description: Events of land-plot-service wait more than 30 seconds in the outbox or in RabbitMQ.
+              runbook: README.md#replicationlaghigh
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=20
+
+  - name: consumed messages are about a minute old
+    interval: 1m
+    input_series:
+      - series: 'message_age_seconds_bucket{service="report-service", queue="report.plot-events", le="30"}'
+        values: "0x10"
+      - series: 'message_age_seconds_bucket{service="report-service", queue="report.plot-events", le="60"}'
+        values: "0+10x10"
+      - series: 'message_age_seconds_bucket{service="report-service", queue="report.plot-events", le="+Inf"}'
+        values: "0+10x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ReplicationLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: report-service
+            exp_annotations:
+              summary: Events of report-service are delayed
+              description: Events of report-service wait more than 30 seconds in the outbox or in RabbitMQ.
+              runbook: README.md#replicationlaghigh
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=20
+
+  - name: events leave the outbox within seconds
+    interval: 1m
+    input_series:
+      - series: 'outbox_oldest_age_seconds{service="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "5x10"
+      - series: 'message_age_seconds_bucket{service="report-service", queue="report.plot-events", le="1"}'
+        values: "0+10x10"
+      - series: 'message_age_seconds_bucket{service="report-service", queue="report.plot-events", le="+Inf"}'
+        values: "0+10x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: ReplicationLagHigh
+        exp_alerts: []
+
+  # QueueBacklog
+  - name: 150 messages wait in a queue
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_messages{queue="report.plot-events", vhost="/"}'
+        values: "150x10"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: QueueBacklog
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: QueueBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: rabbitmq
+              queue: report.plot-events
+            exp_annotations:
+              summary: report.plot-events holds more than 100 messages
+              description: More than 100 messages have been waiting in report.plot-events for 5 minutes.
+              runbook: README.md#queuebacklog
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=21
+
+  - name: dead letters do not count as a backlog
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_detailed_queue_messages{queue="report.plot-events.dead", vhost="/"}'
+        values: "150x10"
+      - series: 'rabbitmq_detailed_queue_messages{queue="report.plot-events", vhost="/"}'
+        values: "20x10"
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: QueueBacklog
+        exp_alerts: []
+
+  # BacklogPredicted
+  - name: the outbox grows by 3 rows a minute
+    interval: 1m
+    input_series:
+      - series: 'outbox_pending{service="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "0+3x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BacklogPredicted
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              service: land-plot-service
+            exp_annotations:
+              summary: The backlog of land-plot-service grows towards 100 messages
+              description: At the growth of the last 30 minutes the outbox or a queue of land-plot-service will hold more than 100 messages within 15 minutes.
+              runbook: README.md#backlogpredicted
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=21
+
+  - name: the outbox stays at 50 rows
+    interval: 1m
+    input_series:
+      - series: 'outbox_pending{service="land-plot-service", instance="10.0.0.4:9464"}'
+        values: "50x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BacklogPredicted
+        exp_alerts: []
+
+  # SagaCompensationsSpike
+  - name: a saga is cancelled every minute
+    interval: 1m
+    input_series:
+      - series: 'sagas_finished_total{service="land-plot-service", kind="CREATE", result="cancelled", reason="dlq"}'
+        values: "0+1x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SagaCompensationsSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: land-plot-service
+            exp_annotations:
+              summary: Many sagas are compensated
+              description: More than 5 sagas were cancelled or reverted in the last 10 minutes.
+              runbook: README.md#sagacompensationsspike
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=40
+
+  - name: many confirmed sagas and a few compensations
+    interval: 1m
+    input_series:
+      - series: 'sagas_finished_total{service="land-plot-service", kind="CREATE", result="confirmed", reason="none"}'
+        values: "0+10x20"
+      - series: 'sagas_finished_total{service="land-plot-service", kind="UPDATE", result="reverted", reason="timeout"}'
+        values: "0+0.3x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SagaCompensationsSpike
+        exp_alerts: []
+
+  # ExternalDependencyDown
+  - name: every call to the Open-Meteo archive times out
+    interval: 1m
+    input_series:
+      - series: 'http_client_request_duration_seconds_count{service="report-service", target="open-meteo-archive", outcome="timeout"}'
+        values: "0+1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ExternalDependencyDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: report-service
+              target: open-meteo-archive
+            exp_annotations:
+              summary: open-meteo-archive does not answer
+              description: More than half of the calls of report-service to open-meteo-archive have failed or timed out for 5 minutes.
+              runbook: README.md#externaldependencydown
+              dashboard: http://localhost:13000/d/land-plot-overview/land-plot-system?viewPanel=41
+
+  - name: Open-Meteo answers most calls and land-plot-service is not external
+    interval: 1m
+    input_series:
+      - series: 'http_client_request_duration_seconds_count{service="report-service", target="open-meteo-archive", outcome="timeout"}'
+        values: "0+1x20"
+      - series: 'http_client_request_duration_seconds_count{service="report-service", target="open-meteo-archive", outcome="2xx"}'
+        values: "0+9x20"
+      - series: 'http_client_request_duration_seconds_count{service="report-service", target="land-plot-service", outcome="error"}'
+        values: "0+1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ExternalDependencyDown
+        exp_alerts: []
+
+  # Recording rules: conversions
+  - name: conversions from previews to plots and from plots to reports
+    interval: 1m
+    input_series:
+      - series: 'plot_previews_total{service="land-plot-service", result="valid"}'
+        values: "0+10x70"
+      - series: 'plots_changed_total{service="land-plot-service", change="created"}'
+        values: "0+2x70"
+      - series: 'reports_created_total{service="report-service"}'
+        values: "0+1x70"
+    promql_expr_test:
+      - expr: land_plot:preview_to_plot:ratio_rate1h
+        eval_time: 65m
+        exp_samples:
+          - labels: land_plot:preview_to_plot:ratio_rate1h
+            value: 0.2
+      - expr: land_plot:plot_to_report:ratio_rate1h
+        eval_time: 65m
+        exp_samples:
+          - labels: land_plot:plot_to_report:ratio_rate1h
+            value: 0.5
+
+  # Recording rules: an error ratio is 0, not missing, while nothing has failed
+  - name: no failures yet
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service="land-plot-service", route="/api/v1/plots", method="GET", status_class="2xx"}'
+        values: "0+60x10"
+      - series: 'http_client_request_duration_seconds_count{service="report-service", target="open-meteo-archive", outcome="2xx"}'
+        values: "0+5x10"
+    promql_expr_test:
+      - expr: service:http_server_errors:ratio_rate5m
+        eval_time: 8m
+        exp_samples:
+          - labels: 'service:http_server_errors:ratio_rate5m{service="land-plot-service"}'
+            value: 0
+      - expr: service_target:http_client_errors:ratio_rate5m
+        eval_time: 8m
+        exp_samples:
+          - labels: 'service_target:http_client_errors:ratio_rate5m{service="report-service", target="open-meteo-archive"}'
+            value: 0
+
+  # Recording rules: no quantile is recorded while there is no traffic
+  - name: quantiles disappear without traffic
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="0.1"}'
+        values: "0+60x5 300x10"
+      - series: 'http_server_request_duration_seconds_bucket{service="api-gateway", route="/api/v1/plots", method="GET", status_class="2xx", le="+Inf"}'
+        values: "0+60x5 300x10"
+    promql_expr_test:
+      - expr: service:http_server_request_duration_seconds:p95_5m
+        eval_time: 14m
+        exp_samples: []
